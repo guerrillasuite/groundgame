@@ -1,0 +1,86 @@
+﻿Folder PATH listing
+Volume serial number is 000000A1 E88C:5815
+C:\USERS\AWESOME DAVID\DOCUMENTS\GROUNDGAME\APP
+|   favicon.ico
+|   layout.tsx
+|   
++---(pwa)
+|   |   layout.tsx
+|   |   page.tsx
+|   |   
+|   +---dials
+|   |   |   layout.tsx
+|   |   |   page.tsx
+|   |   |   
+|   |   \---[id]
+|   |       |   layout.tsx
+|   |       |   page.tsx
+|   |       |   
+|   |       \---[index]
+|   |               page.tsx
+|   |               
+|   +---doors
+|   |       page.tsx
+|   |       
+|   \---walklists
+|           page.tsx
+|           
++---account
+|   |   page.tsx
+|   |   
+|   +---auth
+|   |       page.tsx
+|   |       
+|   +---history
+|   |       page.tsx
+|   |       
+|   \---settings
+|           page.tsx
+|           
++---components
+|       AppShell.tsx
+|       FooterNav.tsx
+|       Header.tsx
+|       Icon.tsx
+|       InstallButton.tsx
+|       ListItem.tsx
+|       PressCard.tsx
+|       PwaInit.tsx
+|       
++---crm
+|   |   layout.tsx
+|   |   page.tsx
+|   |   
+|   +---households
+|   |       page.tsx
+|   |       
+|   +---lists
+|   |   |   page.tsx
+|   |   |   
+|   |   \---[id]
+|   |           page.tsx
+|   |           
+|   +---locations
+|   |       page.tsx
+|   |       
+|   +---opportunities
+|   |   |   actions.ts
+|   |   |   page.tsx
+|   |   |   
+|   |   +---ui
+|   |   |       KanbanBoard.tsx
+|   |   |       
+|   |   \---[id]
+|   +---people
+|   |   |   page.tsx
+|   |   |   
+|   |   \---[id]
+|   +---stops
+|   |       page.tsx
+|   |       
+|   \---_shared
+|           ListPage.tsx
+|           
+\---styles
+        globals.css
+        
