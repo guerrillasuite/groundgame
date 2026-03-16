@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 type FieldDef = {
   name: string;
   label?: string;
-  type?: "text" | "textarea" | "number";
+  type?: "text" | "textarea" | "number" | "email" | "tel";
   placeholder?: string;
 };
 

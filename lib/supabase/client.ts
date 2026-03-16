@@ -1,5 +1,6 @@
-﻿// lib/supabase/client.ts
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+// lib/supabase/client.ts
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 function resolveTenantId(): string | undefined {
   // 1) explicit runtime (if you ever set it)
@@ -21,32 +22,25 @@ function resolveTenantId(): string | undefined {
 // call getSupabase() instead of using the singleton.
 const TENANT_ID = resolveTenantId();
 
-const options = {
-  global: {
-    headers: TENANT_ID ? { "X-Tenant-Id": TENANT_ID } : {},
-  },
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-} as const;
-
-export const supabase = createClient(
+// createBrowserClient stores sessions in cookies (accessible to middleware/server)
+// instead of localStorage. Drop-in replacement for createClient in browser contexts.
+export const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  options
+  {
+    global: {
+      headers: TENANT_ID ? { "X-Tenant-Id": TENANT_ID } : {},
+    },
+  }
 );
 
-// Preferred for client pages where you MUST have the header.
-// Creates a fresh client with the current tenant each call.
+// Preferred for client pages where you MUST have the current tenant header.
 export function getSupabase(): SupabaseClient {
   const tid = resolveTenantId();
-  return createClient(
+  return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      ...options,
       global: { headers: tid ? { "X-Tenant-Id": tid } : {} },
     }
   );

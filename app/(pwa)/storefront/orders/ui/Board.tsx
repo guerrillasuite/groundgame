@@ -286,6 +286,7 @@ export default function Board({
       <div className="toolbar">
         <div className="search">
           <input
+            type="search"
             value={q}
             placeholder="Search orders, items, or SKU…"
             onChange={(e) => setQ(e.target.value)}

@@ -21,16 +21,24 @@ interface Survey {
   description: string;
 }
 
+interface ContactInfo {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
 interface SurveyContainerProps {
   surveyId: string;
   contactId: string;
   randomizeOptions?: boolean;
+  contactInfo?: ContactInfo;
 }
 
-export function SurveyContainer({ 
-  surveyId, 
+export function SurveyContainer({
+  surveyId,
   contactId,
-  randomizeOptions = false 
+  randomizeOptions = false,
+  contactInfo,
 }: SurveyContainerProps) {
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -466,9 +474,9 @@ export function SurveyContainer({
               onAnswer={handleContactVerification}
               initialData={currentAnswer?.value ? JSON.parse(currentAnswer.value) : {}}
               existingContact={{
-                name: 'John Smith',  // TODO: Fetch from CRM
-                email: 'john.smith@example.com',  // TODO: Fetch from CRM
-                phone: '(555) 123-4567'  // TODO: Fetch from CRM
+                name: contactInfo?.name ?? '',
+                email: contactInfo?.email ?? '',
+                phone: contactInfo?.phone ?? '',
               }}
             />
           )}

@@ -1,132 +1,112 @@
 import Link from "next/link";
-import { getServerSupabase } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { getCrmUser } from "@/lib/crm-auth";
+import { getWalklists, upsertWalklists, upsertLocations } from "@/lib/db/doors";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const fetchCache = "force-no-store";
 
 type Walklist = {
   id: string;
   name: string;
-  mode: "knock" | "call" | "drop" | "email" | "text";
+  mode: string;
   total_targets: number;
   visited_count: number;
-  updated_at: string | null;
 };
 
-const TEST_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0002"; // default test list
-
-export default async function DoorsHome() {
-  const supabase = getServerSupabase();
-  const { tenantId: tFromHelper, user, userId } = await getTenant();
-
-  // resolve user id
-  let uid =
-    (user as any)?.id ??
-    (user as any)?.user?.id ??
-    userId ??
-    null;
-  if (!uid) {
-    const { data: auth } = await supabase.auth.getUser();
-    uid = auth?.user?.id ?? null;
-  }
-
-  // resolve tenant id
-  let tenantId: string | null =
-    typeof tFromHelper === "string" && tFromHelper ? tFromHelper : null;
-
-  if (!tenantId && uid) {
-    const { data: ut } = await supabase
-      .from("user_tenants")
-      .select("tenant_id")
-      .eq("user_id", uid)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (ut?.tenant_id) tenantId = String(ut.tenant_id);
-  }
-
-  if (!tenantId) {
-    const { data: wl } = await supabase
-      .from("walklists")
-      .select("tenant_id")
-      .eq("id", TEST_ID)
-      .maybeSingle();
-    if (wl?.tenant_id) tenantId = String(wl.tenant_id);
-  }
-
-  // fetch lists for "knock" mode via v2; fallback to v1 or to table join
-  let lists: Walklist[] = [];
+// Sync from Supabase → SQLite (scoped to the authenticated user's assigned lists)
+async function syncFromSupabase(tenantId: string, userId: string): Promise<void> {
   try {
-    const { data, error } = await supabase.rpc("gs_list_walklists_by_mode_v2", {
-      _tenant_id: tenantId,
-      _user_id: uid,
-      _mode: "knock",
-    });
-    if (error) throw error;
-    lists = (data ?? []) as Walklist[];
-  } catch (e: any) {
-    const msg = String(e?.message || "");
-    if (e?.code === "42883" || msg.includes("gs_list_walklists_by_mode_v2")) {
-      const { data, error: e1 } = await supabase.rpc("gs_list_walklists_by_mode_v1", {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { global: { headers: { "X-Tenant-Id": tenantId } } }
+    );
+    const uid = userId;
+
+    let walklists: any[] = [];
+    try {
+      const { data, error } = await supabase.rpc("gs_list_walklists_by_mode_v2", {
         _tenant_id: tenantId,
         _user_id: uid,
         _mode: "knock",
       });
-      if (!e1) {
-        lists = (data ?? []).map((w: any) => ({
+      if (!error) walklists = data ?? [];
+    } catch {
+      try {
+        const { data } = await supabase.rpc("gs_list_walklists_by_mode_v1", {
+          _tenant_id: tenantId,
+          _user_id: uid,
+          _mode: "knock",
+        });
+        walklists = (data ?? []).map((w: any) => ({
           id: w.id,
           name: w.name ?? "(Untitled)",
-          mode: (w.mode ?? "knock") as Walklist["mode"],
+          mode: w.mode ?? "knock",
           total_targets: w.total_targets ?? w.target_count ?? 0,
           visited_count: w.visited_count ?? w.completed_count ?? 0,
-          updated_at: w.updated_at ?? w.modified_at ?? w.created_at ?? null,
-        })) as Walklist[];
-      }
+        }));
+      } catch {}
     }
-  }
 
-  // fallback to direct table join if RPC returns nothing
-  if (lists.length === 0) {
-    const ids: string[] = [];
-    if (uid) {
-      const { data: progress } = await supabase
-        .from("walklist_progress")
-        .select("walklist_id")
-        .eq("user_id", uid);
-      (progress ?? []).forEach((r) => {
-        if (r.walklist_id && !ids.includes(r.walklist_id)) ids.push(r.walklist_id);
-      });
-    }
-    if (!ids.includes(TEST_ID)) ids.push(TEST_ID);
+    if (walklists.length === 0) return;
 
-    if (ids.length) {
-      const { data: wlRows } = await supabase
-        .from("walklists")
-        .select("id,name,updated_at")
-        .in("id", ids);
-
-      const { data: items } = await supabase
-        .from("walklist_items")
-        .select("id,walklist_id")
-        .in("walklist_id", ids);
-
-      const counts = new Map<string, number>();
-      (items ?? []).forEach((it) => {
-        counts.set(it.walklist_id, (counts.get(it.walklist_id) ?? 0) + 1);
-      });
-
-      lists = (wlRows ?? []).map((w) => ({
+    upsertWalklists(
+      tenantId,
+      userId,
+      walklists.map((w) => ({
         id: w.id,
+        tenant_id: tenantId,
         name: w.name ?? "(Untitled)",
-        mode: "knock",
-        total_targets: counts.get(w.id) ?? 0,
-        visited_count: 0,
-        updated_at: (w as any).updated_at ?? null,
-      }));
+        mode: w.mode ?? "knock",
+        total_targets: w.total_targets ?? 0,
+        visited_count: w.visited_count ?? 0,
+      }))
+    );
+
+    for (const wl of walklists) {
+      try {
+        const { data: locs, error } = await supabase.rpc(
+          "gs_get_walklist_locations_v2",
+          { _walklist_id: wl.id }
+        );
+        if (error || !locs?.length) continue;
+        upsertLocations(
+          wl.id,
+          locs.map((r: any) => ({
+            item_id: r.item_id,
+            walklist_id: wl.id,
+            idx: r.idx ?? 0,
+            location_id: r.location_id ?? null,
+            lat: r.lat ?? null,
+            lng: r.lng ?? null,
+            address_line1: r.address_line1 ?? null,
+            city: r.city ?? null,
+            state: r.state ?? null,
+            postal_code: r.postal_code ?? null,
+            household_id: r.household_id ?? null,
+            household_name: r.household_name ?? null,
+            primary_person_id: r.primary_person_id ?? null,
+            primary_person_name: r.primary_person_name ?? null,
+            last_result: r.last_result ?? null,
+            last_result_at: r.last_result_at ?? null,
+          }))
+        );
+      } catch {}
     }
-  }
+  } catch {}
+}
+
+export default async function DoorsHome() {
+  const [{ id: tenantId }, crmUser] = await Promise.all([getTenant(), getCrmUser()]);
+  const userId = crmUser?.userId ?? null;
+
+  // Sync only this user's assigned lists from Supabase → SQLite
+  if (userId) await syncFromSupabase(tenantId, userId);
+
+  // Read from SQLite (scoped to this user)
+  const lists: Walklist[] = getWalklists(tenantId, userId);
 
   return (
     <main className="mx-auto max-w-3xl p-4">

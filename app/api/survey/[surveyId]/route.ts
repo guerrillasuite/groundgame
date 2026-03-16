@@ -1,54 +1,45 @@
-// app/api/survey/[surveyId]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/db/init';
+import { NextRequest, NextResponse } from "next/server";
+import { getSurvey, updateSurvey, deleteSurvey } from "@/lib/db/supabase-surveys";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { surveyId: string } }
-) {
-  const { surveyId } = params;
-  const db = getDatabase();
-  
+type Ctx = { params: Promise<{ surveyId: string }> };
+
+export async function GET(request: NextRequest, { params }: Ctx) {
+  const { surveyId } = await params;
+  const edit = request.nextUrl.searchParams.get("edit") === "1";
   try {
-    // Get survey details
-    const survey = db.prepare(`
-      SELECT id, title, description, active
-      FROM surveys
-      WHERE id = ? AND active = 1
-    `).get(surveyId);
-    
-    if (!survey) {
-      return NextResponse.json(
-        { error: 'Survey not found or inactive' },
-        { status: 404 }
-      );
+    const result = await getSurvey(surveyId, { requireActive: !edit });
+    if (!result) {
+      return NextResponse.json({ error: "Survey not found or inactive" }, { status: 404 });
     }
-    
-    // Get questions for this survey
-    const questions = db.prepare(`
-      SELECT id, question_text, question_type, options, required, order_index
-      FROM questions
-      WHERE survey_id = ?
-      ORDER BY order_index ASC
-    `).all(surveyId);
-    
-    // Parse options JSON for each question
-    const parsedQuestions = questions.map((q: any) => ({
-      ...q,
-      options: q.options ? JSON.parse(q.options) : null
-    }));
-    
-    return NextResponse.json({
-      survey,
-      questions: parsedQuestions
-    });
+    return NextResponse.json(result);
   } catch (error) {
-    console.error('Error fetching survey:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch survey' },
-      { status: 500 }
-    );
-  } finally {
-    db.close();
+    console.error("Error fetching survey:", error);
+    return NextResponse.json({ error: "Failed to fetch survey" }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest, { params }: Ctx) {
+  const { surveyId } = await params;
+  try {
+    const { title, description, active } = await request.json();
+    if (!title?.trim()) {
+      return NextResponse.json({ error: "Title is required" }, { status: 400 });
+    }
+    await updateSurvey(surveyId, { title: title.trim(), description, active: Boolean(active) });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Error updating survey:", error);
+    return NextResponse.json({ error: "Failed to update survey" }, { status: 500 });
+  }
+}
+
+export async function DELETE(_request: NextRequest, { params }: Ctx) {
+  const { surveyId } = await params;
+  try {
+    await deleteSurvey(surveyId);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Error deleting survey:", error);
+    return NextResponse.json({ error: "Failed to delete survey" }, { status: 500 });
   }
 }

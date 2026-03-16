@@ -1,0 +1,408 @@
+/**
+ * Server-side Supabase helpers for the survey system.
+ * Uses the anon key (matching the rest of the app's pattern).
+ * Survey tables have no RLS, so anon key has full access.
+ */
+import { createClient } from "@supabase/supabase-js";
+
+function getClient(tenantId?: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    tenantId ? { global: { headers: { "X-Tenant-Id": tenantId } } } : undefined
+  );
+}
+
+function getServiceClient(tenantId: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
+  );
+}
+
+// For writes that don't need tenant scoping (ID-specific operations).
+// Service role bypasses RLS entirely.
+function getAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export type Survey = {
+  id: string;
+  tenant_id: string;
+  title: string;
+  description: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Question = {
+  id: string;
+  survey_id: string;
+  question_text: string;
+  question_type: string;
+  options: string[] | null; // stored as JSONB in Postgres
+  required: boolean;
+  order_index: number;
+  created_at: string;
+};
+
+export type SurveyWithStats = Survey & {
+  total_responses: number;
+  completed_responses: number;
+};
+
+// ── Survey CRUD ───────────────────────────────────────────────────────────────
+
+export async function getSurveys(tenantId: string): Promise<SurveyWithStats[]> {
+  const sb = getClient();
+
+  // Fetch surveys
+  const { data: surveys, error } = await sb
+    .from("surveys")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  if (!surveys?.length) return [];
+
+  // Fetch session stats for all surveys
+  const surveyIds = surveys.map((s) => s.id);
+  const { data: sessions } = await sb
+    .from("survey_sessions")
+    .select("survey_id, completed_at")
+    .in("survey_id", surveyIds);
+
+  const stats = new Map<string, { total: number; completed: number }>();
+  for (const sid of surveyIds) stats.set(sid, { total: 0, completed: 0 });
+  for (const s of sessions ?? []) {
+    const st = stats.get(s.survey_id)!;
+    st.total++;
+    if (s.completed_at) st.completed++;
+  }
+
+  return surveys.map((s) => ({
+    ...s,
+    total_responses: stats.get(s.id)?.total ?? 0,
+    completed_responses: stats.get(s.id)?.completed ?? 0,
+  }));
+}
+
+export async function getSurvey(
+  surveyId: string,
+  opts: { requireActive?: boolean } = {}
+): Promise<{ survey: Survey; questions: Question[] } | null> {
+  const sb = getClient();
+
+  let q = sb.from("surveys").select("*").eq("id", surveyId);
+  if (opts.requireActive) q = q.eq("active", true);
+
+  const { data: survey, error } = await q.single();
+  if (error || !survey) return null;
+
+  const { data: questions } = await sb
+    .from("questions")
+    .select("*")
+    .eq("survey_id", surveyId)
+    .order("order_index", { ascending: true });
+
+  return { survey, questions: questions ?? [] };
+}
+
+export async function createSurvey(params: {
+  id: string;
+  title: string;
+  description?: string;
+  tenantId: string;
+}): Promise<void> {
+  const sb = getServiceClient(params.tenantId);
+  const { error } = await sb.from("surveys").insert({
+    id: params.id,
+    tenant_id: params.tenantId,
+    title: params.title,
+    description: params.description ?? null,
+    active: true,
+  });
+  if (error) throw error;
+}
+
+export async function updateSurvey(
+  surveyId: string,
+  params: { title: string; description?: string; active: boolean }
+): Promise<void> {
+  const sb = getAdminClient();
+  const { error } = await sb
+    .from("surveys")
+    .update({
+      title: params.title,
+      description: params.description ?? null,
+      active: params.active,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", surveyId);
+  if (error) throw error;
+}
+
+export async function deleteSurvey(surveyId: string): Promise<void> {
+  const sb = getAdminClient();
+  const { error } = await sb.from("surveys").delete().eq("id", surveyId);
+  if (error) throw error;
+}
+
+// ── Question CRUD ─────────────────────────────────────────────────────────────
+
+export async function createQuestion(
+  surveyId: string,
+  params: {
+    id: string;
+    question_text: string;
+    question_type: string;
+    options: string[] | null;
+    required: boolean;
+    order_index: number;
+  }
+): Promise<void> {
+  const sb = getAdminClient();
+  const { error } = await sb.from("questions").insert({
+    id: params.id,
+    survey_id: surveyId,
+    question_text: params.question_text,
+    question_type: params.question_type,
+    options: params.options?.length ? params.options : null,
+    required: params.required,
+    order_index: params.order_index,
+  });
+  if (error) throw error;
+}
+
+export async function updateQuestion(
+  questionId: string,
+  params: {
+    question_text: string;
+    question_type: string;
+    options: string[] | null;
+    required: boolean;
+    order_index: number;
+  }
+): Promise<void> {
+  const sb = getAdminClient();
+  const { error } = await sb
+    .from("questions")
+    .update({
+      question_text: params.question_text,
+      question_type: params.question_type,
+      options: params.options?.length ? params.options : null,
+      required: params.required,
+      order_index: params.order_index,
+    })
+    .eq("id", questionId);
+  if (error) throw error;
+}
+
+export async function deleteQuestion(
+  questionId: string,
+  surveyId: string
+): Promise<void> {
+  const sb = getAdminClient();
+  await sb.from("questions").delete().eq("id", questionId).eq("survey_id", surveyId);
+
+  // Renumber remaining questions
+  const { data: remaining } = await sb
+    .from("questions")
+    .select("id")
+    .eq("survey_id", surveyId)
+    .order("order_index", { ascending: true });
+
+  if (remaining?.length) {
+    await Promise.all(
+      remaining.map((q, i) =>
+        sb.from("questions").update({ order_index: i + 1 }).eq("id", q.id)
+      )
+    );
+  }
+}
+
+// ── Responses ─────────────────────────────────────────────────────────────────
+
+export async function saveResponse(params: {
+  crm_contact_id: string;
+  survey_id: string;
+  question_id: string;
+  answer_value: string;
+  answer_text?: string | null;
+}): Promise<void> {
+  const sb = getClient();
+
+  // Upsert response (one answer per contact per question)
+  const { data: existing } = await sb
+    .from("responses")
+    .select("id")
+    .eq("crm_contact_id", params.crm_contact_id)
+    .eq("question_id", params.question_id)
+    .maybeSingle();
+
+  if (existing) {
+    await sb
+      .from("responses")
+      .update({
+        answer_value: params.answer_value,
+        answer_text: params.answer_text ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+  } else {
+    await sb.from("responses").insert({
+      crm_contact_id: params.crm_contact_id,
+      survey_id: params.survey_id,
+      question_id: params.question_id,
+      answer_value: params.answer_value,
+      answer_text: params.answer_text ?? null,
+    });
+  }
+
+  // Upsert session tracking
+  const { data: session } = await sb
+    .from("survey_sessions")
+    .select("id")
+    .eq("crm_contact_id", params.crm_contact_id)
+    .eq("survey_id", params.survey_id)
+    .maybeSingle();
+
+  if (session) {
+    await sb
+      .from("survey_sessions")
+      .update({ last_question_answered: params.question_id })
+      .eq("id", session.id);
+  } else {
+    await sb.from("survey_sessions").insert({
+      crm_contact_id: params.crm_contact_id,
+      survey_id: params.survey_id,
+      last_question_answered: params.question_id,
+    });
+  }
+}
+
+export async function completeSession(params: {
+  crm_contact_id: string;
+  survey_id: string;
+}): Promise<void> {
+  const sb = getClient();
+  await sb
+    .from("survey_sessions")
+    .update({ completed_at: new Date().toISOString() })
+    .eq("crm_contact_id", params.crm_contact_id)
+    .eq("survey_id", params.survey_id)
+    .is("completed_at", null);
+}
+
+// ── Results ───────────────────────────────────────────────────────────────────
+
+export async function getSurveyResults(surveyId: string) {
+  const sb = getClient();
+
+  const [
+    { data: survey },
+    { data: sessions },
+    { data: questions },
+    { data: responses },
+  ] = await Promise.all([
+    sb.from("surveys").select("id, title, description").eq("id", surveyId).single(),
+    sb.from("survey_sessions").select("completed_at").eq("survey_id", surveyId),
+    sb.from("questions").select("id, question_text, order_index").eq("survey_id", surveyId).order("order_index"),
+    sb.from("responses").select("question_id, answer_value, answer_text").eq("survey_id", surveyId),
+  ]);
+
+  if (!survey) return null;
+
+  const totalStarted = sessions?.length ?? 0;
+  const totalCompleted = sessions?.filter((s) => s.completed_at).length ?? 0;
+
+  const questionResults = (questions ?? []).map((q) => {
+    const qResponses = (responses ?? []).filter((r) => r.question_id === q.id);
+    const counts = new Map<string, number>();
+    for (const r of qResponses) {
+      const key =
+        r.answer_value === "other" && r.answer_text
+          ? `Other: ${r.answer_text}`
+          : r.answer_value;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const total = qResponses.length;
+    const answers = Array.from(counts.entries())
+      .map(([value, count]) => ({
+        value,
+        count,
+        percentage: total > 0 ? (count / total) * 100 : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      question_id: q.id,
+      question_text: q.question_text,
+      total_responses: total,
+      answers,
+    };
+  });
+
+  return {
+    survey_id: survey.id,
+    survey_title: survey.title,
+    total_started: totalStarted,
+    total_completed: totalCompleted,
+    completion_rate: totalStarted > 0 ? (totalCompleted / totalStarted) * 100 : 0,
+    questions: questionResults,
+  };
+}
+
+// ── Walklist ↔ Survey linking ─────────────────────────────────────────────────
+
+/** Returns a map of survey_id → list of {id, name} walklists assigned to it */
+export async function getWalklistsBySurvey(
+  tenantId: string
+): Promise<Map<string, Array<{ id: string; name: string }>>> {
+  const sb = getServiceClient(tenantId);
+  const { data } = await sb
+    .from("walklists")
+    .select("id, name, survey_id")
+    .eq("tenant_id", tenantId)
+    .not("survey_id", "is", null);
+
+  const map = new Map<string, Array<{ id: string; name: string }>>();
+  for (const wl of data ?? []) {
+    if (!wl.survey_id) continue;
+    const arr = map.get(wl.survey_id) ?? [];
+    arr.push({ id: wl.id, name: wl.name ?? "(Untitled)" });
+    map.set(wl.survey_id, arr);
+  }
+  return map;
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+export async function getSurveyExportData(surveyId: string) {
+  const sb = getClient();
+
+  const [
+    { data: survey },
+    { data: sessions },
+    { data: questions },
+    { data: responses },
+  ] = await Promise.all([
+    sb.from("surveys").select("id, title, description, created_at").eq("id", surveyId).single(),
+    sb.from("survey_sessions").select("*").eq("survey_id", surveyId),
+    sb.from("questions").select("*").eq("survey_id", surveyId).order("order_index"),
+    sb
+      .from("responses")
+      .select("crm_contact_id, question_id, answer_value, answer_text, original_position, created_at")
+      .eq("survey_id", surveyId),
+  ]);
+
+  return { survey, sessions: sessions ?? [], questions: questions ?? [], responses: responses ?? [] };
+}

@@ -40,6 +40,15 @@
   --brand-surface: rgb(var(--surface-800));
   --brand-text:    rgb(var(--text-100));
   --brand-muted:   rgb(var(--text-300));
+
+  /* gg-* aliases used in component inline styles */
+  --gg-bg:              rgb(10 12 17);
+  --gg-card:            rgb(16 19 27);
+  --gg-text:            rgb(236 240 245);
+  --gg-dim:             rgb(160 170 186);
+  --gg-primary:         #2563EB;
+  --gg-primary-pressed: #1E4ED8;
+  --gg-border:          rgb(34 40 55);
 }
 
 /* ---- Resets & base ---- */
@@ -577,24 +586,48 @@ label { color: rgb(var(--text-100)); font-weight: 600; }
 .crm-logo h1 { margin: 0; font-size: 1rem; line-height: 1; white-space: nowrap; }
 .crm-logo-badge { width: 28px; height: 28px; border-radius: 8px; }
 
-/* keep nav on one line and allow sideways scroll if it overflows */
-.crm-nav {
+/* Nav scroll container — fills remaining space, fades right edge on overflow */
+.crm-nav-wrap {
+  min-width: 0;                        /* allow shrinking inside grid */
+  overflow: hidden;
+  position: relative;
   justify-self: end;
-  display: inline-flex;
-  gap: 6px;
-  white-space: nowrap;
-  overflow-x: auto;                   /* scroll within the header, not grow taller */
-  scrollbar-width: none;              /* optional: hide scrollbar in Firefox */
+  width: 100%;
 }
-.crm-nav::-webkit-scrollbar { display: none; }  /* optional: hide in WebKit */
+/* Fade-out on right side to hint at more items */
+.crm-nav-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 32px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--gg-bg, #0b0f17));
+}
 
-/* tighter links so the row fits in 56px */
+/* Nav: single scrollable row */
+.crm-nav {
+  display: flex;
+  gap: 2px;
+  white-space: nowrap;
+  overflow-x: auto;
+  align-items: center;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.15) transparent;
+  padding-right: 36px;               /* room for the fade */
+  padding-bottom: 2px;               /* give thin scrollbar a sliver of space */
+}
+.crm-nav::-webkit-scrollbar { height: 3px; }
+.crm-nav::-webkit-scrollbar-track { background: transparent; }
+.crm-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 4px; }
+
+/* Nav links — compact so all fit */
 .crm-nav-link {
-  padding: 4px 8px;
+  padding: 4px 9px;
   line-height: 1;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   border-radius: 8px;
   border: 1px solid transparent;
+  flex-shrink: 0;
 }
 .crm-nav-link.is-active {
   background: rgba(255,255,255,.08);
@@ -602,12 +635,36 @@ label { color: rgb(var(--text-100)); font-weight: 600; }
   color: rgb(var(--text-100));
 }
 
-/* small screens: shave a bit more */
+/* Nav dropdown panel — position:fixed so it escapes overflow:clip on header */
+.crm-nav-dropdown {
+  position: fixed;
+  z-index: 200;
+  min-width: 148px;
+  background: rgb(var(--card-700));
+  border: 1px solid rgb(var(--border-600));
+  border-radius: 10px;
+  padding: 5px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.crm-nav-dropdown .crm-nav-link {
+  display: block;
+  width: 100%;
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+/* small screens */
 @media (max-width: 640px) {
   :root { --crm-header-h: 48px; }
   .crm-logo h1 { font-size: 0.95rem; }
   .crm-logo-badge { width: 24px; height: 24px; }
-  .crm-nav-link { padding: 3px 7px; font-size: 0.85rem; }
+  .crm-nav-link { padding: 3px 7px; font-size: 0.78rem; }
 }
 /* ----- Fix phantom gap under CRM header ----- */
 .crm-header { margin-bottom: 0 !important; }          /* no space after header */

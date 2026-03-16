@@ -1,110 +1,91 @@
-﻿// app/crm/stops/page.tsx
+// app/crm/stops/page.tsx
+import { createClient } from "@supabase/supabase-js";
+import { getTenant } from "@/lib/tenant";
 import ListPage from "../_shared/ListPage";
 import PeopleSearch from "../_shared/PeopleSearch";
-import { getTenant } from "@/lib/tenant";
-import { getServerSupabase } from "@/lib/supabase/server";
 
-import { createServerClient } from "@supabase/ssr";
-import { cookies, headers as nextHeaders } from "next/headers"; // ⬅️ add nextHeaders
-
-function mapSlugToTenantId(slug: string): string | null {
-  switch (slug) {
-    case "test":           return "00000000-0000-0000-0000-000000000000";
-    case "guerrillasuite": return "85c60ca4-ee15-4d45-b27e-a8758d91f896";
-    case "localhost":      return "00000000-0000-0000-0000-000000000000"; // dev fallback
-    case "127.0.0.1":      return "00000000-0000-0000-0000-000000000000"; // dev fallback
-    default:               return null;
-  }
-}
-
-function getSupabaseReadOnly() {
-  const store = cookies();
-
-  // derive tenant from Host header
-  const h = nextHeaders();
-  const host = (h.get("x-forwarded-host") ?? h.get("host") ?? "").toLowerCase();
-  const hostname = host.split(":")[0];
-  const firstLabel = hostname.split(".")[0]; // 'test' from test.localhost:3001
-  const tenantId = mapSlugToTenantId(firstLabel) ?? undefined;
-
-  return createServerClient(
+function makeSb(tenantId: string) {
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) { return store.get(name)?.value; },
-        set() {},    // no-ops prevent “Cookies can only be modified…” in render
-        remove() {},
-      },
-      // ⬇️ the missing piece: send tenant header so RLS can scope
-      ...(tenantId ? { global: { headers: { "X-Tenant-Id": tenantId } } } : {}),
-    }
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
   );
 }
 
-
-// Format to a text-sortable local string: "YYYY-MM-DD HH:mm" (America/Chicago)
-function formatLocalYMDHM(isoLike: string | null | undefined) {
-  if (!isoLike) return "";
-  const d = new Date(isoLike);
-  // Get parts in the target TZ
-  const parts = new Intl.DateTimeFormat("en-US", {
+function formatLocalDate(iso: string | null | undefined) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("en-US", {
     timeZone: "America/Chicago",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(d);
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+}
 
-  const get = (t: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === t)?.value ?? "";
-  // US gives MM/DD/YYYY; rebuild as YYYY-MM-DD HH:mm so string sort works
-  const mm = get("month");
-  const dd = get("day");
-  const yyyy = get("year");
-  const hh = get("hour");
-  const min = get("minute");
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+function labelResult(r: string | null) {
+  if (!r) return "—";
+  return r.replace(/_/g, " ");
 }
 
 export default async function StopsPage({
   searchParams,
 }: { searchParams?: { q?: string } }) {
-  const sb = getSupabaseReadOnly();
   const tenant = await getTenant();
+  const sb = makeSb(tenant.id);
   const q = (searchParams?.q ?? "").trim();
 
   let query = sb
     .from("stops")
-    .select("id, stop_at, notes")
+    .select("id, stop_at, channel, result, notes, person_id, walklist_id")
     .eq("tenant_id", tenant.id)
-    .order("stop_at", { ascending: false });
+    .order("stop_at", { ascending: false })
+    .limit(200);
 
   if (q) {
-    // server-side filter on notes; we'll also client-filter on the formatted date string
-    query = query.or([`notes.ilike.%${q}%`].join(","));
+    query = query.ilike("notes", `%${q}%`);
   }
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
+  const stops = data ?? [];
 
-  let rows =
-    (data ?? []).map((s: any) => {
-      const when = formatLocalYMDHM(s.stop_at);
-      return {
-        id: s.id,
-        stop_at: when,             // stays sortable as text (YYYY-MM-DD HH:mm)
-        notes: s.notes ?? "",
-      };
-    }) ?? [];
+  // Batch-fetch person names + walklist names
+  const personIds = [...new Set(stops.map((s: any) => s.person_id).filter(Boolean))];
+  const walklistIds = [...new Set(stops.map((s: any) => s.walklist_id).filter(Boolean))];
+
+  const [peopleRes, listsRes] = await Promise.all([
+    personIds.length
+      ? sb.from("people").select("id, first_name, last_name").in("id", personIds)
+      : Promise.resolve({ data: [] }),
+    walklistIds.length
+      ? sb.from("walklists").select("id, name").in("id", walklistIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const personMap = new Map(
+    (peopleRes.data ?? []).map((p: any) => [p.id, `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()])
+  );
+  const listMap = new Map(
+    (listsRes.data ?? []).map((l: any) => [l.id, l.name])
+  );
+
+  let rows = stops.map((s: any) => ({
+    id: s.id,
+    when: formatLocalDate(s.stop_at),
+    channel: s.channel ?? "—",
+    result: labelResult(s.result),
+    person: personMap.get(s.person_id) || "—",
+    list: listMap.get(s.walklist_id) || "—",
+    notes: s.notes ?? "",
+  }));
 
   if (q) {
     const ql = q.toLowerCase();
     rows = rows.filter(
       (r) =>
         r.notes.toLowerCase().includes(ql) ||
-        r.stop_at.toLowerCase().includes(ql)
+        r.person.toLowerCase().includes(ql) ||
+        r.result.toLowerCase().includes(ql) ||
+        r.when.includes(ql)
     );
   }
 
@@ -114,12 +95,15 @@ export default async function StopsPage({
         <h1 style={{ margin: 0 }}>Stops</h1>
         <PeopleSearch placeholder="Search stops…" />
       </div>
-
       <ListPage
         title=""
         columns={[
-          { key: "stop_at", label: "When", width: 220 },
-          { key: "notes", label: "Notes" },
+          { key: "when",    label: "When",    width: 160 },
+          { key: "channel", label: "Channel", width: 80 },
+          { key: "result",  label: "Result",  width: 140 },
+          { key: "person",  label: "Person",  width: 160 },
+          { key: "list",    label: "List",    width: 160 },
+          { key: "notes",   label: "Notes" },
         ]}
         rows={rows}
       />

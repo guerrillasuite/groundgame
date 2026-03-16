@@ -1,6 +1,6 @@
 ﻿// app/crm/page.tsx
 import Link from "next/link";
-import { Wallet, Users, MapPinHouse, Building2, Map, ListChecks, ClipboardList } from "lucide-react";
+import { Wallet, Users, MapPinHouse, Building2, Map, ListChecks, ClipboardList, ShieldCheck, Upload } from "lucide-react";
 
 const TILES = [
   { href: "/crm/opportunities", label: "Opportunities", desc: "Quotes, orders, and pipeline", icon: Wallet },
@@ -10,6 +10,8 @@ const TILES = [
   { href: "/crm/stops",         label: "Stops",         desc: "Activity & visit history",   icon: Map },
   { href: "/crm/lists",         label: "Lists",         desc: "Dial & walklists",           icon: ListChecks },
   { href: "/crm/survey",        label: "Surveys",       desc: "Polls & questionnaires",     icon: ClipboardList },
+  { href: "/crm/users",         label: "Users",         desc: "Manage accounts & tenants",  icon: ShieldCheck },
+  { href: "/crm/import",        label: "Import",        desc: "Bulk upload people & locations", icon: Upload },
 ];
 
 export default function CrmHome() {

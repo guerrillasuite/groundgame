@@ -1,0 +1,771 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Plus, X, Search, Check, Users } from "lucide-react";
+import type { ColumnDef } from "@/app/api/crm/schema/route";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type AppMode = "call" | "knock" | "both";
+type Target = "people" | "households" | "locations";
+type FilterOp = "contains" | "equals" | "starts_with" | "not_contains" | "is_empty" | "not_empty" | "greater_than" | "less_than";
+
+type FilterRow = { id: string; field: string; op: FilterOp; value: string };
+
+type PersonResult = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  contact_type: string | null;
+};
+
+type HouseholdResult = {
+  id: string;
+  name: string | null;
+  address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  people_count: number;
+};
+
+type LocationResult = {
+  id: string;
+  address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  people_count: number;
+};
+
+type TenantUser = { id: string; email: string; name: string };
+
+// ─── Field / Op helpers (schema-driven) ──────────────────────────────────────
+
+const TEXT_OPS: { value: FilterOp; label: string }[] = [
+  { value: "contains", label: "Contains" },
+  { value: "equals", label: "Is" },
+  { value: "starts_with", label: "Starts with" },
+  { value: "not_contains", label: "Does not contain" },
+  { value: "is_empty", label: "Is empty" },
+  { value: "not_empty", label: "Is not empty" },
+];
+
+const NUM_OPS: { value: FilterOp; label: string }[] = [
+  { value: "equals", label: "Equals" },
+  { value: "greater_than", label: "Greater than" },
+  { value: "less_than", label: "Less than" },
+];
+
+function opsForType(dt: string): { value: FilterOp; label: string }[] {
+  if (dt === "integer" || dt === "numeric" || dt === "bigint") return NUM_OPS;
+  return TEXT_OPS;
+}
+
+function defaultOp(dt: string): FilterOp {
+  if (dt === "integer" || dt === "numeric" || dt === "bigint") return "equals";
+  return "contains";
+}
+
+// Hardcoded fallback schema if API unavailable
+const FALLBACK_SCHEMA: Record<Target, ColumnDef[]> = {
+  people: [
+    { column: "first_name", label: "First Name", data_type: "text", is_join: false },
+    { column: "last_name", label: "Last Name", data_type: "text", is_join: false },
+    { column: "email", label: "Email", data_type: "text", is_join: false },
+    { column: "phone", label: "Phone", data_type: "text", is_join: false },
+    { column: "contact_type", label: "Contact Type", data_type: "text", is_join: false },
+    { column: "notes", label: "Notes", data_type: "text", is_join: false },
+    { column: "city", label: "City", data_type: "text", is_join: true },
+    { column: "state", label: "State", data_type: "text", is_join: true },
+    { column: "postal_code", label: "Zip Code", data_type: "text", is_join: true },
+    { column: "address", label: "Street Address", data_type: "text", is_join: true },
+  ],
+  households: [
+    { column: "name", label: "Household Name", data_type: "text", is_join: false },
+    { column: "notes", label: "Notes", data_type: "text", is_join: false },
+    { column: "city", label: "City", data_type: "text", is_join: true },
+    { column: "state", label: "State", data_type: "text", is_join: true },
+    { column: "postal_code", label: "Zip Code", data_type: "text", is_join: true },
+    { column: "address", label: "Street Address", data_type: "text", is_join: true },
+  ],
+  locations: [
+    { column: "address_line1", label: "Street Address", data_type: "text", is_join: false },
+    { column: "city", label: "City", data_type: "text", is_join: false },
+    { column: "state", label: "State", data_type: "text", is_join: false },
+    { column: "postal_code", label: "Zip Code", data_type: "text", is_join: false },
+    { column: "notes", label: "Notes", data_type: "text", is_join: false },
+  ],
+};
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const inputStyle: React.CSSProperties = {
+  padding: "8px 11px",
+  borderRadius: 7,
+  border: "1px solid var(--gg-border, #e5e7eb)",
+  background: "var(--gg-input, white)",
+  fontSize: 14,
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: "8px 32px 8px 11px",
+  borderRadius: 7,
+  border: "1px solid var(--gg-border, #e5e7eb)",
+  background: "var(--gg-input, white)",
+  fontSize: 14,
+  cursor: "pointer",
+  width: "100%",
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "var(--gg-card, white)",
+  borderRadius: 12,
+  border: "1px solid var(--gg-border, #e5e7eb)",
+  padding: 24,
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  fontWeight: 700,
+  marginBottom: 4,
+  color: "var(--gg-text-dim, #6b7280)",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+};
+
+function primaryBtn(disabled = false): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 7,
+    padding: "10px 18px",
+    borderRadius: 8,
+    background: disabled ? "rgba(37,99,235,0.3)" : "var(--gg-primary, #2563eb)",
+    color: "white",
+    fontWeight: 700,
+    fontSize: 14,
+    border: "none",
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
+}
+
+function toggleBtn(active: boolean): React.CSSProperties {
+  return {
+    padding: "9px 18px",
+    borderRadius: 8,
+    border: `2px solid ${active ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
+    background: active ? "rgba(37,99,235,0.07)" : "none",
+    color: active ? "var(--gg-primary, #2563eb)" : "var(--gg-text-dim, #6b7280)",
+    fontWeight: active ? 700 : 500,
+    fontSize: 14,
+    cursor: "pointer",
+    transition: "all 0.15s",
+  };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+let _filterId = 0;
+function makeFilterId() {
+  return `f${++_filterId}`;
+}
+
+function fullName(p: PersonResult) {
+  return [p.first_name, p.last_name].filter(Boolean).join(" ") || "(No name)";
+}
+
+function initials(name: string) {
+  return (name || "?")
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+const NO_VALUE_OPS: FilterOp[] = ["is_empty", "not_empty"];
+
+const MODE_LABELS: Record<AppMode, string> = {
+  call: "Dials (Call List)",
+  knock: "Doors (Walk List)",
+  both: "Dials + Doors (Both)",
+};
+
+const TARGET_LABELS: Record<Target, string> = {
+  people: "People",
+  households: "Households",
+  locations: "Locations",
+};
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+export default function CreateListWizard() {
+  const router = useRouter();
+
+  // Step 1
+  const [name, setName] = useState("");
+  const [appMode, setAppMode] = useState<AppMode>("call");
+  const [target, setTarget] = useState<Target>("people");
+
+  // Schema (loaded per target)
+  const [schema, setSchema] = useState<ColumnDef[]>(FALLBACK_SCHEMA.people);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+
+  // Step 2
+  const [filters, setFilters] = useState<FilterRow[]>(() => [{ id: makeFilterId(), field: "first_name", op: "contains", value: "" }]);
+  const [results, setResults] = useState<(PersonResult | HouseholdResult | LocationResult)[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Step 3
+  const [users, setUsers] = useState<TenantUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [assignAll, setAssignAll] = useState(true);
+  const [assignedUserIds, setAssignedUserIds] = useState<Set<string>>(new Set());
+
+  // Step 4
+  const [creating, setCreating] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
+
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  async function loadSchema(t: Target) {
+    setSchemaLoading(true);
+    try {
+      const res = await fetch(`/api/crm/schema?table=${t}`);
+      const data = await res.json();
+      const cols: ColumnDef[] = Array.isArray(data) && data.length > 0 ? data : FALLBACK_SCHEMA[t];
+      setSchema(cols);
+      return cols;
+    } catch {
+      const cols = FALLBACK_SCHEMA[t];
+      setSchema(cols);
+      return cols;
+    } finally {
+      setSchemaLoading(false);
+    }
+  }
+
+  function changeTarget(t: Target) {
+    setTarget(t);
+    setResults([]);
+    setSelectedIds(new Set());
+    setHasSearched(false);
+    setSearchErr(null);
+    const fallback = FALLBACK_SCHEMA[t];
+    setSchema(fallback);
+    setFilters([{ id: makeFilterId(), field: fallback[0]?.column ?? "", op: defaultOp(fallback[0]?.data_type ?? "text"), value: "" }]);
+    loadSchema(t).then((cols) => {
+      setFilters([{ id: makeFilterId(), field: cols[0]?.column ?? "", op: defaultOp(cols[0]?.data_type ?? "text"), value: "" }]);
+    });
+  }
+
+  // Load schema for initial target on mount
+  useEffect(() => {
+    loadSchema("people");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (step !== 3) return;
+    setUsersLoading(true);
+    fetch("/api/crm/users")
+      .then((r) => r.json())
+      .then((d) => setUsers(Array.isArray(d) ? d : []))
+      .catch(() => setUsers([]))
+      .finally(() => setUsersLoading(false));
+  }, [step]);
+
+  // ── Filters ───────────────────────────────────────────────────────────────
+
+  function addFilter() {
+    const first = schema[0];
+    if (!first) return;
+    setFilters((prev) => [...prev, { id: makeFilterId(), field: first.column, op: defaultOp(first.data_type), value: "" }]);
+  }
+
+  function removeFilter(id: string) {
+    setFilters((prev) => (prev.length > 1 ? prev.filter((f) => f.id !== id) : prev));
+  }
+
+  function updateFilter(id: string, patch: Partial<Omit<FilterRow, "id">>) {
+    setFilters((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const next = { ...f, ...patch };
+        if (patch.field && patch.field !== f.field) {
+          const def = schema.find((c) => c.column === patch.field);
+          next.op = defaultOp(def?.data_type ?? "text");
+        }
+        return next;
+      })
+    );
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    setSearching(true);
+    setSearchErr(null);
+    setSelectedIds(new Set());
+    setHasSearched(true);
+    try {
+      const res = await fetch("/api/crm/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target,
+          filters: filters.filter((f) => f.field).map(({ field, op, value }) => ({ field, op, value })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Search failed");
+      setResults([...data]);
+    } catch (err: any) {
+      setSearchErr(err.message ?? "Search failed");
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function toggleId(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  // ── Create ────────────────────────────────────────────────────────────────
+
+  async function handleCreate() {
+    setCreating(true);
+    setCreateErr(null);
+    try {
+      const res = await fetch("/api/crm/lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          app_mode: appMode,
+          target,
+          selected_ids: [...selectedIds],
+          user_ids: assignAll ? [] : [...assignedUserIds],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to create list");
+      // Surface any per-walklist warnings (e.g. no location IDs resolved)
+      const warnings = (data.walklists ?? [])
+        .filter((w: any) => w.warning)
+        .map((w: any) => `${w.name}: ${w.warning}`)
+        .join("\n");
+      if (warnings) {
+        setCreateErr(`List(s) created but with issues:\n${warnings}`);
+        setCreating(false);
+        return;
+      }
+      router.push("/crm/lists");
+    } catch (err: any) {
+      setCreateErr(err.message ?? "Failed to create list");
+      setCreating(false);
+    }
+  }
+
+  // ── Field dropdown ────────────────────────────────────────────────────────
+
+  function renderSchemaOptions() {
+    // Group by join vs direct
+    const direct = schema.filter((c) => !c.is_join);
+    const joined = schema.filter((c) => c.is_join);
+    return (
+      <>
+        {direct.length > 0 && (
+          <optgroup label={target === "people" ? "Person" : target === "households" ? "Household" : "Location"}>
+            {direct.map((c) => <option key={c.column} value={c.column}>{c.label}</option>)}
+          </optgroup>
+        )}
+        {joined.length > 0 && (
+          <optgroup label="Location (joined)">
+            {joined.map((c) => <option key={c.column} value={c.column}>{c.label}</option>)}
+          </optgroup>
+        )}
+      </>
+    );
+  }
+
+  const resultCount = results.length;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <section className="stack" style={{ maxWidth: 800, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button
+          onClick={() =>
+            step === 1 ? router.push("/crm/lists") : setStep((s) => (s - 1) as 1 | 2 | 3 | 4)
+          }
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: "var(--gg-text-dim, #6b7280)", display: "flex" }}
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <div>
+          <h1 style={{ margin: 0 }}>Create List</h1>
+          <p className="text-dim" style={{ marginTop: 4, fontSize: 13 }}>
+            Step {step} of 4 —{" "}
+            {step === 1 ? "Name & Type" : step === 2 ? "Filter & Search" : step === 3 ? "Assign Users" : "Review & Create"}
+          </p>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ display: "flex", gap: 5 }}>
+        {[1, 2, 3, 4].map((s) => (
+          <div key={s} style={{
+            height: 4, flex: 1, borderRadius: 4,
+            background: s < step ? "var(--gg-primary, #2563eb)" : s === step ? "rgba(37,99,235,0.45)" : "var(--gg-border, #e5e7eb)",
+            transition: "background 0.2s",
+          }} />
+        ))}
+      </div>
+
+      {/* ─── STEP 1: Name & Type ─────────────────────────────────────────── */}
+      {step === 1 && (
+        <div style={{ ...cardStyle, display: "grid", gap: 24 }}>
+          <div>
+            <label style={labelStyle}>List Name</label>
+            <input
+              style={inputStyle}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Ward 5 Voters, Downtown Walk"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Shows up as</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              {(["call", "knock", "both"] as AppMode[]).map((m) => (
+                <button key={m} type="button" onClick={() => setAppMode(m)} style={toggleBtn(appMode === m)}>
+                  {m === "call" ? "📞 Dials" : m === "knock" ? "🚪 Doors" : "📞🚪 Both"}
+                </button>
+              ))}
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+              {appMode === "call"
+                ? "Appears in the phone banking dialer."
+                : appMode === "knock"
+                ? "Appears in the door-knocking map."
+                : 'Creates two lists: "[Name] — Calls" and "[Name] — Doors".'}
+            </p>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Search by</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              {(["people", "households", "locations"] as Target[]).map((t) => (
+                <button key={t} type="button" onClick={() => changeTarget(t)} style={toggleBtn(target === t)}>
+                  {t === "people" ? "👤 People" : t === "households" ? "🏠 Households" : "📍 Locations"}
+                </button>
+              ))}
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+              {target === "people"
+                ? "Filter by name, contact type, notes, location, and more."
+                : target === "households"
+                ? "Filter households by address — adds all members to the list."
+                : "Filter by street address, city, state, or zip code."}
+            </p>
+          </div>
+
+          <button disabled={!name.trim()} onClick={() => setStep(2)} style={primaryBtn(!name.trim())}>
+            Build Filters →
+          </button>
+        </div>
+      )}
+
+      {/* ─── STEP 2: Filter Builder ──────────────────────────────────────── */}
+      {step === 2 && (
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={cardStyle}>
+            <div style={{ marginBottom: 16 }}>
+              <span style={{ fontWeight: 700, fontSize: 15 }}>Filter {TARGET_LABELS[target]}</span>
+              <span style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", marginLeft: 8 }}>
+                All conditions must match (AND). Leave filters empty to match everything.
+              </span>
+            </div>
+
+            <form onSubmit={handleSearch}>
+              {schemaLoading && (
+                <p style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", margin: "0 0 12px" }}>Loading fields…</p>
+              )}
+              <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+                {filters.map((f, i) => {
+                  const fieldDef = schema.find((c) => c.column === f.field);
+                  const ops = opsForType(fieldDef?.data_type ?? "text");
+                  return (
+                  <div
+                    key={f.id}
+                    style={{ display: "grid", gridTemplateColumns: "1fr 170px 1fr 32px", gap: 8, alignItems: "end" }}
+                  >
+                    <div>
+                      {i === 0 && <label style={labelStyle}>Field</label>}
+                      <select value={f.field} onChange={(e) => updateFilter(f.id, { field: e.target.value })} style={selectStyle}>
+                        {renderSchemaOptions()}
+                      </select>
+                    </div>
+
+                    <div>
+                      {i === 0 && <label style={labelStyle}>Condition</label>}
+                      <select value={f.op} onChange={(e) => updateFilter(f.id, { op: e.target.value as FilterOp })} style={selectStyle}>
+                        {ops.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+
+                    <div>
+                      {i === 0 && <label style={labelStyle}>Value</label>}
+                      {NO_VALUE_OPS.includes(f.op) ? (
+                        <div style={{ ...inputStyle, background: "var(--gg-bg, #f9fafb)", color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>
+                          (no value)
+                        </div>
+                      ) : (
+                        <input
+                          style={inputStyle}
+                          value={f.value}
+                          onChange={(e) => updateFilter(f.id, { value: e.target.value })}
+                          placeholder="Filter value…"
+                        />
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => removeFilter(f.id)}
+                      disabled={filters.length === 1}
+                      style={{
+                        background: "none", border: "none", cursor: filters.length === 1 ? "default" : "pointer",
+                        padding: 6, borderRadius: 6, color: filters.length === 1 ? "var(--gg-border, #d1d5db)" : "var(--gg-text-dim, #6b7280)",
+                        display: "flex", alignItems: "center", height: 38,
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )})}
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={addFilter}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 7, background: "none", border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--gg-text, #374151)" }}
+                >
+                  <Plus size={14} />
+                  Add Filter
+                </button>
+
+                <button type="submit" disabled={searching} style={primaryBtn(searching)}>
+                  <Search size={15} />
+                  {searching ? "Searching…" : "Search"}
+                </button>
+
+                {hasSearched && !searching && (
+                  <span style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+                    {resultCount === 0 ? "No results" : `${resultCount.toLocaleString()} result${resultCount !== 1 ? "s" : ""}`}
+                  </span>
+                )}
+              </div>
+
+              {searchErr && <p style={{ color: "#ef4444", fontSize: 13, marginTop: 10, marginBottom: 0 }}>{searchErr}</p>}
+            </form>
+          </div>
+
+          {/* Results table */}
+          {hasSearched && resultCount > 0 && (
+            <div style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 16px", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>
+                  {selectedIds.size} of {resultCount.toLocaleString()} selected
+                </span>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button onClick={() => setSelectedIds(new Set(results.map((r) => r.id)))} style={{ fontSize: 12, fontWeight: 600, color: "var(--gg-primary, #2563eb)", background: "none", border: "none", cursor: "pointer", padding: "4px 8px" }}>
+                    All
+                  </button>
+                  <button onClick={() => setSelectedIds(new Set())} style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", background: "none", border: "none", cursor: "pointer", padding: "4px 8px" }}>
+                    None
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ maxHeight: 420, overflowY: "auto" }}>
+                {target === "people" && (results as PersonResult[]).map((p) => (
+                  <label key={p.id} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 12, alignItems: "center", padding: "9px 16px", cursor: "pointer", borderBottom: "1px solid var(--gg-border, #f3f4f6)", background: selectedIds.has(p.id) ? "rgba(37,99,235,0.04)" : "transparent" }}>
+                    <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleId(p.id)} style={{ accentColor: "var(--gg-primary, #2563eb)", width: 15, height: 15 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{fullName(p)}</div>
+                      <div style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", marginTop: 1 }}>{[p.email, p.phone].filter(Boolean).join(" · ")}</div>
+                    </div>
+                    {p.contact_type && (
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 10, background: "rgba(37,99,235,0.08)", color: "var(--gg-primary, #2563eb)", whiteSpace: "nowrap" }}>
+                        {p.contact_type}
+                      </span>
+                    )}
+                    {selectedIds.has(p.id) && <Check size={14} color="var(--gg-primary, #2563eb)" />}
+                  </label>
+                ))}
+
+                {target === "households" && (results as HouseholdResult[]).map((h) => (
+                  <label key={h.id} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 12, alignItems: "center", padding: "9px 16px", cursor: "pointer", borderBottom: "1px solid var(--gg-border, #f3f4f6)", background: selectedIds.has(h.id) ? "rgba(37,99,235,0.04)" : "transparent" }}>
+                    <input type="checkbox" checked={selectedIds.has(h.id)} onChange={() => toggleId(h.id)} style={{ accentColor: "var(--gg-primary, #2563eb)", width: 15, height: 15 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name || "(Unnamed household)"}</div>
+                      <div style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", marginTop: 1 }}>{[h.address, h.city, h.state, h.postal_code].filter(Boolean).join(", ")}</div>
+                    </div>
+                    <span style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", whiteSpace: "nowrap" }}>{h.people_count} {h.people_count === 1 ? "person" : "people"}</span>
+                    {selectedIds.has(h.id) && <Check size={14} color="var(--gg-primary, #2563eb)" />}
+                  </label>
+                ))}
+
+                {target === "locations" && (results as LocationResult[]).map((l) => (
+                  <label key={l.id} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 12, alignItems: "center", padding: "9px 16px", cursor: "pointer", borderBottom: "1px solid var(--gg-border, #f3f4f6)", background: selectedIds.has(l.id) ? "rgba(37,99,235,0.04)" : "transparent" }}>
+                    <input type="checkbox" checked={selectedIds.has(l.id)} onChange={() => toggleId(l.id)} style={{ accentColor: "var(--gg-primary, #2563eb)", width: 15, height: 15 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{l.address || "(No address)"}</div>
+                      <div style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", marginTop: 1 }}>{[l.city, l.state, l.postal_code].filter(Boolean).join(", ")}</div>
+                    </div>
+                    <span style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", whiteSpace: "nowrap" }}>{l.people_count} {l.people_count === 1 ? "person" : "people"}</span>
+                    {selectedIds.has(l.id) && <Check size={14} color="var(--gg-primary, #2563eb)" />}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedIds.size > 0 && (
+            <button onClick={() => setStep(3)} style={primaryBtn()}>
+              Assign Users ({selectedIds.size} selected) →
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ─── STEP 3: Assign Users ────────────────────────────────────────── */}
+      {step === 3 && (
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ ...cardStyle, display: "grid", gap: 16 }}>
+            <div>
+              <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                <Users size={18} />
+                Assign to Users
+              </h2>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+                Who should see this list in the canvassing app? Unassigned lists are visible to everyone.
+              </p>
+            </div>
+
+            {/* Assign to All */}
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 10, border: `2px solid ${assignAll ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: assignAll ? "rgba(37,99,235,0.05)" : "transparent", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={assignAll}
+                onChange={(e) => { setAssignAll(e.target.checked); if (e.target.checked) setAssignedUserIds(new Set()); }}
+                style={{ accentColor: "var(--gg-primary, #2563eb)", width: 16, height: 16 }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Visible to Everyone</div>
+                <div style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>All users can see and work this list</div>
+              </div>
+            </label>
+
+            {!assignAll && (
+              <div style={{ display: "grid", gap: 6 }}>
+                {usersLoading && <p style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", margin: 0 }}>Loading users…</p>}
+                {!usersLoading && users.length === 0 && (
+                  <p style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", margin: 0 }}>
+                    No users found — check that SUPABASE_SERVICE_ROLE_KEY is configured.
+                  </p>
+                )}
+                {!usersLoading && users.map((u) => (
+                  <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, cursor: "pointer", border: `1px solid ${assignedUserIds.has(u.id) ? "rgba(37,99,235,0.2)" : "transparent"}`, background: assignedUserIds.has(u.id) ? "rgba(37,99,235,0.04)" : "transparent" }}>
+                    <input
+                      type="checkbox"
+                      checked={assignedUserIds.has(u.id)}
+                      onChange={() => setAssignedUserIds((prev) => { const n = new Set(prev); n.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })}
+                      style={{ accentColor: "var(--gg-primary, #2563eb)", width: 15, height: 15 }}
+                    />
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--gg-primary, #2563eb)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+                      {initials(u.name || u.email)}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{u.name}</div>
+                      {u.name !== u.email && <div style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>{u.email}</div>}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button onClick={() => setStep(4)} style={primaryBtn()}>
+            Review & Create →
+          </button>
+        </div>
+      )}
+
+      {/* ─── STEP 4: Review & Create ─────────────────────────────────────── */}
+      {step === 4 && (
+        <div style={{ ...cardStyle, display: "grid", gap: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Ready to Create</h2>
+
+          <div style={{ background: "var(--gg-bg, #f9fafb)", borderRadius: 10, padding: "16px 20px", display: "grid", gap: 10 }}>
+            {[
+              { label: "List Name", value: name },
+              { label: "Type", value: MODE_LABELS[appMode] },
+              { label: "Search target", value: TARGET_LABELS[target] },
+              { label: "Members", value: `${selectedIds.size.toLocaleString()} ${TARGET_LABELS[target].toLowerCase()} selected` },
+              { label: "Assigned to", value: assignAll ? "Everyone" : assignedUserIds.size === 0 ? "Everyone (none selected)" : `${assignedUserIds.size} user${assignedUserIds.size !== 1 ? "s" : ""}` },
+            ].map(({ label, value }) => (
+              <div key={label} style={{ display: "flex", gap: 12 }}>
+                <span style={{ minWidth: 130, fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>{label}</span>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{value}</span>
+              </div>
+            ))}
+
+            {appMode === "both" && (
+              <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", paddingTop: 10, marginTop: 4 }}>
+                <p style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", margin: 0 }}>
+                  Creates two lists: <strong>"{name} — Calls"</strong> and <strong>"{name} — Doors"</strong>
+                </p>
+              </div>
+            )}
+          </div>
+
+          {createErr && <p style={{ color: "#ef4444", fontSize: 13, margin: 0 }}>{createErr}</p>}
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={handleCreate} disabled={creating} style={{ ...primaryBtn(creating), padding: "12px 24px", fontSize: 15 }}>
+              <Plus size={16} />
+              {creating ? "Creating…" : `Create ${appMode === "both" ? "Both Lists" : "List"}`}
+            </button>
+            <button onClick={() => setStep(3)} disabled={creating} style={{ padding: "12px 16px", borderRadius: 8, background: "none", border: "1px solid var(--gg-border, #e5e7eb)", fontWeight: 600, fontSize: 14, cursor: creating ? "not-allowed" : "pointer", color: "var(--gg-text, #111827)" }}>
+              ← Back
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

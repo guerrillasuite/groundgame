@@ -133,6 +133,7 @@ export default function OrderEditor({ initial }: { initial: any }) {
             value={contact.first_name ?? ""}
             onChange={(e) => setContact((c) => ({ ...c, first_name: e.target.value }))}
             placeholder="Jane"
+            autoComplete="given-name"
           />
         </label>
         <label className="stack">
@@ -141,6 +142,7 @@ export default function OrderEditor({ initial }: { initial: any }) {
             value={contact.last_name ?? ""}
             onChange={(e) => setContact((c) => ({ ...c, last_name: e.target.value }))}
             placeholder="Doe"
+            autoComplete="family-name"
           />
         </label>
 
@@ -172,6 +174,7 @@ export default function OrderEditor({ initial }: { initial: any }) {
             value={delivery.address_line1 ?? ""}
             onChange={(e) => setDelivery((d) => ({ ...d, address_line1: e.target.value }))}
             placeholder="123 Main St"
+            autoComplete="street-address"
           />
         </label>
         <label className="stack">
@@ -180,17 +183,19 @@ export default function OrderEditor({ initial }: { initial: any }) {
         </label>
         <label className="stack">
           <span>City</span>
-          <input value={delivery.city ?? ""} onChange={(e) => setDelivery((d) => ({ ...d, city: e.target.value }))} />
+          <input value={delivery.city ?? ""} onChange={(e) => setDelivery((d) => ({ ...d, city: e.target.value }))} autoComplete="address-level2" />
         </label>
         <label className="stack">
           <span>State</span>
-          <input value={delivery.state ?? ""} onChange={(e) => setDelivery((d) => ({ ...d, state: e.target.value }))} />
+          <input value={delivery.state ?? ""} onChange={(e) => setDelivery((d) => ({ ...d, state: e.target.value }))} autoComplete="address-level1" />
         </label>
         <label className="stack">
           <span>ZIP</span>
           <input
             value={delivery.postal_code ?? ""}
             onChange={(e) => setDelivery((d) => ({ ...d, postal_code: e.target.value }))}
+            inputMode="numeric"
+            autoComplete="postal-code"
           />
         </label>
       </div>

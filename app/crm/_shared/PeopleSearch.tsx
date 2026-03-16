@@ -26,6 +26,7 @@ export default function PeopleSearch({ placeholder = "Search…" }: { placeholde
   return (
     <form onSubmit={submit} className="row" style={{ gap: 8 }}>
       <input
+        type="search"
         value={v}
         onChange={(e) => setV(e.target.value)}
         placeholder={placeholder}

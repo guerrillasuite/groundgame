@@ -265,38 +265,38 @@ export default function SimpleOrderForm() {
         <div className="grid" style={{ gap: 12, gridTemplateColumns: "1fr 1fr" }}>
           <label className="stack">
             <span>First Name</span>
-            <input name="first_name" required />
+            <input name="first_name" required autoComplete="given-name" />
           </label>
           <label className="stack">
             <span>Last Name</span>
-            <input name="last_name" required />
+            <input name="last_name" required autoComplete="family-name" />
           </label>
 
           <label className="stack">
             <span>Email</span>
-            <input type="email" name="email" />
+            <input type="email" name="email" autoComplete="email" />
           </label>
           <label className="stack">
             <span>Phone</span>
-            <input type="tel" name="phone" />
+            <input type="tel" name="phone" autoComplete="tel" />
           </label>
 
           <label className="stack" style={{ gridColumn: "1 / -1" }}>
             <span>Delivery Address</span>
-            <input name="address_line1" required />
+            <input name="address_line1" required autoComplete="street-address" />
           </label>
 
           <label className="stack">
             <span>City</span>
-            <input name="city" />
+            <input name="city" autoComplete="address-level2" />
           </label>
           <label className="stack">
             <span>State</span>
-            <input name="state" />
+            <input name="state" autoComplete="address-level1" />
           </label>
           <label className="stack">
             <span>ZIP</span>
-            <input name="postal_code" />
+            <input name="postal_code" inputMode="numeric" autoComplete="postal-code" />
           </label>
 
           <label className="stack" style={{ gridColumn: "1 / -1" }}>

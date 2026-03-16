@@ -1,7 +1,6 @@
 ﻿// app/crm/layout.tsx
 import type { Metadata } from "next";
 import CrmHeader from "@/app/components/crm/CrmHeader";
-import CrmFooter from "@/app/components/crm/CrmFooter";
 
 export const metadata: Metadata = {
   title: "GroundGame CRM",
@@ -16,7 +15,6 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
       </a>
       <CrmHeader />
       <main id="crm-main" className="crm-main">{children}</main>
-      <CrmFooter />
     </div>
   );
 }
