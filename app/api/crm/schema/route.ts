@@ -11,7 +11,7 @@ export type ColumnDef = {
 };
 
 // Tables that users can introspect
-const ALLOWED_TABLES = ["people", "households", "locations"] as const;
+const ALLOWED_TABLES = ["people", "households", "locations", "companies"] as const;
 type AllowedTable = (typeof ALLOWED_TABLES)[number];
 
 // Columns to always strip out — system/FK/internal/geo
@@ -24,6 +24,8 @@ const EXCLUDED_COLS = new Set([
   "geom", "lon", "lat", "source", "source_row_id",
   "classification_source", "classification_confidence", "classification_evidence",
   "tags_json", "meta_json",
+  // confidence / internal tracking
+  "data_source", "data_updated_at",
 ]);
 
 // Virtual joined fields added for people + households (location & household tables)
@@ -95,6 +97,15 @@ const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
   households: [
     { column: "name", label: "Household Name", data_type: "text", is_join: false },
     ...LOCATION_JOIN_FIELDS,
+  ],
+  companies: [
+    { column: "name",     label: "Name",     data_type: "text", is_join: false },
+    { column: "domain",   label: "Domain",   data_type: "text", is_join: false },
+    { column: "phone",    label: "Phone",    data_type: "text", is_join: false },
+    { column: "email",    label: "Email",    data_type: "text", is_join: false },
+    { column: "industry", label: "Industry", data_type: "text", is_join: false },
+    { column: "status",   label: "Status",   data_type: "text", is_join: false },
+    { column: "presence", label: "Presence", data_type: "text", is_join: false },
   ],
   locations: [
     { column: "address_line1",    label: "Street Address",    data_type: "text",    is_join: false },
@@ -179,7 +190,7 @@ export async function GET(request: NextRequest) {
       label: toLabel(c.column_name),
       data_type: c.data_type,
       is_join: false,
-      table: table as "people" | "locations" | "households",
+      table: table as "people" | "locations" | "households" | undefined,
     }));
 
     // Append virtual location join fields for tables that need them

@@ -30,25 +30,36 @@ export async function POST(request: Request) {
 
   // ── Merge people ──────────────────────────────────────────────────────────
   if (type === "people") {
-    // Remove from junction table first
-    const { error: phErr } = await sb
-      .from("person_households")
-      .delete()
-      .eq("tenant_id", tenant.id)
-      .in("person_id", deleteIds);
+    // Safety guard: only delete a person record if NO other tenant links them.
+    // If another tenant links the duplicate, just remove this tenant's link instead.
+    const { data: sharedLinks } = await sb
+      .from("tenant_people")
+      .select("person_id, tenant_id")
+      .in("person_id", deleteIds)
+      .neq("tenant_id", tenant.id);
 
-    if (phErr) return NextResponse.json({ error: `person_households: ${phErr.message}` }, { status: 500 });
+    const sharedPersonIds = new Set((sharedLinks ?? []).map((r: any) => r.person_id));
+    const safeToDelete = deleteIds.filter((id) => !sharedPersonIds.has(id));
+    const unlinkOnly = deleteIds.filter((id) => sharedPersonIds.has(id));
 
-    // Delete the duplicate person records
-    const { error: delErr, count } = await sb
-      .from("people")
-      .delete({ count: "exact" })
-      .eq("tenant_id", tenant.id)
-      .in("id", deleteIds);
+    // For records shared with other tenants: redirect tenant_people → keeper, unlink duplicate
+    if (unlinkOnly.length > 0) {
+      // Delete this tenant's link to the duplicate (but keep the global record)
+      await sb.from("tenant_people").delete().eq("tenant_id", tenant.id).in("person_id", unlinkOnly);
+    }
 
-    if (delErr) return NextResponse.json({ error: `people delete: ${delErr.message}` }, { status: 500 });
+    // For records only this tenant has: safe to fully delete
+    if (safeToDelete.length > 0) {
+      // Remove from junction table first
+      await sb.from("person_households").delete().eq("tenant_id", tenant.id).in("person_id", safeToDelete);
+      // Remove this tenant's link
+      await sb.from("tenant_people").delete().eq("tenant_id", tenant.id).in("person_id", safeToDelete);
+      // Delete the duplicate person records (no other tenant references them)
+      const { error: delErr } = await sb.from("people").delete().in("id", safeToDelete);
+      if (delErr) return NextResponse.json({ error: `people delete: ${delErr.message}` }, { status: 500 });
+    }
 
-    return NextResponse.json({ merged: count ?? deleteIds.length });
+    return NextResponse.json({ merged: deleteIds.length });
   }
 
   // ── Merge households ──────────────────────────────────────────────────────

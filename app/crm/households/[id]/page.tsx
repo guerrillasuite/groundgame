@@ -65,12 +65,12 @@ export default async function HouseholdDetail({ params }: Params) {
   // 3) Members — both link styles, deduplicated
   const memberMap = new Map<string, Member>();
 
-  // Style A: direct people.household_id
+  // Style A: direct people.household_id (filtered through tenant_people for cross-tenant support)
   const { data: directPeople } = await sb
     .from("people")
-    .select("id, first_name, last_name, email, phone, contact_type")
+    .select("id, first_name, last_name, email, phone, contact_type, tenant_people!inner(tenant_id)")
     .eq("household_id", hhId)
-    .eq("tenant_id", tenant.id);
+    .eq("tenant_people.tenant_id", tenant.id);
   for (const p of (directPeople ?? []) as Member[]) {
     memberMap.set(p.id, p);
   }

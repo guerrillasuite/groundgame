@@ -168,6 +168,7 @@ export default function ImportPanel() {
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [selectedTenant, setSelectedTenant] = useState("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [importMode, setImportMode] = useState<"fill_blanks" | "smart_merge" | "override">("smart_merge");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [validateResult, setValidateResult] = useState<ImportResult | null>(null);
@@ -281,7 +282,7 @@ export default function ImportPanel() {
       if (!token) throw new Error("Not authenticated");
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: true };
+      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: true, importMode };
       if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
 
       const res = await fetch("/api/crm/import", {
@@ -314,7 +315,7 @@ export default function ImportPanel() {
       if (!token) throw new Error("Not authenticated");
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: false };
+      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: false, importMode };
       if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
 
       const res = await fetch("/api/crm/import", {
@@ -345,6 +346,7 @@ export default function ImportPanel() {
     setIsSuperAdmin(false);
     setTenants([]);
     setSelectedTenant("");
+    setImportMode("smart_merge");
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -369,7 +371,7 @@ export default function ImportPanel() {
     : TARGET_FIELDS.filter((f) => f.value !== "__skip__" && f.value !== "__create__");
 
   const mappedFields = [
-    ...allFieldOptions.filter((f) => mappedTargets.includes(f.value)),
+    ...allFieldOptions.filter((f) => mappedTargets.includes(f.value as TargetField)),
     ...Object.entries(mapping)
       .filter(([, t]) => t === "__create__")
       .map(([col]) => ({ value: `__custom__${col}`, label: `${col} (custom)` })),
@@ -586,6 +588,41 @@ export default function ImportPanel() {
               </select>
             </div>
           )}
+
+          {/* Import Mode */}
+          <div style={{ border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 8, padding: "14px 18px" }}>
+            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 600 }}>Import Mode</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {([
+                { value: "fill_blanks",  label: "Fill Blanks",  desc: "Only write to empty fields — never overwrite existing data" },
+                { value: "smart_merge",  label: "Smart Merge",  desc: "Overwrite when incoming data has equal or higher quality (default)" },
+                { value: "override",     label: "Override",     desc: "Always overwrite all mapped fields" },
+              ] as const).map((opt) => (
+                <label
+                  key={opt.value}
+                  style={{
+                    display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer",
+                    border: `1px solid ${importMode === opt.value ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
+                    borderRadius: 7, padding: "8px 12px", flex: "1 1 180px",
+                    background: importMode === opt.value ? "var(--gg-primary-faint, #eff6ff)" : "transparent",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="importMode"
+                    value={opt.value}
+                    checked={importMode === opt.value}
+                    onChange={() => setImportMode(opt.value)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <span style={{ fontSize: 13, fontWeight: 600, display: "block" }}>{opt.label}</span>
+                    <span style={{ fontSize: 11, color: "var(--gg-text-dim, #6b7280)" }}>{opt.desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
 
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => setStep("map")} style={ghostBtn}>← Edit mapping</button>

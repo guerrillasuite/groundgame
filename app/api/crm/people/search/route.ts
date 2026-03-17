@@ -36,8 +36,8 @@ export async function GET(request: Request) {
   const buildQuery = () => {
     let query = sb
       .from("people")
-      .select("id, first_name, last_name, email, phone, contact_type")
-      .eq("tenant_id", tenant.id)
+      .select("id, first_name, last_name, email, phone, contact_type, tenant_people!inner(tenant_id)")
+      .eq("tenant_people.tenant_id", tenant.id)
       .order("last_name", { ascending: true })
       .order("first_name", { ascending: true });
     if (like) {
@@ -82,8 +82,8 @@ export async function POST(request: NextRequest) {
 
   let query = sb
     .from("people")
-    .select("id, first_name, last_name, email, phone, contact_type")
-    .eq("tenant_id", tenant.id)
+    .select("id, first_name, last_name, email, phone, contact_type, tenant_people!inner(tenant_id)")
+    .eq("tenant_people.tenant_id", tenant.id)
     .limit(10000);
 
   if (first_name?.trim()) query = query.ilike("first_name", `%${first_name.trim()}%`);
@@ -128,8 +128,8 @@ export async function POST(request: NextRequest) {
         // Re-query people scoped to matching households
         let personQuery = sb
           .from("people")
-          .select("id, first_name, last_name, email, phone, contact_type")
-          .eq("tenant_id", tenant.id)
+          .select("id, first_name, last_name, email, phone, contact_type, tenant_people!inner(tenant_id)")
+          .eq("tenant_people.tenant_id", tenant.id)
           .in("household_id", [...hhIds])
           .limit(10000);
 

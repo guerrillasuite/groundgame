@@ -29,8 +29,8 @@ export async function GET(request: Request) {
   if (type === "people") {
     const { data: people, error } = await sb
       .from("people")
-      .select("id, first_name, last_name, email, phone, contact_type, household_id")
-      .eq("tenant_id", tenant.id)
+      .select("id, first_name, last_name, email, phone, contact_type, household_id, tenant_people!inner(tenant_id)")
+      .eq("tenant_people.tenant_id", tenant.id)
       .order("last_name")
       .order("first_name");
 

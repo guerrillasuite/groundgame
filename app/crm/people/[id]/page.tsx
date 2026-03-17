@@ -33,7 +33,7 @@ export default async function PersonDetail({ params }: Params) {
     await updateRowAction("people", `/crm/people/${personId}`, fd);
   }
 
-  // 1) Person
+  // 1) Person (joined through tenant_people to enforce tenant isolation)
   const { data: person, error: pErr } = await sb
     .from("people")
     .select(`id, first_name, last_name, email, phone, contact_type, notes, created_at, household_id,
@@ -45,9 +45,10 @@ export default async function PersonDetail({ params }: Params) {
       ethnicity, ethnicity_source, hispanic_origin, language, english_proficiency,
       education_level, marital_status, religion,
       occupation_title, company_name, income_range, net_worth_range,
-      length_of_residence, moved_from_state, meta_json`)
+      length_of_residence, moved_from_state, meta_json,
+      tenant_people!inner(tenant_id)`)
     .eq("id", personId)
-    .eq("tenant_id", tenant.id)
+    .eq("tenant_people.tenant_id", tenant.id)
     .single();
 
   if (pErr || !person) {

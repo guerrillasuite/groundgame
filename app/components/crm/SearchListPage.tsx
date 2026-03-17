@@ -12,7 +12,7 @@ type Props = {
   title: string;
   searchEndpoint: string;
   columns: Column[];
-  target?: "people" | "households" | "locations";
+  target?: "people" | "households" | "locations" | "companies";
   rowHrefPrefix?: string;
   searchPlaceholder?: string;
   headerActions?: React.ReactNode;
@@ -246,6 +246,15 @@ export default function SearchListPage({
           return {
             id: item.id,
             address: [item.address, item.city, item.state, item.postal_code].filter(Boolean).join(", ") || item.address,
+          };
+        }
+        if (target === "companies") {
+          return {
+            id: item.id,
+            name: item.name ?? "(Unnamed)",
+            industry: item.industry ?? "",
+            domain: item.domain ?? "",
+            status: item.status ?? "",
           };
         }
         return item;

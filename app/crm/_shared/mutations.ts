@@ -21,6 +21,9 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   households: [
     "name", "location_id", "notes"
   ],
+  companies: [
+    "name", "domain", "phone", "email", "industry", "status", "presence",
+  ],
   opportunities: [
     "title", "amount_cents", "description", "notes", "contact_person_id",
     "stage", "order_index", "due_at", "priority", "source",

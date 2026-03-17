@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
       people = await fetchAll(() => {
         let q = sb
           .from("people")
-          .select("id, first_name, last_name, email, phone, contact_type, household_id")
-          .eq("tenant_id", tenant.id);
+          .select("id, first_name, last_name, email, phone, contact_type, household_id, tenant_people!inner(tenant_id)")
+          .eq("tenant_people.tenant_id", tenant.id);
         for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value);
         if (householdIdFilter) q = q.in("household_id", householdIdFilter);
         return q;

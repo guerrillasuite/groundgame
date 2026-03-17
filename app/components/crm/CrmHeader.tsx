@@ -14,6 +14,7 @@ const NAV: NavEntry[] = [
     { href: "/crm/people",        label: "People" },
     { href: "/crm/households",    label: "Households" },
     { href: "/crm/locations",     label: "Locations" },
+    { href: "/crm/companies",     label: "Companies" },
   ]},
   { label: "Field", items: [
     { href: "/crm/lists",         label: "Lists" },

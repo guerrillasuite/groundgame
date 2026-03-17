@@ -63,8 +63,8 @@ export default async function LocationDetail({ params }: Params) {
   if (hhIds.length > 0) {
     const { data: ppl } = await sb
       .from("people")
-      .select("id, first_name, last_name, email, phone, household_id")
-      .eq("tenant_id", tenant.id)
+      .select("id, first_name, last_name, email, phone, household_id, tenant_people!inner(tenant_id)")
+      .eq("tenant_people.tenant_id", tenant.id)
       .in("household_id", hhIds);
     people = (ppl ?? []) as typeof people;
   }

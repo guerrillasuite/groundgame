@@ -9,12 +9,61 @@ import {
 
 export const dynamic = "force-dynamic";
 
+type ImportMode = "fill_blanks" | "smart_merge" | "override";
+
+const SOURCE_AUTHORITY: Record<string, number> = { l2: 3, manual: 3, import: 2 };
+const STALE_MS = 180 * 24 * 60 * 60 * 1000; // 180 days
+
 function makeSb(tenantId: string) {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { global: { headers: { "X-Tenant-Id": tenantId } } }
   );
+}
+
+/** Service-role client with NO tenant header — for global dedup lookups across all tenants */
+function makeSbGlobal() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+}
+
+/**
+ * Given an existing record and incoming data, filter the incoming fields
+ * based on import mode + confidence model.
+ * - fill_blanks: only include fields where existing value is null/empty
+ * - smart_merge: include fields where incoming authority >= existing effective authority
+ * - override: include all fields
+ */
+function applyImportMode(
+  incoming: Record<string, unknown>,
+  existing: Record<string, unknown>,
+  existingSource: string | null,
+  existingUpdatedAt: string | null,
+  mode: ImportMode,
+): Record<string, unknown> {
+  if (mode === "override") return incoming;
+
+  const inAuth = SOURCE_AUTHORITY["import"] ?? 2;
+  const exAuth = SOURCE_AUTHORITY[existingSource ?? ""] ?? 2;
+  const ageMs = existingUpdatedAt ? Date.now() - new Date(existingUpdatedAt).getTime() : Infinity;
+  const exEffective = ageMs > STALE_MS ? Math.max(exAuth - 1, 0) : exAuth;
+
+  const filtered: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(incoming)) {
+    if (mode === "fill_blanks") {
+      // Only write if existing value is null/undefined/empty string
+      const exVal = existing[k];
+      if (exVal == null || exVal === "") filtered[k] = v;
+    } else {
+      // smart_merge: write if incoming auth >= existing effective auth, OR if existing is null
+      const exVal = existing[k];
+      if (exVal == null || exVal === "" || inAuth >= exEffective) filtered[k] = v;
+    }
+  }
+  return filtered;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -62,6 +111,7 @@ export async function POST(request: Request) {
   const rows: MappedRow[] = body.rows ?? [];
   const requestedTenantId: string | undefined = body.tenant_id;
   const dryRun: boolean = body.dryRun === true;
+  const importMode: ImportMode = (body.importMode as ImportMode) ?? "smart_merge";
 
   // Resolve tenant
   let tenantId: string;
@@ -373,25 +423,54 @@ export async function POST(request: Request) {
     }
   }
 
-  // ── Phase C: People (upsert) ──────────────────────────────────────────────
+  // ── Phase C: People (global dedup + upsert) ──────────────────────────────
 
+  // Global client — searches ALL tenants for dedup matching
+  const sbGlobal = makeSbGlobal();
+
+  // Collect dedup keys
   const emails = validRows.map((r) => (r.email ?? "").trim().toLowerCase()).filter(Boolean);
-  const existingByEmail = new Map<string, string>();
+  const lalvoteids = validRows.map((r) => (r.lalvoteid ?? "").trim()).filter(Boolean);
+  const stateVoterIds = validRows.map((r) => (r.state_voter_id ?? "").trim()).filter(Boolean);
 
-  if (emails.length > 0) {
-    for (const emailChunk of chunk([...new Set(emails)], 500)) {
-      const { data: existing } = await sb
-        .from("people")
-        .select("id, email")
-        .eq("tenant_id", tenantId)
-        .in("email", emailChunk);
+  // Global lookup maps: key → { id, data_source, data_updated_at, ...existing fields }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existingByLalvoteid = new Map<string, Record<string, any>>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existingByStateVoterId = new Map<string, Record<string, any>>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existingByEmail = new Map<string, Record<string, any>>();
 
-      for (const p of existing ?? []) {
-        if (p.email) existingByEmail.set(p.email.toLowerCase(), p.id);
+  const DEDUP_SELECT = "id, email, lalvoteid, state_voter_id, first_name, last_name, household_id, data_source, data_updated_at";
+
+  if (lalvoteids.length > 0) {
+    for (const chunk_ of chunk([...new Set(lalvoteids)], 500)) {
+      const { data } = await sbGlobal.from("people").select(DEDUP_SELECT).in("lalvoteid", chunk_);
+      for (const p of data ?? []) {
+        if (p.lalvoteid) existingByLalvoteid.set(p.lalvoteid, p);
       }
     }
   }
 
+  if (stateVoterIds.length > 0) {
+    for (const chunk_ of chunk([...new Set(stateVoterIds)], 500)) {
+      const { data } = await sbGlobal.from("people").select(DEDUP_SELECT).in("state_voter_id", chunk_);
+      for (const p of data ?? []) {
+        if (p.state_voter_id) existingByStateVoterId.set(p.state_voter_id, p);
+      }
+    }
+  }
+
+  if (emails.length > 0) {
+    for (const chunk_ of chunk([...new Set(emails)], 500)) {
+      const { data } = await sbGlobal.from("people").select(DEDUP_SELECT).in("email", chunk_);
+      for (const p of data ?? []) {
+        if (p.email) existingByEmail.set(p.email.toLowerCase(), p);
+      }
+    }
+  }
+
+  // name+household fallback (within this tenant only for households)
   const noEmailRows = validRows.filter((r) => !(r.email ?? "").trim());
   const nameHHKeys = new Map<string, MappedRow>();
   for (const row of noEmailRows) {
@@ -403,19 +482,19 @@ export async function POST(request: Request) {
     if ((fn || ln) && hhId) nameHHKeys.set(`${fn}|${ln}|${hhId}`, row);
   }
 
-  const existingByNameHH = new Map<string, string>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existingByNameHH = new Map<string, Record<string, any>>();
   if (nameHHKeys.size > 0) {
     const hhIds = [...new Set([...nameHHKeys.keys()].map((k) => k.split("|")[2]))];
     for (const hhChunk of chunk(hhIds, 500)) {
-      const { data: existing } = await sb
+      const { data } = await sb
         .from("people")
-        .select("id, first_name, last_name, household_id")
+        .select(DEDUP_SELECT)
         .eq("tenant_id", tenantId)
         .in("household_id", hhChunk);
-
-      for (const p of existing ?? []) {
+      for (const p of data ?? []) {
         const key = `${(p.first_name ?? "").toLowerCase()}|${(p.last_name ?? "").toLowerCase()}|${p.household_id}`;
-        existingByNameHH.set(key, p.id);
+        existingByNameHH.set(key, p);
       }
     }
   }
@@ -423,7 +502,9 @@ export async function POST(request: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toInsert: Record<string, any>[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toUpdate: Record<string, any>[] = [];
+  const toUpdate: Array<{ id: string; existing: Record<string, any>; data: Record<string, any> }> = [];
+  // Collected person IDs to link to this tenant after insert/update
+  const personIdsToLink: string[] = [];
 
   for (const row of validRows) {
     const fn = (row.first_name ?? "").trim();
@@ -446,46 +527,79 @@ export async function POST(request: Request) {
       occupation: (row.occupation ?? "").trim() || null,
       notes: (row.notes ?? "").trim() || null,
       household_id: hhId ?? null,
+      data_source: "import",
+      data_updated_at: new Date().toISOString(),
       ...pickL2(row, PEOPLE_L2_COLS),
       ...(row.__meta && Object.keys(row.__meta).length > 0 ? { meta_json: row.__meta } : {}),
     };
 
-    let existingId: string | undefined;
-    if (email) existingId = existingByEmail.get(email) ?? undefined;
-    if (!existingId && hhId) {
+    // Global dedup priority: lalvoteid → state_voter_id → email → name+household
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let existingRecord: Record<string, any> | undefined;
+    if (row.lalvoteid?.trim()) existingRecord = existingByLalvoteid.get(row.lalvoteid.trim());
+    if (!existingRecord && row.state_voter_id?.trim()) existingRecord = existingByStateVoterId.get(row.state_voter_id.trim());
+    if (!existingRecord && email) existingRecord = existingByEmail.get(email);
+    if (!existingRecord && hhId) {
       const nameKey = `${fn.toLowerCase()}|${ln.toLowerCase()}|${hhId}`;
-      existingId = existingByNameHH.get(nameKey) ?? undefined;
+      existingRecord = existingByNameHH.get(nameKey);
     }
 
-    if (existingId) {
-      toUpdate.push({ id: existingId, ...personData });
+    if (existingRecord) {
+      toUpdate.push({ id: existingRecord.id, existing: existingRecord, data: personData });
     } else {
       toInsert.push(personData);
     }
   }
 
   for (const personChunk of chunk(toInsert, 500)) {
-    const { error: insErr } = await sb.from("people").insert(personChunk);
+    const { data: newPeople, error: insErr } = await sb.from("people").insert(personChunk).select("id");
     if (insErr) {
       errors.push(`Person insert error: ${insErr.message}`);
     } else {
       inserted += personChunk.length;
+      for (const p of newPeople ?? []) personIdsToLink.push(p.id);
     }
   }
 
-  for (const personChunk of chunk(toUpdate, 500)) {
-    const { error: upErr } = await sb.from("people").upsert(personChunk, { onConflict: "id" });
+  for (const { id, existing, data: personData } of toUpdate) {
+    // Strip always-set metadata fields before mode filtering, then re-add
+    const { data_source, data_updated_at, tenant_id, household_id, ...filterable } = personData;
+    const modeFiltered = applyImportMode(
+      filterable,
+      existing,
+      existing.data_source as string | null,
+      existing.data_updated_at as string | null,
+      importMode,
+    );
+    const updatePayload = { ...modeFiltered, data_source, data_updated_at, household_id: household_id ?? existing.household_id };
+    const { error: upErr } = await sb.from("people").update(updatePayload).eq("id", id);
     if (upErr) {
       errors.push(`Person update error: ${upErr.message}`);
     } else {
-      updated += personChunk.length;
+      updated++;
+      personIdsToLink.push(id);
+    }
+  }
+
+  // ── Link all processed people to this tenant ──────────────────────────────
+  if (personIdsToLink.length > 0) {
+    const linkRows = [...new Set(personIdsToLink)].map((personId) => ({
+      tenant_id: tenantId,
+      person_id: personId,
+      linked_at: new Date().toISOString(),
+    }));
+    for (const linkChunk of chunk(linkRows, 500)) {
+      await sb.from("tenant_people").upsert(linkChunk, { onConflict: "tenant_id,person_id", ignoreDuplicates: true });
     }
   }
 
   // ── Phase D: Rename households from last names of residents ───────────────
 
   const involvedHhIds = [...new Set(
-    [...toInsert, ...toUpdate].map((p) => p.household_id).filter(Boolean) as string[]
+    [
+      ...toInsert.map((p) => p.household_id),
+      ...toUpdate.map(({ data }) => data.household_id),
+    ].filter(Boolean) as string[]
   )];
 
   if (involvedHhIds.length > 0) {
