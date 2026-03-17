@@ -54,9 +54,10 @@ type ParsedData = {
   rows: Record<string, string>[];
 };
 
-type Step = "upload" | "map" | "preview" | "done";
+type Step = "upload" | "map" | "preview" | "validate" | "done";
 
 type ImportResult = {
+  dryRun?: boolean;
   inserted: number;
   updated: number;
   skipped: number;
@@ -130,6 +131,7 @@ export default function ImportPanel() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [validateResult, setValidateResult] = useState<ImportResult | null>(null);
   const [parseErr, setParseErr] = useState("");
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -210,7 +212,62 @@ export default function ImportPanel() {
     setStep("preview");
   }
 
-  // ── Run import ──────────────────────────────────────────────────────────────
+  // ── Build mapped rows from parsed data ────────────────────────────────────
+
+  function buildMappedRows() {
+    if (!parsed) return [];
+    return parsed.rows.map((row) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const out: Record<string, any> = {};
+      const meta: Record<string, string> = {};
+      for (const [col, target] of Object.entries(mapping)) {
+        const val = (row[col] ?? "").trim();
+        if (!val) continue;
+        if (target === "__create__") {
+          meta[col] = val;
+        } else if (target !== "__skip__") {
+          out[target] = val;
+        }
+      }
+      if (Object.keys(meta).length > 0) out.__meta = meta;
+      return out;
+    });
+  }
+
+  // ── Validate (dry run) ─────────────────────────────────────────────────────
+
+  async function runValidate() {
+    if (!parsed) return;
+    setImporting(true);
+    setValidateResult(null);
+
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Not authenticated");
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: true };
+      if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
+
+      const res = await fetch("/api/crm/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Validation failed");
+      setValidateResult(data);
+      setStep("validate");
+    } catch (e: any) {
+      setValidateResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [(e as Error).message] });
+      setStep("validate");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // ── Real import ────────────────────────────────────────────────────────────
 
   async function runImport() {
     if (!parsed) return;
@@ -221,32 +278,13 @@ export default function ImportPanel() {
       const token = await getToken();
       if (!token) throw new Error("Not authenticated");
 
-      // Apply column mapping to all rows
-      const mappedRows = parsed.rows.map((row) => {
-        const out: Record<string, any> = {};
-        const meta: Record<string, string> = {};
-        for (const [col, target] of Object.entries(mapping)) {
-          const val = (row[col] ?? "").trim();
-          if (!val) continue;
-          if (target === "__create__") {
-            meta[col] = val;
-          } else if (target !== "__skip__") {
-            out[target] = val;
-          }
-        }
-        if (Object.keys(meta).length > 0) out.__meta = meta;
-        return out;
-      });
-
-      const body: Record<string, any> = { rows: mappedRows };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: false };
       if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
 
       const res = await fetch("/api/crm/import", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
 
@@ -255,7 +293,7 @@ export default function ImportPanel() {
       setResult(data);
       setStep("done");
     } catch (e: any) {
-      setResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [e.message] });
+      setResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [(e as Error).message] });
       setStep("done");
     } finally {
       setImporting(false);
@@ -267,6 +305,7 @@ export default function ImportPanel() {
     setParsed(null);
     setMapping({});
     setResult(null);
+    setValidateResult(null);
     setParseErr("");
     setIsSuperAdmin(false);
     setTenants([]);
@@ -511,11 +550,87 @@ export default function ImportPanel() {
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => setStep("map")} style={ghostBtn}>← Edit mapping</button>
             <button
+              onClick={runValidate}
+              disabled={importing}
+              style={primaryBtn(importing)}
+            >
+              {importing ? "Validating…" : `Validate Import (${parsed.rows.length.toLocaleString()} rows)`}
+            </button>
+          </div>
+
+          {importing && (
+            <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #9ca3af)" }}>
+              Analyzing rows — this may take a moment for large files…
+            </p>
+          )}
+        </>
+      )}
+
+      {/* ── Step 4: Validation Results ── */}
+      {step === "validate" && validateResult && (
+        <>
+          <div style={{
+            border: "1px solid var(--gg-border, #e5e7eb)",
+            borderRadius: 10,
+            padding: "28px 32px",
+          }}>
+            <p style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700 }}>
+              Validation Complete
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, fontSize: 14, marginBottom: 16 }}>
+              {[
+                { label: "Would Import", value: validateResult.inserted, color: "#16a34a", icon: "✓" },
+                { label: "Would Update", value: validateResult.updated, color: "#2563eb", icon: "↻" },
+                { label: "Would Skip", value: validateResult.skipped, color: "#9ca3af", icon: "⊘" },
+              ].map((stat) => (
+                <div key={stat.label} style={{
+                  border: "1px solid var(--gg-border, #e5e7eb)",
+                  borderRadius: 8,
+                  padding: "12px 16px",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: stat.color }}>
+                    {stat.icon} {stat.value.toLocaleString()}
+                  </div>
+                  <div style={{ color: "var(--gg-text-dim, #9ca3af)", marginTop: 4 }}>{stat.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {validateResult.errors.length > 0 && (
+              <details open style={{ marginTop: 0 }}>
+                <summary style={{ cursor: "pointer", fontSize: 13, color: "#ef4444", marginBottom: 8 }}>
+                  {validateResult.skipped} row{validateResult.skipped !== 1 ? "s" : ""} will be skipped
+                  {validateResult.errors.some((e) => e.startsWith("Duplicate")) ? " + duplicate warnings" : ""}
+                  {" "}— click to expand
+                </summary>
+                <ul style={{ margin: "8px 0 0", paddingLeft: 20, fontSize: 12, color: "var(--gg-text-dim, #6b7280)", display: "grid", gap: 4 }}>
+                  {validateResult.errors.map((e, i) => (
+                    <li key={i} style={{ color: e.startsWith("Duplicate") ? "#f59e0b" : "inherit" }}>{e}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            {validateResult.skipped === 0 && validateResult.errors.length === 0 && (
+              <p style={{ margin: 0, fontSize: 13, color: "#16a34a" }}>
+                ✓ All rows passed validation — ready to import.
+              </p>
+            )}
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={reset} style={ghostBtn}>← Start over</button>
+            <button
               onClick={runImport}
               disabled={importing}
               style={primaryBtn(importing)}
             >
-              {importing ? "Importing…" : `Import ${parsed.rows.length.toLocaleString()} rows`}
+              {importing
+                ? "Importing…"
+                : validateResult.skipped > 0
+                  ? `Import Anyway (${(validateResult.inserted + validateResult.updated).toLocaleString()} valid rows)`
+                  : `Import ${(validateResult.inserted + validateResult.updated).toLocaleString()} rows`}
             </button>
           </div>
 
@@ -527,7 +642,7 @@ export default function ImportPanel() {
         </>
       )}
 
-      {/* ── Step 4: Done ── */}
+      {/* ── Step 5: Done ── */}
       {step === "done" && result && (
         <>
           <div style={{
