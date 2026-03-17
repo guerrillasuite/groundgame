@@ -156,9 +156,9 @@ export async function POST(request: Request) {
 
   // ── Dry run: simulate phases A–D without writing ──────────────────────────
   if (dryRun) {
-    const sb = makeSb(tenantId);
+    const sbGlobal = makeSbGlobal();
 
-    // Simulate Phase A: count new vs existing locations
+    // Simulate Phase A: locate existing locations globally
     const uniqueAddrKeys = new Map<string, MappedRow>();
     for (const row of validRows) {
       const k = addrKey(row);
@@ -171,10 +171,9 @@ export async function POST(request: Request) {
         .map((r) => (r.address_line1 ?? r.address ?? "").trim())
         .filter(Boolean);
       for (const addrChunk of chunk(addrs, 500)) {
-        const { data: existing } = await sb
+        const { data: existing } = await sbGlobal
           .from("locations")
           .select("id, address_line1, postal_code")
-          .eq("tenant_id", tenantId)
           .in("address_line1", addrChunk);
         for (const loc of existing ?? []) {
           const k = normalizeAddr(loc.address_line1 ?? "") + "|" + (loc.postal_code ?? "").trim();
@@ -183,15 +182,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // Simulate Phase B: count new vs existing households
+    // Simulate Phase B: locate existing households globally
     const hhMap = new Map<string, string>(); // location_id → household_id (existing only)
     const allLocIds = [...new Set(locMap.values())];
     if (allLocIds.length > 0) {
       for (const locChunk of chunk(allLocIds, 500)) {
-        const { data: existingHH } = await sb
+        const { data: existingHH } = await sbGlobal
           .from("households")
           .select("id, location_id")
-          .eq("tenant_id", tenantId)
           .in("location_id", locChunk);
         for (const hh of existingHH ?? []) {
           if (hh.location_id) hhMap.set(hh.location_id, hh.id);
@@ -199,15 +197,33 @@ export async function POST(request: Request) {
       }
     }
 
-    // Simulate Phase C: count inserts vs updates
+    // Simulate Phase C: global dedup — voter IDs, email, name+HH (mirrors real import path)
+    const lalvoteids = validRows.map((r) => (r.lalvoteid ?? "").trim()).filter(Boolean);
+    const stateVoterIds = validRows.map((r) => (r.state_voter_id ?? "").trim()).filter(Boolean);
     const emails = validRows.map((r) => (r.email ?? "").trim().toLowerCase()).filter(Boolean);
+
+    const existingByLalvoteid = new Map<string, string>();
+    if (lalvoteids.length > 0) {
+      for (const chunk_ of chunk([...new Set(lalvoteids)], 500)) {
+        const { data } = await sbGlobal.from("people").select("id, lalvoteid").in("lalvoteid", chunk_);
+        for (const p of data ?? []) { if (p.lalvoteid) existingByLalvoteid.set(p.lalvoteid, p.id); }
+      }
+    }
+
+    const existingByStateVoterId = new Map<string, string>();
+    if (stateVoterIds.length > 0) {
+      for (const chunk_ of chunk([...new Set(stateVoterIds)], 500)) {
+        const { data } = await sbGlobal.from("people").select("id, state_voter_id").in("state_voter_id", chunk_);
+        for (const p of data ?? []) { if (p.state_voter_id) existingByStateVoterId.set(p.state_voter_id, p.id); }
+      }
+    }
+
     const existingByEmail = new Map<string, string>();
     if (emails.length > 0) {
       for (const emailChunk of chunk([...new Set(emails)], 500)) {
-        const { data: existing } = await sb
+        const { data: existing } = await sbGlobal
           .from("people")
           .select("id, email")
-          .eq("tenant_id", tenantId)
           .in("email", emailChunk);
         for (const p of existing ?? []) {
           if (p.email) existingByEmail.set(p.email.toLowerCase(), p.id);
@@ -215,9 +231,8 @@ export async function POST(request: Request) {
       }
     }
 
-    const noEmailRows = validRows.filter((r) => !(r.email ?? "").trim());
     const nameHHKeys = new Map<string, MappedRow>();
-    for (const row of noEmailRows) {
+    for (const row of validRows) {
       const fn = (row.first_name ?? "").trim().toLowerCase();
       const ln = (row.last_name ?? "").trim().toLowerCase();
       const k = addrKey(row);
@@ -230,11 +245,11 @@ export async function POST(request: Request) {
     if (nameHHKeys.size > 0) {
       const hhIds = [...new Set([...nameHHKeys.keys()].map((k) => k.split("|")[2]))];
       for (const hhChunk of chunk(hhIds, 500)) {
-        const { data: existing } = await sb
+        const { data: existing } = await sbGlobal
           .from("people")
           .select("id, first_name, last_name, household_id")
-          .eq("tenant_id", tenantId)
-          .in("household_id", hhChunk);
+          .in("household_id", hhChunk)
+          .limit(10000);
         for (const p of existing ?? []) {
           const key = `${(p.first_name ?? "").toLowerCase()}|${(p.last_name ?? "").toLowerCase()}|${p.household_id}`;
           existingByNameHH.set(key, p.id);
@@ -255,7 +270,9 @@ export async function POST(request: Request) {
       const hhId = locId ? hhMap.get(locId) : undefined;
 
       let existingId: string | undefined;
-      if (email) existingId = existingByEmail.get(email) ?? undefined;
+      if (row.lalvoteid?.trim()) existingId = existingByLalvoteid.get(row.lalvoteid.trim());
+      if (!existingId && row.state_voter_id?.trim()) existingId = existingByStateVoterId.get(row.state_voter_id.trim());
+      if (!existingId && email) existingId = existingByEmail.get(email) ?? undefined;
       if (!existingId && hhId) {
         const nameKey = `${fn.toLowerCase()}|${ln.toLowerCase()}|${hhId}`;
         existingId = existingByNameHH.get(nameKey) ?? undefined;
@@ -470,10 +487,9 @@ export async function POST(request: Request) {
     }
   }
 
-  // name+household fallback (within this tenant only for households)
-  const noEmailRows = validRows.filter((r) => !(r.email ?? "").trim());
+  // name+household fallback — all rows (voter ID / email checked first in the loop below)
   const nameHHKeys = new Map<string, MappedRow>();
-  for (const row of noEmailRows) {
+  for (const row of validRows) {
     const fn = (row.first_name ?? "").trim().toLowerCase();
     const ln = (row.last_name ?? "").trim().toLowerCase();
     const k = addrKey(row);
