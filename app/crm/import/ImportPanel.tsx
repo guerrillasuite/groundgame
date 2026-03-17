@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase/client";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -138,11 +138,7 @@ export default function ImportPanel() {
 
   // Get session token
   async function getToken(): Promise<string | null> {
-    const sb = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-    const { data } = await sb.auth.getSession();
+    const { data } = await supabase.auth.getSession();
     return data.session?.access_token ?? null;
   }
 
