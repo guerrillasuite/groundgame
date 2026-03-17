@@ -11,6 +11,7 @@ export default function LocationsPage() {
       searchPlaceholder="Search by address, city, state, zip…"
       target="locations"
       columns={[{ key: "address", label: "Address", width: 520 }]}
+      rowHrefPrefix="/crm/locations/"
       headerActions={<GeocodeButton />}
     />
   );

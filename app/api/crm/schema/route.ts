@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export type ColumnDef = {
   column: string;    // actual DB column name
   label: string;     // display label
   data_type: string; // postgres type ("text", "boolean", "integer", etc.)
-  is_join: boolean;  // true = resolved via location join, not direct column
+  is_join: boolean;  // true = resolved via join, not a direct people column
+  table?: "people" | "locations" | "households"; // which table this column belongs to
 };
 
 // Tables that users can introspect
@@ -23,12 +26,57 @@ const EXCLUDED_COLS = new Set([
   "tags_json", "meta_json",
 ]);
 
-// Virtual joined location fields added for people + households
+// Virtual joined fields added for people + households (location & household tables)
 const LOCATION_JOIN_FIELDS: ColumnDef[] = [
-  { column: "city", label: "City", data_type: "text", is_join: true },
-  { column: "state", label: "State", data_type: "text", is_join: true },
-  { column: "postal_code", label: "Zip Code", data_type: "text", is_join: true },
-  { column: "address", label: "Street Address", data_type: "text", is_join: true },
+  // Address
+  { column: "city",                         label: "City",                         data_type: "text",    is_join: true, table: "locations" },
+  { column: "state",                        label: "State",                        data_type: "text",    is_join: true, table: "locations" },
+  { column: "postal_code",                  label: "Zip Code",                     data_type: "text",    is_join: true, table: "locations" },
+  { column: "address",                      label: "Street Address",               data_type: "text",    is_join: true, table: "locations" },
+  // Districts
+  { column: "congressional_district",       label: "Congressional District",       data_type: "text",    is_join: true, table: "locations" },
+  { column: "state_senate_district",        label: "State Senate District",        data_type: "text",    is_join: true, table: "locations" },
+  { column: "state_house_district",         label: "State House District",         data_type: "text",    is_join: true, table: "locations" },
+  { column: "state_legislative_district",   label: "State Legislative District",   data_type: "text",    is_join: true, table: "locations" },
+  { column: "precinct",                     label: "Precinct",                     data_type: "text",    is_join: true, table: "locations" },
+  { column: "county_name",                  label: "County",                       data_type: "text",    is_join: true, table: "locations" },
+  { column: "municipality",                 label: "Municipality",                 data_type: "text",    is_join: true, table: "locations" },
+  { column: "municipal_subdistrict",        label: "Municipal Subdistrict",        data_type: "text",    is_join: true, table: "locations" },
+  { column: "county_commission_district",   label: "County Commission District",   data_type: "text",    is_join: true, table: "locations" },
+  { column: "county_supervisor_district",   label: "County Supervisor District",   data_type: "text",    is_join: true, table: "locations" },
+  { column: "school_district",              label: "School District",              data_type: "text",    is_join: true, table: "locations" },
+  { column: "college_district",             label: "College District",             data_type: "text",    is_join: true, table: "locations" },
+  { column: "judicial_district",            label: "Judicial District",            data_type: "text",    is_join: true, table: "locations" },
+  { column: "fips_code",                    label: "FIPS Code",                    data_type: "text",    is_join: true, table: "locations" },
+  // Census / Geo
+  { column: "urbanicity",                   label: "Urbanicity",                   data_type: "text",    is_join: true, table: "locations" },
+  { column: "population_density",           label: "Population Density",           data_type: "integer", is_join: true, table: "locations" },
+  { column: "time_zone",                    label: "Time Zone",                    data_type: "text",    is_join: true, table: "locations" },
+  { column: "census_tract",                 label: "Census Tract",                 data_type: "text",    is_join: true, table: "locations" },
+  { column: "census_block_group",           label: "Census Block Group",           data_type: "text",    is_join: true, table: "locations" },
+  { column: "census_block",                 label: "Census Block",                 data_type: "text",    is_join: true, table: "locations" },
+  { column: "dma",                          label: "DMA",                          data_type: "text",    is_join: true, table: "locations" },
+  // Household composition
+  { column: "total_persons",                label: "Total Persons",                data_type: "smallint",is_join: true, table: "households" },
+  { column: "adults_count",                 label: "Adults Count",                 data_type: "smallint",is_join: true, table: "households" },
+  { column: "children_count",               label: "Children Count",               data_type: "smallint",is_join: true, table: "households" },
+  { column: "generations_count",            label: "Generations",                  data_type: "smallint",is_join: true, table: "households" },
+  { column: "household_voter_count",        label: "Voter Count",                  data_type: "smallint",is_join: true, table: "households" },
+  { column: "household_parties",            label: "Parties",                      data_type: "text",    is_join: true, table: "households" },
+  { column: "head_of_household",            label: "Head of Household",            data_type: "text",    is_join: true, table: "households" },
+  { column: "household_gender",             label: "Gender Composition",           data_type: "text",    is_join: true, table: "households" },
+  { column: "has_senior",                   label: "Has Senior",                   data_type: "boolean", is_join: true, table: "households" },
+  { column: "has_young_adult",              label: "Has Young Adult",              data_type: "boolean", is_join: true, table: "households" },
+  { column: "has_children",                 label: "Has Children",                 data_type: "boolean", is_join: true, table: "households" },
+  { column: "is_single_parent",             label: "Single Parent",                data_type: "boolean", is_join: true, table: "households" },
+  { column: "has_disabled",                 label: "Has Disabled",                 data_type: "boolean", is_join: true, table: "households" },
+  // Property
+  { column: "home_owner",                   label: "Home Owner",                   data_type: "boolean", is_join: true, table: "households" },
+  { column: "home_estimated_value",         label: "Est. Home Value",              data_type: "integer", is_join: true, table: "households" },
+  { column: "home_purchase_year",           label: "Home Purchase Year",           data_type: "smallint",is_join: true, table: "households" },
+  { column: "home_dwelling_type",           label: "Dwelling Type",                data_type: "text",    is_join: true, table: "households" },
+  { column: "home_sqft",                    label: "Sq Ft",                        data_type: "integer", is_join: true, table: "households" },
+  { column: "home_bedrooms",                label: "Bedrooms",                     data_type: "smallint",is_join: true, table: "households" },
 ];
 
 // Hardcoded fallback in case service role key is missing
@@ -102,6 +150,7 @@ export async function GET(request: NextRequest) {
     const res = await fetch(
       `${supabaseUrl}/rest/v1/information_schema/columns?select=column_name,data_type&table_schema=eq.public&table_name=eq.${table}&order=ordinal_position`,
       {
+        cache: "no-store",
         headers: {
           Authorization: `Bearer ${serviceKey}`,
           apikey: serviceKey,
@@ -116,10 +165,12 @@ export async function GET(request: NextRequest) {
 
     const cols: Array<{ column_name: string; data_type: string }> = await res.json();
 
-    // Filter out excluded columns and FK columns (anything ending in _id)
+    // Filter out explicitly excluded columns and pure FK columns (just "<table>_id")
+    // Don't exclude voter/entity ID fields like state_voter_id, county_voter_id, lalvoteid
+    const FK_SUFFIX = /^[a-z]+_id$/; // e.g. household_id, location_id — not state_voter_id
     const filtered = cols.filter((c) => {
       if (EXCLUDED_COLS.has(c.column_name)) return false;
-      if (c.column_name.endsWith("_id")) return false;
+      if (FK_SUFFIX.test(c.column_name)) return false;
       return true;
     });
 
@@ -128,6 +179,7 @@ export async function GET(request: NextRequest) {
       label: toLabel(c.column_name),
       data_type: c.data_type,
       is_join: false,
+      table: table as "people" | "locations" | "households",
     }));
 
     // Append virtual location join fields for tables that need them

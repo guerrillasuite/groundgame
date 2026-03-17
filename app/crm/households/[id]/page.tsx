@@ -37,7 +37,12 @@ export default async function HouseholdDetail({ params }: Params) {
   // 1) Household
   const { data: household, error: hhErr } = await sb
     .from("households")
-    .select("id, name, location_id")
+    .select(`id, name, location_id,
+      total_persons, adults_count, children_count, generations_count,
+      has_senior, has_young_adult, has_children, is_single_parent, has_disabled,
+      household_voter_count, household_parties, head_of_household, household_gender,
+      home_owner, home_estimated_value, home_purchase_year, home_dwelling_type,
+      home_sqft, home_bedrooms`)
     .eq("id", hhId)
     .eq("tenant_id", tenant.id)
     .single();
@@ -193,6 +198,57 @@ export default async function HouseholdDetail({ params }: Params) {
           </div>
         )}
       </div>
+
+      {/* Household Composition */}
+      {((household as any).total_persons != null || (household as any).household_voter_count != null || (household as any).household_parties) ? (
+        <div style={cardStyle}>
+          <p style={{ ...labelStyle, marginBottom: 12 }}>Household Composition</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px 20px" }}>
+            {[
+              { label: "Total Persons", val: (household as any).total_persons != null ? String((household as any).total_persons) : null },
+              { label: "Adults", val: (household as any).adults_count != null ? String((household as any).adults_count) : null },
+              { label: "Children", val: (household as any).children_count != null ? String((household as any).children_count) : null },
+              { label: "Generations", val: (household as any).generations_count != null ? String((household as any).generations_count) : null },
+              { label: "Voter Count", val: (household as any).household_voter_count != null ? String((household as any).household_voter_count) : null },
+              { label: "Parties", val: (household as any).household_parties },
+              { label: "Gender Comp.", val: (household as any).household_gender },
+              { label: "Head of HH", val: (household as any).head_of_household },
+              { label: "Has Senior", val: (household as any).has_senior === true ? "Yes" : (household as any).has_senior === false ? "No" : null },
+              { label: "Has Young Adult", val: (household as any).has_young_adult === true ? "Yes" : (household as any).has_young_adult === false ? "No" : null },
+              { label: "Has Children", val: (household as any).has_children === true ? "Yes" : (household as any).has_children === false ? "No" : null },
+              { label: "Single Parent", val: (household as any).is_single_parent === true ? "Yes" : (household as any).is_single_parent === false ? "No" : null },
+              { label: "Has Disabled", val: (household as any).has_disabled === true ? "Yes" : (household as any).has_disabled === false ? "No" : null },
+            ].filter(f => f.val != null).map(({ label, val }) => (
+              <div key={label}>
+                <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gg-text-dim, #6b7280)", marginBottom: 2 }}>{label}</p>
+                <p style={{ fontSize: 14, color: "var(--gg-text, #111827)", margin: 0 }}>{val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Property */}
+      {((household as any).home_owner != null || (household as any).home_estimated_value || (household as any).home_dwelling_type) ? (
+        <div style={cardStyle}>
+          <p style={{ ...labelStyle, marginBottom: 12 }}>Property</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px 20px" }}>
+            {[
+              { label: "Home Owner", val: (household as any).home_owner === true ? "Yes" : (household as any).home_owner === false ? "No" : null },
+              { label: "Est. Value", val: (household as any).home_estimated_value != null ? `$${Number((household as any).home_estimated_value).toLocaleString()}` : null },
+              { label: "Purchase Year", val: (household as any).home_purchase_year != null ? String((household as any).home_purchase_year) : null },
+              { label: "Dwelling Type", val: (household as any).home_dwelling_type },
+              { label: "Sq Ft", val: (household as any).home_sqft != null ? Number((household as any).home_sqft).toLocaleString() : null },
+              { label: "Bedrooms", val: (household as any).home_bedrooms != null ? String((household as any).home_bedrooms) : null },
+            ].filter(f => f.val != null).map(({ label, val }) => (
+              <div key={label}>
+                <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gg-text-dim, #6b7280)", marginBottom: 2 }}>{label}</p>
+                <p style={{ fontSize: 14, color: "var(--gg-text, #111827)", margin: 0 }}>{val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
     </section>
   );

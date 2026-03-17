@@ -2,13 +2,45 @@
 
 import { useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { L2_FIELD_MAP } from "@/lib/crm/l2-field-map";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type TargetField =
+  // Core
   | "first_name" | "last_name" | "email" | "phone"
   | "contact_type" | "occupation" | "notes"
   | "address_line1" | "city" | "state" | "postal_code"
+  // People: L2 voter identity
+  | "lalvoteid" | "state_voter_id" | "county_voter_id"
+  | "gender" | "birth_date" | "age" | "party" | "party_switcher"
+  | "voter_status" | "registration_date" | "permanent_absentee"
+  | "veteran" | "do_not_call" | "place_of_birth"
+  | "phone_cell" | "phone_landline" | "mailing_address"
+  // People: L2 political scores
+  | "score_prog_dem" | "score_mod_dem" | "score_cons_rep" | "score_mod_rep"
+  // People: L2 voting history
+  | "voting_frequency" | "early_voter" | "absentee_type"
+  // People: L2 demographics
+  | "ethnicity" | "ethnicity_source" | "hispanic_origin" | "language"
+  | "english_proficiency" | "education_level" | "marital_status" | "religion"
+  // People: L2 professional / financial / mover
+  | "occupation_title" | "company_name" | "income_range" | "net_worth_range"
+  | "length_of_residence" | "moved_from_state"
+  // Households: L2
+  | "total_persons" | "adults_count" | "children_count" | "generations_count"
+  | "has_senior" | "has_young_adult" | "has_children" | "is_single_parent"
+  | "has_disabled" | "household_voter_count" | "household_parties"
+  | "head_of_household" | "household_gender" | "home_owner"
+  | "home_estimated_value" | "home_purchase_year" | "home_dwelling_type"
+  | "home_sqft" | "home_bedrooms"
+  // Locations: L2 districts + geo
+  | "congressional_district" | "state_house_district" | "state_senate_district"
+  | "state_legislative_district" | "county_name" | "fips_code" | "precinct"
+  | "municipality" | "municipal_subdistrict" | "county_commission_district"
+  | "county_supervisor_district" | "school_district" | "college_district"
+  | "judicial_district" | "time_zone" | "urbanicity" | "population_density"
+  | "census_tract" | "census_block_group" | "census_block" | "dma"
   | "__skip__" | "__create__";
 
 const TARGET_FIELDS: { value: TargetField; label: string }[] = [
@@ -46,7 +78,14 @@ const AUTO_MAP: Record<string, TargetField> = {
 };
 
 function autoDetect(col: string): TargetField {
-  return AUTO_MAP[col.trim().toLowerCase().replace(/\s+/g, "_")] ?? "__skip__";
+  const key = col.trim().toLowerCase().replace(/[\s-]/g, "_");
+  // Check L2 map first
+  const l2 = L2_FIELD_MAP[key];
+  if (l2) {
+    if (l2.dest === "meta") return "__create__";
+    return l2.column as TargetField;
+  }
+  return AUTO_MAP[key] ?? "__skip__";
 }
 
 type ParsedData = {
@@ -435,18 +474,23 @@ export default function ImportPanel() {
 
                         {schemaFields.length > 0 ? (
                           <>
-                            {/* Direct people fields */}
-                            <optgroup label="People fields">
+                            <optgroup label="People">
                               {schemaFields
                                 .filter((f) => !f.is_join)
                                 .map((f) => (
                                   <option key={f.column} value={f.column}>{f.label}</option>
                                 ))}
                             </optgroup>
-                            {/* Location fields (joined) */}
                             <optgroup label="Location / Address">
                               {schemaFields
-                                .filter((f) => f.is_join)
+                                .filter((f) => f.is_join && (f as any).table === "locations")
+                                .map((f) => (
+                                  <option key={f.column} value={f.column}>{f.label}</option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="Household">
+                              {schemaFields
+                                .filter((f) => f.is_join && (f as any).table === "households")
                                 .map((f) => (
                                   <option key={f.column} value={f.column}>{f.label}</option>
                                 ))}
@@ -455,7 +499,7 @@ export default function ImportPanel() {
                         ) : (
                           /* Fallback if schema didn't load */
                           <>
-                            <optgroup label="People fields">
+                            <optgroup label="People">
                               {TARGET_FIELDS.filter((f) =>
                                 f.value !== "__skip__" && f.value !== "__create__" && !LOCATION_FIELD_COLS.has(f.value)
                               ).map((f) => (

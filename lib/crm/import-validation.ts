@@ -3,6 +3,7 @@
 // A row is skipped entirely if any present field fails validation.
 
 export interface MappedRow {
+  // ── Core fields (existing) ─────────────────────────────────────────────────
   first_name?: string;
   last_name?: string;
   email?: string;
@@ -15,6 +16,99 @@ export interface MappedRow {
   contact_type?: string;
   occupation?: string;
   notes?: string;
+
+  // ── People: L2 voter identity ──────────────────────────────────────────────
+  lalvoteid?: string;
+  state_voter_id?: string;
+  county_voter_id?: string;
+  gender?: string;
+  birth_date?: string;
+  age?: string;
+  party?: string;
+  party_switcher?: string;
+  voter_status?: string;
+  registration_date?: string;
+  permanent_absentee?: string;
+  veteran?: string;
+  do_not_call?: string;
+  place_of_birth?: string;
+  phone_cell?: string;
+  phone_landline?: string;
+  mailing_address?: string;
+
+  // ── People: L2 political scores ────────────────────────────────────────────
+  score_prog_dem?: string;
+  score_mod_dem?: string;
+  score_cons_rep?: string;
+  score_mod_rep?: string;
+
+  // ── People: L2 voting history ──────────────────────────────────────────────
+  voting_frequency?: string;
+  early_voter?: string;
+  absentee_type?: string;
+
+  // ── People: L2 demographics ────────────────────────────────────────────────
+  ethnicity?: string;
+  ethnicity_source?: string;
+  hispanic_origin?: string;
+  language?: string;
+  english_proficiency?: string;
+  education_level?: string;
+  marital_status?: string;
+  religion?: string;
+
+  // ── People: L2 professional / financial / mover ────────────────────────────
+  occupation_title?: string;
+  company_name?: string;
+  income_range?: string;
+  net_worth_range?: string;
+  length_of_residence?: string;
+  moved_from_state?: string;
+
+  // ── Households: L2 composition ────────────────────────────────────────────
+  total_persons?: string;
+  adults_count?: string;
+  children_count?: string;
+  generations_count?: string;
+  has_senior?: string;
+  has_young_adult?: string;
+  has_children?: string;
+  is_single_parent?: string;
+  has_disabled?: string;
+  household_voter_count?: string;
+  household_parties?: string;
+  head_of_household?: string;
+  household_gender?: string;
+  home_owner?: string;
+  home_estimated_value?: string;
+  home_purchase_year?: string;
+  home_dwelling_type?: string;
+  home_sqft?: string;
+  home_bedrooms?: string;
+
+  // ── Locations: L2 districts + geo ─────────────────────────────────────────
+  congressional_district?: string;
+  state_house_district?: string;
+  state_senate_district?: string;
+  state_legislative_district?: string;
+  county_name?: string;
+  fips_code?: string;
+  precinct?: string;
+  municipality?: string;
+  municipal_subdistrict?: string;
+  county_commission_district?: string;
+  county_supervisor_district?: string;
+  school_district?: string;
+  college_district?: string;
+  judicial_district?: string;
+  time_zone?: string;
+  urbanicity?: string;
+  population_density?: string;
+  census_tract?: string;
+  census_block_group?: string;
+  census_block?: string;
+  dma?: string;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __meta?: Record<string, any>;
 }

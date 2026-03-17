@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAdminIdentity } from "@/lib/adminAuth";
 import { validateRow, findDuplicateEmails, type MappedRow } from "@/lib/crm/import-validation";
+import {
+  PEOPLE_L2_COLS, HOUSEHOLD_L2_COLS, LOCATION_L2_COLS,
+  applyL2Transform,
+} from "@/lib/crm/l2-field-map";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +20,18 @@ function makeSb(tenantId: string) {
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** Extract L2 fields for a given table from a MappedRow, applying type coercion. */
+function pickL2(row: MappedRow, cols: Set<string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const col of cols) {
+    const raw = (row as Record<string, string | undefined>)[col];
+    if (raw !== undefined && raw !== "") {
+      out[col] = applyL2Transform(raw, col);
+    }
+  }
   return out;
 }
 
@@ -246,6 +262,7 @@ export async function POST(request: Request) {
         city: (row.city ?? "").trim() || null,
         state: (row.state ?? "").trim() || null,
         postal_code: (row.postal_code ?? "").trim() || null,
+        ...pickL2(row, LOCATION_L2_COLS),
       }));
 
     for (const locChunk of chunk(toInsertLocs, 500)) {
@@ -261,6 +278,19 @@ export async function POST(request: Request) {
           const k = normalizeAddr(loc.address_line1 ?? "") + "|" + (loc.postal_code ?? "").trim();
           locMap.set(k, loc.id);
         }
+      }
+    }
+
+    // Backfill L2 district/geo data onto already-existing locations
+    const toUpdateLocs = [...uniqueAddrKeys.entries()]
+      .filter(([k]) => locMap.has(k))
+      .map(([k, row]) => ({ id: locMap.get(k)!, ...pickL2(row, LOCATION_L2_COLS) }))
+      .filter((u) => Object.keys(u).length > 1); // skip if no L2 data
+
+    for (const locChunk of chunk(toUpdateLocs, 500)) {
+      for (const { id, ...l2Data } of locChunk) {
+        if (Object.keys(l2Data).length === 0) continue;
+        await sb.from("locations").update(l2Data).eq("id", id).eq("tenant_id", tenantId);
       }
     }
   }
@@ -283,22 +313,30 @@ export async function POST(request: Request) {
       }
     }
 
-    const toInsertHH = allLocIds
-      .filter((locId) => !hhMap.has(locId))
-      .map((locId) => ({
-        tenant_id: tenantId,
-        location_id: locId,
-        name: null as string | null,
-      }));
+    // Build a map: locId → first row with that address (for L2 household fields)
+    const locIdToFirstRow = new Map<string, MappedRow>();
+    for (const [k, row] of uniqueAddrKeys.entries()) {
+      const locId = locMap.get(k);
+      if (locId && !locIdToFirstRow.has(locId)) locIdToFirstRow.set(locId, row);
+    }
 
     const locIdToAddr = new Map<string, string>();
     for (const [k, locId] of locMap.entries()) {
       const addr = k.split("|")[0];
       if (!locIdToAddr.has(locId)) locIdToAddr.set(locId, addr);
     }
-    for (const hh of toInsertHH) {
-      hh.name = locIdToAddr.get(hh.location_id) ?? null;
-    }
+
+    const toInsertHH = allLocIds
+      .filter((locId) => !hhMap.has(locId))
+      .map((locId) => {
+        const firstRow = locIdToFirstRow.get(locId);
+        return {
+          tenant_id: tenantId,
+          location_id: locId,
+          name: locIdToAddr.get(locId) ?? null,
+          ...(firstRow ? pickL2(firstRow, HOUSEHOLD_L2_COLS) : {}),
+        };
+      });
 
     for (const hhChunk of chunk(toInsertHH, 500)) {
       const { data: newHH, error: hhErr } = await sb
@@ -312,6 +350,25 @@ export async function POST(request: Request) {
         for (const hh of newHH ?? []) {
           if (hh.location_id) hhMap.set(hh.location_id, hh.id);
         }
+      }
+    }
+
+    // Backfill L2 household data onto already-existing households
+    const toUpdateHH = allLocIds
+      .filter((locId) => hhMap.has(locId))
+      .map((locId) => {
+        const firstRow = locIdToFirstRow.get(locId);
+        if (!firstRow) return null;
+        const l2Data = pickL2(firstRow, HOUSEHOLD_L2_COLS);
+        if (Object.keys(l2Data).length === 0) return null;
+        return { id: hhMap.get(locId)!, ...l2Data };
+      })
+      .filter(Boolean) as Array<Record<string, unknown>>;
+
+    for (const hhChunk of chunk(toUpdateHH, 500)) {
+      for (const { id, ...l2Data } of hhChunk) {
+        if (Object.keys(l2Data).length === 0) continue;
+        await sb.from("households").update(l2Data).eq("id", id).eq("tenant_id", tenantId);
       }
     }
   }
@@ -389,6 +446,7 @@ export async function POST(request: Request) {
       occupation: (row.occupation ?? "").trim() || null,
       notes: (row.notes ?? "").trim() || null,
       household_id: hhId ?? null,
+      ...pickL2(row, PEOPLE_L2_COLS),
       ...(row.__meta && Object.keys(row.__meta).length > 0 ? { meta_json: row.__meta } : {}),
     };
 

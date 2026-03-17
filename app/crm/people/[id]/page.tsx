@@ -36,7 +36,16 @@ export default async function PersonDetail({ params }: Params) {
   // 1) Person
   const { data: person, error: pErr } = await sb
     .from("people")
-    .select("id, first_name, last_name, email, phone, contact_type, notes, created_at, household_id")
+    .select(`id, first_name, last_name, email, phone, contact_type, notes, created_at, household_id,
+      lalvoteid, state_voter_id, county_voter_id, gender, birth_date, age, party, party_switcher,
+      voter_status, registration_date, permanent_absentee, veteran, do_not_call, place_of_birth,
+      phone_cell, phone_landline, mailing_address,
+      score_prog_dem, score_mod_dem, score_cons_rep, score_mod_rep,
+      voting_frequency, early_voter, absentee_type,
+      ethnicity, ethnicity_source, hispanic_origin, language, english_proficiency,
+      education_level, marital_status, religion,
+      occupation_title, company_name, income_range, net_worth_range,
+      length_of_residence, moved_from_state, meta_json`)
     .eq("id", personId)
     .eq("tenant_id", tenant.id)
     .single();
@@ -268,6 +277,121 @@ export default async function PersonDetail({ params }: Params) {
           </div>
         </div>
       )}
+
+      {/* Voter Record */}
+      {(person as any).lalvoteid || (person as any).voter_status || (person as any).registration_date || (person as any).voting_frequency ? (
+        <div style={cardStyle}>
+          <p style={{ ...labelStyle, marginBottom: 12 }}>Voter Record</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
+            {[
+              { label: "L2 Voter ID", val: (person as any).lalvoteid },
+              { label: "State Voter ID", val: (person as any).state_voter_id },
+              { label: "County Voter ID", val: (person as any).county_voter_id },
+              { label: "Voter Status", val: (person as any).voter_status },
+              { label: "Registration Date", val: (person as any).registration_date },
+              { label: "Voting Frequency", val: (person as any).voting_frequency },
+              { label: "Early Voter", val: (person as any).early_voter === true ? "Yes" : (person as any).early_voter === false ? "No" : null },
+              { label: "Absentee Type", val: (person as any).absentee_type },
+              { label: "Permanent Absentee", val: (person as any).permanent_absentee === true ? "Yes" : (person as any).permanent_absentee === false ? "No" : null },
+            ].filter(f => f.val != null).map(({ label, val }) => (
+              <div key={label}>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
+                <p style={valueStyle}>{val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Political */}
+      {((person as any).party || (person as any).score_prog_dem != null || (person as any).score_mod_dem != null) ? (
+        <div style={cardStyle}>
+          <p style={{ ...labelStyle, marginBottom: 12 }}>Political</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
+            {[
+              { label: "Party", val: (person as any).party },
+              { label: "Party Switcher", val: (person as any).party_switcher === true ? "Yes" : (person as any).party_switcher === false ? "No" : null },
+              { label: "Progressive Dem", val: (person as any).score_prog_dem != null ? `${(person as any).score_prog_dem}/100` : null },
+              { label: "Moderate Dem", val: (person as any).score_mod_dem != null ? `${(person as any).score_mod_dem}/100` : null },
+              { label: "Conservative Rep", val: (person as any).score_cons_rep != null ? `${(person as any).score_cons_rep}/100` : null },
+              { label: "Moderate Rep", val: (person as any).score_mod_rep != null ? `${(person as any).score_mod_rep}/100` : null },
+            ].filter(f => f.val != null).map(({ label, val }) => (
+              <div key={label}>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
+                <p style={valueStyle}>{val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Demographics */}
+      {((person as any).gender || (person as any).birth_date || (person as any).ethnicity || (person as any).education_level) ? (
+        <div style={cardStyle}>
+          <p style={{ ...labelStyle, marginBottom: 12 }}>Demographics</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
+            {[
+              { label: "Gender", val: (person as any).gender },
+              { label: "Birth Date", val: (person as any).birth_date },
+              { label: "Age", val: (person as any).age != null ? String((person as any).age) : null },
+              { label: "Ethnicity", val: (person as any).ethnicity },
+              { label: "Hispanic Origin", val: (person as any).hispanic_origin },
+              { label: "Language", val: (person as any).language },
+              { label: "Education", val: (person as any).education_level },
+              { label: "Marital Status", val: (person as any).marital_status },
+              { label: "Religion", val: (person as any).religion },
+              { label: "Veteran", val: (person as any).veteran === true ? "Yes" : (person as any).veteran === false ? "No" : null },
+              { label: "Do Not Call", val: (person as any).do_not_call === true ? "Yes" : (person as any).do_not_call === false ? "No" : null },
+            ].filter(f => f.val != null).map(({ label, val }) => (
+              <div key={label}>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
+                <p style={valueStyle}>{val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Professional & Financial */}
+      {((person as any).occupation_title || (person as any).company_name || (person as any).income_range) ? (
+        <div style={cardStyle}>
+          <p style={{ ...labelStyle, marginBottom: 12 }}>Professional &amp; Financial</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
+            {[
+              { label: "Occupation", val: (person as any).occupation_title },
+              { label: "Company", val: (person as any).company_name },
+              { label: "Income Range", val: (person as any).income_range },
+              { label: "Net Worth Range", val: (person as any).net_worth_range },
+              { label: "Length of Residence", val: (person as any).length_of_residence },
+              { label: "Moved From State", val: (person as any).moved_from_state },
+              { label: "Place of Birth", val: (person as any).place_of_birth },
+              { label: "Mailing Address", val: (person as any).mailing_address },
+            ].filter(f => f.val != null).map(({ label, val }) => (
+              <div key={label}>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
+                <p style={valueStyle}>{val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Extended Data (meta_json) */}
+      {(person as any).meta_json && Object.keys((person as any).meta_json).length > 0 ? (
+        <details style={cardStyle}>
+          <summary style={{ ...labelStyle, cursor: "pointer", marginBottom: 0 }}>
+            Extended Data ({Object.keys((person as any).meta_json).length} fields)
+          </summary>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "8px 20px", marginTop: 12 }}>
+            {Object.entries((person as any).meta_json as Record<string, unknown>).map(([k, v]) => (
+              <div key={k}>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{k}</p>
+                <p style={valueStyle}>{String(v ?? "")}</p>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
 
       {/* System */}
       {addedDate && (
