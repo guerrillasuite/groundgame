@@ -277,6 +277,7 @@ export async function POST(request: Request) {
 
   // ── Real import: phases A–D ───────────────────────────────────────────────
   const sb = makeSb(tenantId);
+  const sbGlobal = makeSbGlobal();
   let inserted = 0;
   let updated = 0;
 
@@ -296,10 +297,9 @@ export async function POST(request: Request) {
       .filter(Boolean);
 
     for (const addrChunk of chunk(addrs, 500)) {
-      const { data: existing } = await sb
+      const { data: existing } = await sbGlobal
         .from("locations")
         .select("id, address_line1, postal_code")
-        .eq("tenant_id", tenantId)
         .in("address_line1", addrChunk);
 
       for (const loc of existing ?? []) {
@@ -356,10 +356,9 @@ export async function POST(request: Request) {
 
   if (allLocIds.length > 0) {
     for (const locChunk of chunk(allLocIds, 500)) {
-      const { data: existingHH } = await sb
+      const { data: existingHH } = await sbGlobal
         .from("households")
         .select("id, location_id")
-        .eq("tenant_id", tenantId)
         .in("location_id", locChunk);
 
       for (const hh of existingHH ?? []) {
@@ -429,9 +428,6 @@ export async function POST(request: Request) {
 
   // ── Phase C: People (global dedup + upsert) ──────────────────────────────
 
-  // Global client — searches ALL tenants for dedup matching
-  const sbGlobal = makeSbGlobal();
-
   // Collect dedup keys
   const emails = validRows.map((r) => (r.email ?? "").trim().toLowerCase()).filter(Boolean);
   const lalvoteids = validRows.map((r) => (r.lalvoteid ?? "").trim()).filter(Boolean);
@@ -491,10 +487,9 @@ export async function POST(request: Request) {
   if (nameHHKeys.size > 0) {
     const hhIds = [...new Set([...nameHHKeys.keys()].map((k) => k.split("|")[2]))];
     for (const hhChunk of chunk(hhIds, 500)) {
-      const { data } = await sb
+      const { data } = await sbGlobal
         .from("people")
         .select(DEDUP_SELECT)
-        .eq("tenant_id", tenantId)
         .in("household_id", hhChunk)
         .limit(10000);
       for (const p of data ?? []) {
