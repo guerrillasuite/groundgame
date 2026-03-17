@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAdminIdentity } from "@/lib/adminAuth";
+import { getTenant } from "@/lib/tenant";
 import { validateRow, findDuplicateEmails, type MappedRow } from "@/lib/crm/import-validation";
 import {
   PEOPLE_L2_COLS, HOUSEHOLD_L2_COLS, LOCATION_L2_COLS,
@@ -113,14 +114,17 @@ export async function POST(request: Request) {
   const dryRun: boolean = body.dryRun === true;
   const importMode: ImportMode = (body.importMode as ImportMode) ?? "smart_merge";
 
-  // Resolve tenant
+  // Resolve tenant: explicit body param first, then URL-based tenant
   let tenantId: string;
-  if (identity.isSuperAdmin && requestedTenantId) {
+  if (requestedTenantId) {
     tenantId = requestedTenantId;
-  } else if (identity.tenantId) {
-    tenantId = identity.tenantId;
   } else {
-    return NextResponse.json({ error: "No tenant resolved" }, { status: 400 });
+    try {
+      const urlTenant = await getTenant();
+      tenantId = urlTenant.id;
+    } catch {
+      return NextResponse.json({ error: "No tenant resolved" }, { status: 400 });
+    }
   }
 
   if (!rows.length) {

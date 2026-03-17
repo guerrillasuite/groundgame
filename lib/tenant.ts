@@ -49,7 +49,10 @@ async function mapSlugToTenantId(slug: string): Promise<string | null> {
 export async function getTenant(): Promise<Tenant> {
   const host = await getHost();
   const slug = (host.split('.')[0] || 'default').toLowerCase();
-  const id = (await mapSlugToTenantId(slug)) ?? '00000000-0000-0000-0000-000000000000';
+  const id = await mapSlugToTenantId(slug);
+  if (!id) {
+    throw new Error(`Unknown tenant: ${slug}`);
+  }
   return { id, slug };
 }
 
