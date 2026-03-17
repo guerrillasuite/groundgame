@@ -491,7 +491,8 @@ export async function POST(request: Request) {
         .from("people")
         .select(DEDUP_SELECT)
         .eq("tenant_id", tenantId)
-        .in("household_id", hhChunk);
+        .in("household_id", hhChunk)
+        .limit(10000);
       for (const p of data ?? []) {
         const key = `${(p.first_name ?? "").toLowerCase()}|${(p.last_name ?? "").toLowerCase()}|${p.household_id}`;
         existingByNameHH.set(key, p);

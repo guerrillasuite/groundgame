@@ -16,6 +16,11 @@ const HARDCODED_TENANTS: Record<string, string> = {
   'test':           '00000000-0000-0000-0000-000000000000',
   'localhost':      '00000000-0000-0000-0000-000000000000',
   'guerrillasuite': '85c60ca4-ee15-4d45-b27e-a8758d91f896',
+  'fsm':            '038f7dc1-2892-4b37-9b08-f9c93f9d53b0',
+  'riseandfite':    'd43bad5e-921a-48b7-ae83-4fa8de0d6730',
+  'thunder':        'f5627732-3739-4317-87f8-f0e6b1bf980a',
+  'lpky':           '96b2b6f4-cec6-4801-9287-4806a7085463',
+  'lp-bexar':       'cb751fb2-b8e6-4115-af21-0aa87cb377b1',
 };
 
 // Next 15 requires await on dynamic APIs like headers()
