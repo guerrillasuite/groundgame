@@ -10,9 +10,15 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = request.nextUrl;
+  const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/crm";
+
+  // Behind Railway's reverse proxy, request.nextUrl.origin resolves to the
+  // internal address (localhost:8080). Use forwarded headers for the real origin.
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? request.nextUrl.host;
+  const proto = request.headers.get("x-forwarded-proto") ?? "https";
+  const origin = `${proto}://${host}`;
 
   if (code) {
     const cookieStore = await cookies();
