@@ -186,11 +186,12 @@ export async function POST(request: Request) {
     const hhMap = new Map<string, string>(); // location_id → household_id (existing only)
     const allLocIds = [...new Set(locMap.values())];
     if (allLocIds.length > 0) {
-      for (const locChunk of chunk(allLocIds, 500)) {
+      for (const locChunk of chunk(allLocIds, 100)) {
         const { data: existingHH } = await sbGlobal
           .from("households")
           .select("id, location_id")
-          .in("location_id", locChunk);
+          .in("location_id", locChunk)
+          .limit(10000);
         for (const hh of existingHH ?? []) {
           if (hh.location_id) hhMap.set(hh.location_id, hh.id);
         }
@@ -244,7 +245,7 @@ export async function POST(request: Request) {
     const existingByNameHH = new Map<string, string>();
     if (nameHHKeys.size > 0) {
       const hhIds = [...new Set([...nameHHKeys.keys()].map((k) => k.split("|")[2]))];
-      for (const hhChunk of chunk(hhIds, 500)) {
+      for (const hhChunk of chunk(hhIds, 100)) {
         const { data: existing } = await sbGlobal
           .from("people")
           .select("id, first_name, last_name, household_id")
@@ -383,7 +384,7 @@ export async function POST(request: Request) {
   const allLocIds = [...new Set(locMap.values())];
 
   if (allLocIds.length > 0) {
-    for (const locChunk of chunk(allLocIds, 500)) {
+    for (const locChunk of chunk(allLocIds, 100)) {
       const { data: existingHH } = await sbGlobal
         .from("households")
         .select("id, location_id")
@@ -513,7 +514,7 @@ export async function POST(request: Request) {
   const existingByNameHH = new Map<string, Record<string, any>>();
   if (nameHHKeys.size > 0) {
     const hhIds = [...new Set([...nameHHKeys.keys()].map((k) => k.split("|")[2]))];
-    for (const hhChunk of chunk(hhIds, 500)) {
+    for (const hhChunk of chunk(hhIds, 100)) {
       const { data } = await sbGlobal
         .from("people")
         .select(DEDUP_SELECT)
@@ -630,7 +631,7 @@ export async function POST(request: Request) {
   )];
 
   if (involvedHhIds.length > 0) {
-    for (const hhChunk of chunk(involvedHhIds, 500)) {
+    for (const hhChunk of chunk(involvedHhIds, 100)) {
       const { data: residents } = await sb
         .from("people")
         .select("last_name, household_id")
