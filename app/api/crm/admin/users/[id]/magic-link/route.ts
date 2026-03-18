@@ -80,10 +80,16 @@ export async function POST(
     const email: string = target.email;
     if (!email) return NextResponse.json({ error: "User has no email" }, { status: 400 });
 
+    const body = await request.clone().json().catch(() => ({}));
+    const next: string = body.next ?? "/crm";
+    const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+    const proto = request.headers.get("x-forwarded-proto") ?? "https";
+    const redirectTo = `${proto}://${host}/api/auth/callback?next=${encodeURIComponent(next)}`;
+
     const linkRes = await fetch(`${SB_URL()}/auth/v1/admin/generate_link`, {
       method: "POST",
       headers: sbHeaders(),
-      body: JSON.stringify({ type: "magiclink", email }),
+      body: JSON.stringify({ type: "magiclink", email, redirect_to: redirectTo }),
     });
 
     const linkData = await linkRes.json();

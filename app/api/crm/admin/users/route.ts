@@ -218,10 +218,15 @@ export async function POST(request: Request) {
     let inviteLink: string | null = null;
     if (!password) {
       // Generate a magic-link invite so the admin can share it
+      const inviteNext = role === "admin" ? "/crm" : "/";
+      const inviteHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+      const inviteProto = request.headers.get("x-forwarded-proto") ?? "https";
+      const inviteRedirectTo = `${inviteProto}://${inviteHost}/api/auth/callback?next=${encodeURIComponent(inviteNext)}`;
+
       const linkRes = await fetch(`${SB_URL()}/auth/v1/admin/generate_link`, {
         method: "POST",
         headers: sbHeaders(),
-        body: JSON.stringify({ type: "invite", email }),
+        body: JSON.stringify({ type: "invite", email, redirect_to: inviteRedirectTo }),
       });
       if (linkRes.ok) {
         const linkData = await linkRes.json();

@@ -387,9 +387,12 @@ export default function UsersPanel() {
     if (!token) return;
     setMagicLoading(true);
     setMagicLink(null);
+    const userRole = users.find((u) => u.id === userId)?.role;
+    const next = userRole === "admin" ? "/crm" : "/";
     const res = await fetch(`/api/crm/admin/users/${userId}/magic-link`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ next }),
     });
     const data = await res.json();
     if (res.ok && data.link) setMagicLink(data.link);
