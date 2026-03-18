@@ -10,58 +10,98 @@ function makeSb(tenantId: string) {
   );
 }
 
+function makeSbGlobal() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export async function GET(request: Request) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
+  const sbGlobal = makeSbGlobal();
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 500);
   const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0"), 0);
 
+  // Step 1: Get all household_ids linked to people this tenant can see
+  // Check both people.household_id and person_households junction
+  const [directPeople, junctionRows] = await Promise.all([
+    sb
+      .from("people")
+      .select("household_id, tenant_people!inner(tenant_id)")
+      .eq("tenant_people.tenant_id", tenant.id)
+      .not("household_id", "is", null)
+      .limit(50000),
+    sb
+      .from("person_households")
+      .select("household_id")
+      .eq("tenant_id", tenant.id)
+      .limit(50000),
+  ]);
+
+  const allHhIds = [
+    ...new Set([
+      ...(directPeople.data ?? []).map((p: any) => p.household_id).filter(Boolean),
+      ...(junctionRows.data ?? []).map((r: any) => r.household_id).filter(Boolean),
+    ]),
+  ] as string[];
+
+  if (allHhIds.length === 0) return NextResponse.json({ rows: [], total: 0 });
+
+  // Step 2: Fetch matching households across all chunks, with optional name filter
   const like = q ? `%${q}%` : null;
+  const allMatching: any[] = [];
 
-  let hhQuery = sb
-    .from("households")
-    .select("id, name, location_id", { count: "exact" })
-    .eq("tenant_id", tenant.id)
-    .order("name", { ascending: true })
-    .range(offset, offset + limit - 1);
+  for (const idChunk of chunk(allHhIds, 100)) {
+    let hhQuery = sbGlobal
+      .from("households")
+      .select("id, name, location_id")
+      .in("id", idChunk);
+    if (like) hhQuery = (hhQuery as any).ilike("name", like);
+    const { data } = await hhQuery;
+    allMatching.push(...(data ?? []));
+  }
 
-  if (like) hhQuery = (hhQuery as any).ilike("name", like);
+  allMatching.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+  const total = allMatching.length;
+  const pageRows = allMatching.slice(offset, offset + limit);
 
-  const { data, count, error } = await hhQuery;
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const rows = data ?? [];
-
-  // Fetch addresses for the returned households
-  const locIds = [...new Set(rows.map((h: any) => h.location_id).filter(Boolean))];
+  // Step 3: Fetch addresses for the returned page
+  const locIds = [...new Set(pageRows.map((h: any) => h.location_id).filter(Boolean))];
   const addressById = new Map<string, string>();
 
   if (locIds.length > 0) {
-    const { data: locs } = await sb
-      .from("locations")
-      .select("id, normalized_key, address_line1, city, state, postal_code")
-      .in("id", locIds);
+    for (const locChunk of chunk(locIds as string[], 100)) {
+      const { data: locs } = await sbGlobal
+        .from("locations")
+        .select("id, normalized_key, address_line1, city, state, postal_code")
+        .in("id", locChunk);
 
-    for (const l of locs ?? []) {
-      const nk = (l.normalized_key ?? "").trim();
-      if (nk) {
-        addressById.set(l.id, nk);
-      } else {
-        const line2 = [l.city, l.state].filter(Boolean).join(", ");
-        addressById.set(l.id, [l.address_line1, line2, l.postal_code].filter(Boolean).join(", "));
+      for (const l of locs ?? []) {
+        const nk = (l.normalized_key ?? "").trim();
+        addressById.set(
+          l.id,
+          nk || [l.address_line1, [l.city, l.state].filter(Boolean).join(", "), l.postal_code].filter(Boolean).join(", ")
+        );
       }
     }
   }
 
   return NextResponse.json({
-    rows: rows.map((h: any) => ({
+    rows: pageRows.map((h: any) => ({
       id: h.id,
       name: (h.name?.trim() ?? "") || "(unnamed)",
       address: h.location_id ? (addressById.get(h.location_id) ?? "") : "",
     })),
-    total: count ?? 0,
+    total,
   });
 }

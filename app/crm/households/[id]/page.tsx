@@ -44,7 +44,6 @@ export default async function HouseholdDetail({ params }: Params) {
       home_owner, home_estimated_value, home_purchase_year, home_dwelling_type,
       home_sqft, home_bedrooms`)
     .eq("id", hhId)
-    .eq("tenant_id", tenant.id)
     .single();
 
   if (hhErr || !household) {
