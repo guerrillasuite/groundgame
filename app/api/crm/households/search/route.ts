@@ -18,17 +18,18 @@ export async function GET(request: Request) {
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 500);
   const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0"), 0);
 
-  if (!q) return NextResponse.json({ rows: [], total: 0 });
+  const like = q ? `%${q}%` : null;
 
-  const like = `%${q}%`;
-
-  const { data, count, error } = await sb
+  let hhQuery = sb
     .from("households")
     .select("id, name, location_id", { count: "exact" })
     .eq("tenant_id", tenant.id)
-    .ilike("name", like)
     .order("name", { ascending: true })
     .range(offset, offset + limit - 1);
+
+  if (like) hhQuery = (hhQuery as any).ilike("name", like);
+
+  const { data, count, error } = await hhQuery;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

@@ -290,17 +290,6 @@ export async function POST(request: Request) {
       skipped,
       failed: 0,
       errors: errors.slice(0, 50),
-      _debug: {
-        validRows: validRows.length,
-        uniqueAddrKeys: uniqueAddrKeys.size,
-        locMapSize: locMap.size,
-        hhMapSize: hhMap.size,
-        lalvoteidMatches: existingByLalvoteid.size,
-        stateVoterIdMatches: existingByStateVoterId.size,
-        emailMatches: existingByEmail.size,
-        nameHHKeysBuilt: nameHHKeys.size,
-        nameHHMatches: existingByNameHH.size,
-      },
     });
   }
 
