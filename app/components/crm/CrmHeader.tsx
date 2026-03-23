@@ -25,7 +25,10 @@ const NAV: NavEntry[] = [
     { href: "/crm/import",        label: "Import" },
     { href: "/crm/dedupe",        label: "Dedupe" },
   ]},
-  { href: "/crm/users",           label: "Users" },
+  { label: "Settings", items: [
+    { href: "/crm/settings/users",  label: "Users" },
+    { href: "/crm/settings/stages", label: "Pipeline Stages" },
+  ]},
   { href: "/crm/account",         label: "Account" },
 ];
 

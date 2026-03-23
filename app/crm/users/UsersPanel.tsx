@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { STAGE_PRESETS } from "@/lib/opportunityPresets";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -178,6 +179,7 @@ export default function UsersPanel() {
   const [showNewTenant, setShowNewTenant] = useState(false);
   const [newSlug, setNewSlug] = useState("");
   const [newName, setNewName] = useState("");
+  const [newTemplate, setNewTemplate] = useState("telemarketing");
   const [tenantSaving, setTenantSaving] = useState(false);
   const [tenantErr, setTenantErr] = useState<string | null>(null);
 
@@ -433,7 +435,15 @@ export default function UsersPanel() {
     if (!res.ok) {
       setTenantErr(data.error ?? "Failed to create tenant");
     } else {
-      setNewSlug(""); setNewName("");
+      // Seed pipeline stages from selected template
+      const preset = STAGE_PRESETS.find((p) => p.id === newTemplate) ?? STAGE_PRESETS[0];
+      await fetch(`/api/crm/opportunities/stages?tenantId=${data.id}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ stages: preset.stages }),
+      }).catch(() => {}); // non-fatal: stages can be configured later
+
+      setNewSlug(""); setNewName(""); setNewTemplate("telemarketing");
       setShowNewTenant(false);
       fetchTenants(token);
     }
@@ -849,6 +859,14 @@ export default function UsersPanel() {
                     <label style={{ fontSize: 11, opacity: 0.6, display: "block", marginBottom: 4 }}>Display Name *</label>
                     <input required type="text" value={newName} onChange={(e) => setNewName(e.target.value)} style={INPUT} placeholder="My Organization" />
                   </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, opacity: 0.6, display: "block", marginBottom: 4 }}>Starting Pipeline Template</label>
+                  <select value={newTemplate} onChange={(e) => setNewTemplate(e.target.value)} style={INPUT}>
+                    {STAGE_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
                 </div>
                 {tenantErr && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{tenantErr}</p>}
                 <div style={{ display: "flex", gap: 8 }}>
