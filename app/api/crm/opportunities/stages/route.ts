@@ -67,25 +67,26 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
     const stages: { key: string; label: string; order_index: number }[] = body.stages ?? [];
-    const fallbackStage: string | undefined = body.fallbackStage;
+    // fallbackMap: { [orphanedStageKey]: destinationStageKey }
+    const fallbackMap: Record<string, string> | undefined = body.fallbackMap;
 
     if (!stages.length) {
       return NextResponse.json({ error: "At least one stage is required" }, { status: 400 });
     }
 
-    const newKeys = stages.map((s) => s.key);
     let migratedCount = 0;
 
-    // Migrate orphaned opportunities before replacing stages
-    if (fallbackStage) {
-      const { data: migrated } = await sb
-        .from("opportunities")
-        .update({ stage: fallbackStage })
-        .eq("tenant_id", tenantId)
-        .not("stage", "in", `(${newKeys.join(",")})`)
-        .not("stage", "is", null)
-        .select("id");
-      migratedCount = migrated?.length ?? 0;
+    // Migrate orphaned opportunities before replacing stages — one UPDATE per mapping
+    if (fallbackMap && Object.keys(fallbackMap).length > 0) {
+      for (const [oldKey, newKey] of Object.entries(fallbackMap)) {
+        const { data: migrated } = await sb
+          .from("opportunities")
+          .update({ stage: newKey })
+          .eq("tenant_id", tenantId)
+          .eq("stage", oldKey)
+          .select("id");
+        migratedCount += migrated?.length ?? 0;
+      }
     }
 
     // Replace all stages for this tenant

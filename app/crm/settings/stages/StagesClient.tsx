@@ -28,6 +28,7 @@ const card: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,.08)",
   borderRadius: 10,
   padding: "14px 16px",
+  color: "rgb(238 242 246)",
 };
 
 const INPUT: React.CSSProperties = {
@@ -61,8 +62,9 @@ function WarningModal({
   orphanedStages,
   affectedCount,
   newPresetStages,
-  fallbackStage,
-  onFallbackChange,
+  currentStages,
+  fallbackMap,
+  onFallbackMapChange,
   onConfirm,
   onCancel,
   saving,
@@ -70,8 +72,9 @@ function WarningModal({
   orphanedStages: string[];
   affectedCount: number;
   newPresetStages: StageDefinition[];
-  fallbackStage: string;
-  onFallbackChange: (s: string) => void;
+  currentStages: { key: string; label: string }[];
+  fallbackMap: Record<string, string>;
+  onFallbackMapChange: (oldKey: string, newKey: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
   saving: boolean;
@@ -82,34 +85,39 @@ function WarningModal({
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 9999, padding: 16,
     }}>
-      <div style={{ ...card, maxWidth: 460, width: "100%", border: "1px solid rgba(251,191,36,.25)" }}>
+      <div style={{ ...card, maxWidth: 500, width: "100%", border: "1px solid rgba(251,191,36,.25)" }}>
         <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 15, color: "#fbbf24" }}>
           ⚠ {affectedCount} opportunit{affectedCount === 1 ? "y" : "ies"} will lose their stage
         </p>
-        <p style={{ margin: "0 0 12px", fontSize: 13, opacity: 0.65 }}>
-          The following stages won't exist in the new template:
+        <p style={{ margin: "0 0 16px", fontSize: 13, opacity: 0.65 }}>
+          These stages won't exist in the new template. Choose where each one's opportunities should go:
         </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-          {orphanedStages.map((s) => (
-            <span key={s} style={{
-              padding: "3px 10px", borderRadius: 20, fontSize: 12,
-              background: "rgba(251,191,36,.15)", color: "#fbbf24", fontWeight: 600,
-            }}>{s}</span>
-          ))}
-        </div>
 
-        <label style={{ fontSize: 12, opacity: 0.6, display: "block", marginBottom: 6 }}>
-          Move these opportunities to:
-        </label>
-        <select
-          value={fallbackStage}
-          onChange={(e) => onFallbackChange(e.target.value)}
-          style={{ ...INPUT, marginBottom: 16 }}
-        >
-          {newPresetStages.map((s) => (
-            <option key={s.key} value={s.key}>{s.label}</option>
-          ))}
-        </select>
+        <div style={{ display: "grid", gap: 10, marginBottom: 20 }}>
+          {orphanedStages.map((oldKey) => {
+            const oldLabel = currentStages.find((s) => s.key === oldKey)?.label ?? oldKey;
+            return (
+              <div key={oldKey} style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  padding: "6px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                  background: "rgba(251,191,36,.15)", color: "#fbbf24", textAlign: "center",
+                }}>
+                  {oldLabel}
+                </div>
+                <span style={{ fontSize: 12, opacity: 0.5 }}>→</span>
+                <select
+                  value={fallbackMap[oldKey] ?? newPresetStages[0]?.key ?? ""}
+                  onChange={(e) => onFallbackMapChange(oldKey, e.target.value)}
+                  style={{ ...INPUT }}
+                >
+                  {newPresetStages.map((s) => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
 
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onConfirm} disabled={saving} style={btn("var(--gg-primary, #2563eb)")}>
@@ -140,8 +148,9 @@ export default function StagesClient() {
   // Warning modal
   const [pendingPreset, setPendingPreset] = useState<StagePreset | null>(null);
   const [orphanInfo, setOrphanInfo] = useState<{ affectedCount: number; orphanedStages: string[] } | null>(null);
-  const [fallbackStage, setFallbackStage] = useState("");
+  const [fallbackMap, setFallbackMap] = useState<Record<string, string>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
 
   const fetchStages = useCallback(async (tok: string | null, tenantId: string | null) => {
     setLoading(true);
@@ -195,6 +204,7 @@ export default function StagesClient() {
 
   async function handleTemplateClick(preset: StagePreset) {
     setPreviewLoading(true);
+    setApplyingPresetId(preset.id);
     setError(null);
     try {
       const url = selectedTenantId
@@ -208,40 +218,52 @@ export default function StagesClient() {
         headers,
         body: JSON.stringify({ newStageKeys: preset.stages.map((s) => s.key) }),
       });
-      if (!res.ok) throw new Error("Preview failed");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Preview failed");
+      }
 
       const info = await res.json();
       if (info.affectedCount > 0) {
+        // Initialize each orphaned stage to map to the first stage of the new preset
+        const initialMap: Record<string, string> = {};
+        for (const oldKey of info.orphanedStages as string[]) {
+          initialMap[oldKey] = preset.stages[0].key;
+        }
         setPendingPreset(preset);
         setOrphanInfo(info);
-        setFallbackStage(preset.stages[0].key);
+        setFallbackMap(initialMap);
+        setApplyingPresetId(null);
       } else {
         await applyPreset(preset, null);
       }
-    } catch {
-      setError("Failed to check existing opportunities. Please try again.");
+    } catch (e: any) {
+      setError(e.message ?? "Failed to check existing opportunities. Please try again.");
+      setApplyingPresetId(null);
     } finally {
       setPreviewLoading(false);
     }
   }
 
-  async function applyPreset(preset: StagePreset, fallback: string | null) {
+  async function applyPreset(preset: StagePreset, map: Record<string, string> | null) {
     setSaving(true);
+    setApplyingPresetId(preset.id);
     setError(null);
     try {
-      await putStages(preset.stages, fallback ?? undefined);
+      await putStages(preset.stages, map ?? undefined);
       setStages(preset.stages.map((s, i) => ({ ...s, order_index: i })));
       showSuccess(`Applied "${preset.name}" template`);
     } catch (e: any) {
       setError(e.message ?? "Failed to apply template");
     } finally {
       setSaving(false);
+      setApplyingPresetId(null);
       setPendingPreset(null);
       setOrphanInfo(null);
     }
   }
 
-  async function putStages(stagesToSave: StageDefinition[], fallbackStageKey?: string) {
+  async function putStages(stagesToSave: StageDefinition[], map?: Record<string, string>) {
     const url = selectedTenantId
       ? `/api/crm/opportunities/stages?tenantId=${selectedTenantId}`
       : "/api/crm/opportunities/stages";
@@ -251,7 +273,7 @@ export default function StagesClient() {
     const res = await fetch(url, {
       method: "PUT",
       headers,
-      body: JSON.stringify({ stages: stagesToSave, fallbackStage: fallbackStageKey }),
+      body: JSON.stringify({ stages: stagesToSave, fallbackMap: map }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -307,9 +329,9 @@ export default function StagesClient() {
   const tenantName = tenants.find((t) => t.id === selectedTenantId)?.name;
 
   return (
-    <section style={{ padding: 16, maxWidth: 760, margin: "0 auto" }}>
+    <section style={{ padding: 16, maxWidth: 760, margin: "0 auto", color: "rgb(238 242 246)" }}>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Pipeline Stages</h1>
-      <p style={{ margin: "0 0 20px", fontSize: 13, opacity: 0.55 }}>
+      <p style={{ margin: "0 0 20px", fontSize: 13, opacity: 0.7 }}>
         Choose a preset template or customize your stages below.
       </p>
 
@@ -343,33 +365,44 @@ export default function StagesClient() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
           {STAGE_PRESETS.map((preset) => {
             const isActive = activePreset?.id === preset.id;
+            const isApplying = applyingPresetId === preset.id;
+            const isDisabled = previewLoading || saving;
             return (
               <button
                 key={preset.id}
                 onClick={() => handleTemplateClick(preset)}
-                disabled={previewLoading || saving}
+                disabled={isDisabled}
                 style={{
                   ...card,
                   textAlign: "left",
-                  cursor: previewLoading || saving ? "default" : "pointer",
+                  cursor: isDisabled ? "default" : "pointer",
                   border: isActive
                     ? "1px solid var(--gg-primary, #2563eb)"
-                    : "1px solid rgba(255,255,255,.08)",
-                  background: isActive ? "rgba(37,99,235,.12)" : "rgba(255,255,255,.04)",
+                    : "1px solid rgba(255,255,255,.12)",
+                  background: isActive
+                    ? "rgba(37,99,235,.15)"
+                    : isApplying
+                    ? "rgba(255,255,255,.08)"
+                    : "rgba(255,255,255,.04)",
                   padding: "12px 14px",
                   transition: "border-color 0.15s, background 0.15s",
+                  opacity: isDisabled && !isApplying ? 0.6 : 1,
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-                  {isActive && <span style={{ color: "var(--gg-primary, #2563eb)", marginRight: 6 }}>✓</span>}
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                  {isApplying ? (
+                    <span style={{ color: "rgba(255,255,255,.5)", fontSize: 11 }}>Applying…</span>
+                  ) : isActive ? (
+                    <span style={{ color: "var(--gg-primary, #2563eb)" }}>✓</span>
+                  ) : null}
                   {preset.name}
                 </div>
-                <div style={{ fontSize: 11, opacity: 0.5, lineHeight: 1.4 }}>{preset.description}</div>
+                <div style={{ fontSize: 11, opacity: 0.65, lineHeight: 1.5 }}>{preset.description}</div>
                 <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
                   {preset.stages.map((s) => (
                     <span key={s.key} style={{
-                      fontSize: 10, padding: "1px 6px", borderRadius: 4,
-                      background: "rgba(255,255,255,.08)", opacity: 0.8,
+                      fontSize: 11, padding: "2px 7px", borderRadius: 4,
+                      background: "rgba(255,255,255,.12)",
                     }}>{s.label}</span>
                   ))}
                 </div>
@@ -466,9 +499,12 @@ export default function StagesClient() {
           orphanedStages={orphanInfo.orphanedStages}
           affectedCount={orphanInfo.affectedCount}
           newPresetStages={pendingPreset.stages}
-          fallbackStage={fallbackStage}
-          onFallbackChange={setFallbackStage}
-          onConfirm={() => applyPreset(pendingPreset, fallbackStage)}
+          currentStages={stages}
+          fallbackMap={fallbackMap}
+          onFallbackMapChange={(oldKey, newKey) =>
+            setFallbackMap((prev) => ({ ...prev, [oldKey]: newKey }))
+          }
+          onConfirm={() => applyPreset(pendingPreset, fallbackMap)}
           onCancel={() => { setPendingPreset(null); setOrphanInfo(null); }}
           saving={saving}
         />
