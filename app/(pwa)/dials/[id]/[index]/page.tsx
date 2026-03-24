@@ -163,6 +163,8 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     useState<'low'|'normal'|'high'|''>('');
   const [oppNotes, setOppNotes] = useState('');
 
+  const [showProfile, setShowProfile] = useState(false);
+
   // Reset when moving to a different target
   useEffect(() => {
     setStartedAt(null);
@@ -171,6 +173,7 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     setMkOpp(false);
     setShowSurvey(false);
     setSurveyDone(false);
+    setShowProfile(false);
     setOppTitle('');
     setOppStage('');
     setOppValue('');
@@ -431,64 +434,90 @@ export default function CallScreen({ params }: { params: { id: string; index: st
       </div>
 
       <div className="list-item">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div>
-            <h4 style={{ marginBottom: 4 }}>{fullName}</h4>
-            <p className="muted">
-              {p.occupation || '—'}{p.employer ? ` • ${p.employer}` : ''}
-            </p>
-            {p.address && <p className="muted" style={{ marginTop: 4 }}>{p.address}</p>}
-          </div>
-          <a
-            href={`/crm/people/${p.person_id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: '#60A5FA',
-              whiteSpace: 'nowrap',
-              textDecoration: 'none',
-              padding: '4px 8px',
-              borderRadius: 6,
-              border: '1px solid rgba(96,165,250,.3)',
-              flexShrink: 0,
-            }}
-          >
-            View Profile →
-          </a>
-        </div>
-        {p.notes && (
-          <p className="muted" style={{ marginTop: 8, fontSize: 12, fontStyle: 'italic', borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 8 }}>
-            {p.notes}
-          </p>
-        )}
+        {/* Person header — always visible */}
+        <h4 style={{ marginBottom: 2 }}>{fullName}</h4>
+        <p className="muted" style={{ marginBottom: 6 }}>
+          {p.occupation || '—'}{p.employer ? ` • ${p.employer}` : ''}
+        </p>
 
-        <div className="row" style={{ marginTop: 10 }}>
+        <div className="row" style={{ marginBottom: 12 }}>
           {p.phone && (
-            <a
-              className="press-card"
-              style={{ gridTemplateColumns: '1fr' }}
-              href={`tel:${encodeURIComponent(p.phone)}`}
-              onClick={onStartInteraction}
-            >
+            <a className="press-card" style={{ gridTemplateColumns: '1fr' }}
+              href={`tel:${encodeURIComponent(p.phone)}`} onClick={onStartInteraction}>
               Call
             </a>
           )}
           {p.email && (
-            <a
-              className="press-card"
-              style={{ gridTemplateColumns: '1fr' }}
-              href={`mailto:${encodeURIComponent(p.email)}`}
-              onClick={onStartInteraction}
-            >
+            <a className="press-card" style={{ gridTemplateColumns: '1fr' }}
+              href={`mailto:${encodeURIComponent(p.email)}`} onClick={onStartInteraction}>
               Email
             </a>
           )}
         </div>
-      </div>
 
-      <div className="list-item">
+        {/* Tab strip */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1px solid rgba(255,255,255,.08)', paddingBottom: 12 }}>
+          <button
+            type="button"
+            onClick={() => setShowProfile(false)}
+            style={{
+              flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: !showProfile ? 'rgba(96,165,250,.18)' : 'transparent',
+              color: !showProfile ? '#60A5FA' : 'rgba(255,255,255,.5)',
+              fontWeight: !showProfile ? 700 : 400, fontSize: 13,
+            }}
+          >
+            📋 Form
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowProfile(true)}
+            style={{
+              flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: showProfile ? 'rgba(96,165,250,.18)' : 'transparent',
+              color: showProfile ? '#60A5FA' : 'rgba(255,255,255,.5)',
+              fontWeight: showProfile ? 700 : 400, fontSize: 13,
+            }}
+          >
+            👤 Profile
+          </button>
+        </div>
+
+        {/* Profile tab */}
+        {showProfile && (
+          <div style={{ display: 'grid', gap: 10, fontSize: 13 }}>
+            {p.address && (
+              <div>
+                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Address</div>
+                <div>{p.address}</div>
+              </div>
+            )}
+            {p.phone && (
+              <div>
+                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Phone</div>
+                <div>{p.phone}</div>
+              </div>
+            )}
+            {p.email && (
+              <div>
+                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Email</div>
+                <div>{p.email}</div>
+              </div>
+            )}
+            {p.notes && (
+              <div>
+                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Notes</div>
+                <div style={{ lineHeight: 1.5, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{p.notes}</div>
+              </div>
+            )}
+            {!p.address && !p.notes && !p.phone && !p.email && (
+              <p className="muted">No additional details on file.</p>
+            )}
+          </div>
+        )}
+
+        {/* Form tab */}
+        {!showProfile && (<>
         <label htmlFor="callResult" className="muted">Call result</label>
         <select
           id="callResult"
@@ -632,7 +661,10 @@ export default function CallScreen({ params }: { params: { id: string; index: st
           </div>
         )}
 
-        <div className="row" style={{ marginTop: 12 }}>
+        </>)}
+
+        {/* Actions — always visible in both tabs */}
+        <div className="row" style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.08)' }}>
           <button
             className="press-card"
             style={{ gridTemplateColumns: '1fr' }}

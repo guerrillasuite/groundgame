@@ -70,6 +70,11 @@ export default function KnockStep() {
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [householdName, setHouseholdName] = useState<string | null>(null);
 
+  // Profile panel
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileDetails, setProfileDetails] = useState<{ phone?: string | null; email?: string | null; occupation?: string | null; employer?: string | null; notes?: string | null } | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
   // Photo
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -134,6 +139,30 @@ export default function KnockStep() {
       .catch(() => {});
   }, [params.id]);
 
+  // Lazy-fetch person details when profile tab is opened
+  useEffect(() => {
+    const personId = selectedPersonId ?? (rows && rows.length > 0 ? rows[clamp(urlIndex, 0, rows.length - 1)]?.primary_person_id : null);
+    if (!showProfile || !personId || profileDetails) return;
+    let cancelled = false;
+    setProfileLoading(true);
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('people')
+          .select('phone, email, occupation, employer, notes')
+          .eq('id', personId)
+          .maybeSingle();
+        if (!cancelled) setProfileDetails(data ?? {});
+      } catch {
+        if (!cancelled) setProfileDetails({});
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showProfile, selectedPersonId]);
+
   // Compute safe index & target row
   const total = rows?.length ?? 0;
   const safeIndex = total > 0 ? clamp(urlIndex, 0, total - 1) : 0;
@@ -156,6 +185,8 @@ export default function KnockStep() {
     setNotes("");
     setShowSurvey(false);
     setSurveyDone(false);
+    setShowProfile(false);
+    setProfileDetails(null);
     setOppTitle('');
     setOppStage('');
     setOppValue('');
@@ -360,27 +391,7 @@ export default function KnockStep() {
         {/* Residents */}
         {people.length > 0 && (
           <div className="card plain info-box" style={{ marginTop: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="info-title">Residents</div>
-              {(selectedPersonId ?? target.primary_person_id) && (
-                <a
-                  href={`/crm/people/${selectedPersonId ?? target.primary_person_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: '#60A5FA',
-                    textDecoration: 'none',
-                    padding: '3px 8px',
-                    borderRadius: 6,
-                    border: '1px solid rgba(96,165,250,.3)',
-                  }}
-                >
-                  View Profile →
-                </a>
-              )}
-            </div>
+            <div className="info-title">Residents</div>
             <div className="chips" role="radiogroup" aria-label="Select person">
               {people.map((p) => (
                 <button
@@ -390,7 +401,7 @@ export default function KnockStep() {
                   aria-checked={selectedPersonId === p.id}
                   className="chip"
                   data-selected={selectedPersonId === p.id}
-                  onClick={() => setSelectedPersonId(p.id)}
+                  onClick={() => { setSelectedPersonId(p.id); setProfileDetails(null); }}
                 >
                   {p.name}
                 </button>
@@ -399,7 +410,76 @@ export default function KnockStep() {
           </div>
         )}
 
-        {/* Result buttons */}
+        {/* Form / Profile tab strip — shown when a person is identified */}
+        {(selectedPersonId ?? target.primary_person_id) && (
+          <div style={{ display: 'flex', gap: 6, margin: '14px 0 4px' }}>
+            <button
+              type="button"
+              onClick={() => setShowProfile(false)}
+              style={{
+                flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: !showProfile ? 'rgba(96,165,250,.18)' : 'transparent',
+                color: !showProfile ? '#60A5FA' : 'rgba(255,255,255,.5)',
+                fontWeight: !showProfile ? 700 : 400, fontSize: 13,
+              }}
+            >
+              📋 Form
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowProfile(true)}
+              style={{
+                flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: showProfile ? 'rgba(96,165,250,.18)' : 'transparent',
+                color: showProfile ? '#60A5FA' : 'rgba(255,255,255,.5)',
+                fontWeight: showProfile ? 700 : 400, fontSize: 13,
+              }}
+            >
+              👤 Profile
+            </button>
+          </div>
+        )}
+
+        {/* Profile tab content */}
+        {showProfile && (
+          <div style={{ padding: '14px 0', display: 'grid', gap: 10, fontSize: 13 }}>
+            {profileLoading && <p style={{ opacity: 0.5 }}>Loading…</p>}
+            {!profileLoading && profileDetails && (
+              <>
+                {(profileDetails.occupation || profileDetails.employer) && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Role</div>
+                    <div>{[profileDetails.occupation, profileDetails.employer].filter(Boolean).join(' • ')}</div>
+                  </div>
+                )}
+                {profileDetails.phone && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Phone</div>
+                    <div>{profileDetails.phone}</div>
+                  </div>
+                )}
+                {profileDetails.email && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Email</div>
+                    <div>{profileDetails.email}</div>
+                  </div>
+                )}
+                {profileDetails.notes && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Notes</div>
+                    <div style={{ lineHeight: 1.5, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{profileDetails.notes}</div>
+                  </div>
+                )}
+                {!profileDetails.occupation && !profileDetails.phone && !profileDetails.email && !profileDetails.notes && (
+                  <p style={{ opacity: 0.5 }}>No additional details on file.</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Result buttons — hidden while viewing profile */}
+        {!showProfile && <>
         <div className="mt-6">
           <div className="block text-sm mb-2 opacity-80">Result</div>
           <div className="dispo-grid">
@@ -590,8 +670,9 @@ export default function KnockStep() {
             {saveErr}
           </div>
         ) : null}
+        </>}
 
-        {/* Actions */}
+        {/* Actions — always visible */}
         <div className="actions mt-7">
           <button
             type="button"
