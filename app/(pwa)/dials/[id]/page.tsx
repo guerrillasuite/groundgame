@@ -1,7 +1,16 @@
 // app/(pwa)/dials/[id]/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getServerSupabase } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+import { getTenant } from "@/lib/tenant";
+
+function makeSb(tenantId: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +37,16 @@ export default async function DialListStart({
 }: {
   params: { id: string };
 }) {
-  const supabase = await getServerSupabase();
+  const { id: tenantId } = await getTenant();
+  const supabase = makeSb(tenantId);
 
-  // Pull the call list from the server-side view that carries list_mode + totals
+  // Query walklists directly (tenant-scoped) — api_call_lists view has no tenant_id
+  // and would leak cross-tenant data when used with the service role key.
   const { data, error } = await supabase
-    .from("api_call_lists")
-    .select("id,name,description,list_mode,total_targets,updated_at")
+    .from("walklists")
+    .select("id,name,description,mode,total_targets,updated_at")
     .eq("id", params.id)
+    .eq("tenant_id", tenantId)
     .single();
 
   if (error) {
@@ -58,9 +70,17 @@ export default async function DialListStart({
   }
 
   if (!data) return notFound();
-  const wl = data as CallList;
+  // Map walklists columns to CallList shape
+  const wl: CallList = {
+    id: (data as any).id,
+    name: (data as any).name,
+    description: (data as any).description,
+    list_mode: (data as any).mode,
+    total_targets: (data as any).total_targets,
+    updated_at: (data as any).updated_at,
+  };
 
-  // Prefer precomputed total_targets, fall back to join-table count
+  // Prefer precomputed total_targets, fall back to join-table count (tenant-scoped)
   let targets =
     wl.total_targets != null
       ? wl.total_targets
@@ -69,6 +89,7 @@ export default async function DialListStart({
             .from(JOIN_TABLE)
             .select("id", { head: true, count: "exact" })
             .eq("walklist_id", wl.id)
+            .eq("tenant_id", tenantId)
         ).count ?? 0;
 
   const updated = fmtUpdated(wl.updated_at);

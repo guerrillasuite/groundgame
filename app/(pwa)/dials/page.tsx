@@ -1,10 +1,19 @@
 ﻿// app/(pwa)/dials/page.tsx
 
 import Link from "next/link";
-import { getServerSupabase } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+import { getTenant } from "@/lib/tenant";
 import { Icon } from "../../components/Icon";
 
 export const dynamic = "force-dynamic";
+
+function makeSb(tenantId: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
+  );
+}
 
 type ApiWalklist = {
   id: string;
@@ -25,27 +34,35 @@ function fmtDate(d?: string | null) {
 }
 
 export default async function DialsPage() {
-  const supabase = await getServerSupabase();
+  const { id: tenantId } = await getTenant();
+  const supabase = makeSb(tenantId);
 
   let errorMessage: string | null = null;
   let rows: ApiWalklist[] = [];
 
-  // Load all lists from the view that actually carries list_mode & total_targets
+  // Query walklists directly (tenant-scoped) instead of api_call_lists view
+  // which has no tenant_id column and would leak cross-tenant data with service role key.
   const { data, error } = await supabase
-    .from("api_call_lists")
-    .select("id,name,description,list_mode,total_targets,updated_at")
+    .from("walklists")
+    .select("id,name,description,mode,total_targets,updated_at")
+    .eq("tenant_id", tenantId)
+    .eq("mode", "call")
     .order("updated_at", { ascending: false });
 
   if (error) {
     errorMessage = error.message;
   } else {
-    rows = (data ?? []) as ApiWalklist[];
+    rows = (data ?? []).map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      list_mode: r.mode,
+      total_targets: r.total_targets,
+      updated_at: r.updated_at,
+    })) as ApiWalklist[];
   }
 
-  // Only "call" lists (case-insensitive)
-  const callLists = rows.filter(
-    (wl) => (wl.list_mode ?? "").toLowerCase() === "call"
-  );
+  const callLists = rows;
 
   // Counts map, favoring the precomputed `total_targets`, falling back to join table count
   const counts = new Map<string, number>();
@@ -62,7 +79,8 @@ export default async function DialsPage() {
       const { count } = await supabase
         .from(JOIN_TABLE)
         .select("id", { head: true, count: "exact" })
-        .eq("walklist_id", wl.id); // RLS will scope results per-tenant
+        .eq("walklist_id", wl.id)
+        .eq("tenant_id", tenantId);
       counts.set(wl.id, count ?? 0);
     })
   );
