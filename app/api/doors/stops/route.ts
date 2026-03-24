@@ -71,17 +71,18 @@ export async function POST(req: NextRequest) {
       stopId &&
       (body.result === "contact_made" || body.result === "follow_up")
     ) {
+      const opp = body.opportunity; // custom fields from client if capture mode = opportunity
       await supabase.rpc("gs_create_opportunity_v2", {
         _tenant_id: tenantId,
         _payload: {
           stop_id: stopId,
           contact_person_id: body.person_id ?? null,
-          title: body.result === "follow_up" ? "Follow up from door" : "Door contact",
-          stage: "new",
-          amount_cents: null,
-          due_at: null,
-          priority: body.result === "follow_up" ? "high" : null,
-          description: body.notes ?? null,
+          title: opp?.title ?? (body.result === "follow_up" ? "Follow up from door" : "Door contact"),
+          stage: opp?.stage ?? "new",
+          amount_cents: opp?.amount_cents ?? null,
+          due_at: opp?.due_at ?? null,
+          priority: opp?.priority ?? (body.result === "follow_up" ? "high" : null),
+          description: opp?.description ?? body.notes ?? null,
           source: "doors",
         },
       });

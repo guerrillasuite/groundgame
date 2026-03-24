@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from "@/lib/supabase/client";
+import KnockSurvey from "@/app/components/KnockSurvey";
 
 type Person = {
   person_id: string;
@@ -16,6 +17,7 @@ type Person = {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  notes?: string | null;
 };
 
 const RESULTS = [
@@ -140,6 +142,12 @@ export default function CallScreen({ params }: { params: { id: string; index: st
   const [people, setPeople] = useState<Person[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // Capture mode (fetched once per list)
+  const [callCaptureMode, setCallCaptureMode] = useState<string | null>(null);
+  const [surveyId, setSurveyId] = useState<string | null>(null);
+  const [showSurvey, setShowSurvey] = useState(false);
+  const [surveyDone, setSurveyDone] = useState(false);
+
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [result, setResult] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
@@ -161,6 +169,8 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     setResult('');
     setNotes('');
     setMkOpp(false);
+    setShowSurvey(false);
+    setSurveyDone(false);
     setOppTitle('');
     setOppStage('');
     setOppValue('');
@@ -200,6 +210,7 @@ export default function CallScreen({ params }: { params: { id: string; index: st
               phone: r.phone ?? null,
               email: r.email ?? null,
               address: r.address ?? null,
+              notes: r.notes ?? null,
             }));
 
             // Attach walklist_item_id mapping for this list
@@ -277,6 +288,18 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     })();
 
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id]);
+
+  // Fetch capture mode for this list (once)
+  useEffect(() => {
+    fetch(`/api/doors/${params.id}/survey`)
+      .then((r) => r.json())
+      .then((d) => {
+        setCallCaptureMode(d.call_capture_mode ?? null);
+        setSurveyId(d.survey_id ?? null);
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
@@ -408,11 +431,38 @@ export default function CallScreen({ params }: { params: { id: string; index: st
       </div>
 
       <div className="list-item">
-        <h4 style={{ marginBottom: 4 }}>{fullName}</h4>
-        <p className="muted">
-          {p.occupation || '—'}{p.employer ? ` • ${p.employer}` : ''}
-        </p>
-        {p.address && <p className="muted" style={{ marginTop: 6 }}>{p.address}</p>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <div>
+            <h4 style={{ marginBottom: 4 }}>{fullName}</h4>
+            <p className="muted">
+              {p.occupation || '—'}{p.employer ? ` • ${p.employer}` : ''}
+            </p>
+            {p.address && <p className="muted" style={{ marginTop: 4 }}>{p.address}</p>}
+          </div>
+          <a
+            href={`/crm/people/${p.person_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#60A5FA',
+              whiteSpace: 'nowrap',
+              textDecoration: 'none',
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: '1px solid rgba(96,165,250,.3)',
+              flexShrink: 0,
+            }}
+          >
+            View Profile →
+          </a>
+        </div>
+        {p.notes && (
+          <p className="muted" style={{ marginTop: 8, fontSize: 12, fontStyle: 'italic', borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: 8 }}>
+            {p.notes}
+          </p>
+        )}
 
         <div className="row" style={{ marginTop: 10 }}>
           {p.phone && (
@@ -446,7 +496,14 @@ export default function CallScreen({ params }: { params: { id: string; index: st
           value={result}
           onChange={(e) => {
             if (!startedAt) setStartedAt(Date.now());
-            setResult(e.target.value);
+            const v = e.target.value;
+            setResult(v);
+            if (callCaptureMode === 'survey' && surveyId && v === 'connected') {
+              setShowSurvey(true);
+              setSurveyDone(false);
+            } else {
+              setShowSurvey(false);
+            }
           }}
         >
           <option value="" disabled>Select…</option>
@@ -456,6 +513,15 @@ export default function CallScreen({ params }: { params: { id: string; index: st
             </option>
           ))}
         </select>
+
+        {/* Inline survey — shown when connected and a survey is linked */}
+        {callCaptureMode === 'survey' && showSurvey && !surveyDone && surveyId && (
+          <KnockSurvey
+            surveyId={surveyId}
+            contactId={p.person_id}
+            onDone={() => { setShowSurvey(false); setSurveyDone(true); }}
+          />
+        )}
 
         <label htmlFor="callNotes" className="muted" style={{ marginTop: 12 }}>Notes</label>
         <textarea
@@ -467,16 +533,19 @@ export default function CallScreen({ params }: { params: { id: string; index: st
           placeholder="Add notes for this call…"
         />
 
-        <label className="row" style={{ marginTop: 12 }}>
-          <input
-            type="checkbox"
-            checked={mkOpp}
-            onChange={(e) => setMkOpp(e.target.checked)}
-          />
-          <span className="muted">Create opportunity linked to this call</span>
-        </label>
+        {/* Opportunity form — shown automatically when callCaptureMode=opportunity, or via checkbox otherwise */}
+        {callCaptureMode !== 'opportunity' && (
+          <label className="row" style={{ marginTop: 12 }}>
+            <input
+              type="checkbox"
+              checked={mkOpp}
+              onChange={(e) => setMkOpp(e.target.checked)}
+            />
+            <span className="muted">Create opportunity linked to this call</span>
+          </label>
+        )}
 
-        {mkOpp && (
+        {(callCaptureMode === 'opportunity' || mkOpp) && (
           <div className="list-item" style={{ marginTop: 12 }}>
             <div>
               <label htmlFor="oppTitle" className="muted">Title</label>
@@ -577,8 +646,8 @@ export default function CallScreen({ params }: { params: { id: string; index: st
             className="press-card"
             style={{ gridTemplateColumns: '1fr' }}
             onClick={saveAndNext}
-            disabled={!result}
-            title={result ? '' : 'Select a call result first'}
+            disabled={!result || (callCaptureMode === 'survey' && result === 'connected' && !!surveyId && !surveyDone)}
+            title={!result ? 'Select a call result first' : ''}
             type="button"
           >
             Save & Next

@@ -232,6 +232,12 @@ export default function CreateListWizard() {
   const [assignAll, setAssignAll] = useState(true);
   const [assignedUserIds, setAssignedUserIds] = useState<Set<string>>(new Set());
 
+  // Capture mode (step 1)
+  type CaptureMode = "none" | "survey" | "opportunity";
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("none");
+  const [captureSurveyId, setCaptureSurveyId] = useState("");
+  const [surveys, setSurveys] = useState<{ id: string; title: string }[]>([]);
+
   // Step 4
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
@@ -272,6 +278,15 @@ export default function CreateListWizard() {
   // Load schema for initial target on mount
   useEffect(() => {
     loadSchema("people");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load available surveys on mount
+  useEffect(() => {
+    fetch("/api/survey")
+      .then((r) => r.json())
+      .then((d) => setSurveys(Array.isArray(d) ? d : []))
+      .catch(() => setSurveys([]));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -362,6 +377,8 @@ export default function CreateListWizard() {
           target,
           selected_ids: [...selectedIds],
           user_ids: assignAll ? [] : [...assignedUserIds],
+          call_capture_mode: captureMode === "none" ? null : captureMode,
+          survey_id: captureMode === "survey" ? captureSurveyId || null : null,
         }),
       });
       const data = await res.json();
@@ -489,6 +506,39 @@ export default function CreateListWizard() {
                 ? "Filter households by address — adds all members to the list."
                 : "Filter by street address, city, state, or zip code."}
             </p>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Capture Mode</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              {(["none", "survey", "opportunity"] as CaptureMode[]).map((m) => (
+                <button key={m} type="button" onClick={() => setCaptureMode(m)} style={toggleBtn(captureMode === m)}>
+                  {m === "none" ? "None" : m === "survey" ? "Survey" : "Possible Opportunity"}
+                </button>
+              ))}
+            </div>
+            {captureMode === "survey" && (
+              <select
+                value={captureSurveyId}
+                onChange={(e) => setCaptureSurveyId(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">(Select a survey)</option>
+                {surveys.map((s) => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
+              </select>
+            )}
+            {captureMode === "opportunity" && (
+              <p style={{ margin: 0, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+                Field workers will be prompted to log a potential opportunity after each contact.
+              </p>
+            )}
+            {captureMode === "none" && (
+              <p style={{ margin: 0, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+                No data capture after contact — call/knock result only.
+              </p>
+            )}
           </div>
 
           <button disabled={!name.trim()} onClick={() => setStep(2)} style={primaryBtn(!name.trim())}>

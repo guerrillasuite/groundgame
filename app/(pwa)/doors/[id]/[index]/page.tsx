@@ -75,10 +75,19 @@ export default function KnockStep() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Survey state
+  // Survey / capture mode state
+  const [callCaptureMode, setCallCaptureMode] = useState<string | null>(null);
   const [surveyId, setSurveyId] = useState<string | null>(null);
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveyDone, setSurveyDone] = useState(false);
+
+  // Opportunity form (for callCaptureMode === 'opportunity')
+  const [oppTitle, setOppTitle] = useState('');
+  const [oppStage, setOppStage] = useState('');
+  const [oppValue, setOppValue] = useState<number | ''>('');
+  const [oppDue, setOppDue] = useState('');
+  const [oppPriority, setOppPriority] = useState('');
+  const [oppNotes, setOppNotes] = useState('');
 
   // Save status
   const [saving, setSaving] = useState(false);
@@ -114,11 +123,14 @@ export default function KnockStep() {
     return () => { cancelled = true; };
   }, [params.id]);
 
-  // Fetch survey_id for this walklist (once)
+  // Fetch survey_id + call_capture_mode for this walklist (once)
   useEffect(() => {
     fetch(`/api/doors/${params.id}/survey`)
       .then((r) => r.json())
-      .then((d) => setSurveyId(d.survey_id ?? null))
+      .then((d) => {
+        setSurveyId(d.survey_id ?? null);
+        setCallCaptureMode(d.call_capture_mode ?? null);
+      })
       .catch(() => {});
   }, [params.id]);
 
@@ -144,6 +156,12 @@ export default function KnockStep() {
     setNotes("");
     setShowSurvey(false);
     setSurveyDone(false);
+    setOppTitle('');
+    setOppStage('');
+    setOppValue('');
+    setOppDue('');
+    setOppPriority('');
+    setOppNotes('');
   }, [resumeKey, safeIndex, total]);
 
   // Photo preview lifecycle
@@ -218,17 +236,32 @@ export default function KnockStep() {
         ? `${notes}\n\nPhoto: ${photoUrl}`.trim()
         : notes;
 
+      const personId = selectedPersonId ?? target.primary_person_id ?? null;
+      const personName = people.find((p) => p.id === personId)?.name ?? target.household_name ?? "Contact";
+      const customOpp =
+        callCaptureMode === "opportunity" && result === "contact_made"
+          ? {
+              title: oppTitle.trim() || `Follow-up: ${personName}`,
+              stage: oppStage || "new",
+              amount_cents: oppValue === '' ? null : Math.round(Number(oppValue) * 100),
+              due_at: oppDue ? new Date(`${oppDue}T12:00:00`).toISOString() : null,
+              priority: oppPriority || null,
+              description: oppNotes.trim() || null,
+            }
+          : undefined;
+
       const res = await fetch("/api/doors/stops", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           walklist_id: params.id,
           item_id: target.item_id,
-          person_id: selectedPersonId ?? target.primary_person_id ?? null,
+          person_id: personId,
           result: result || "other",
           notes: notesWithPhoto || null,
           photo_url: photoUrl,
           idx: safeIndex,
+          opportunity: customOpp,
         }),
       });
 
@@ -327,7 +360,27 @@ export default function KnockStep() {
         {/* Residents */}
         {people.length > 0 && (
           <div className="card plain info-box" style={{ marginTop: 12 }}>
-            <div className="info-title">Residents</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="info-title">Residents</div>
+              {(selectedPersonId ?? target.primary_person_id) && (
+                <a
+                  href={`/crm/people/${selectedPersonId ?? target.primary_person_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#60A5FA',
+                    textDecoration: 'none',
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    border: '1px solid rgba(96,165,250,.3)',
+                  }}
+                >
+                  View Profile →
+                </a>
+              )}
+            </div>
             <div className="chips" role="radiogroup" aria-label="Select person">
               {people.map((p) => (
                 <button
@@ -356,7 +409,7 @@ export default function KnockStep() {
                 type="button"
                 onClick={() => {
                   setResult(key);
-                  if (key === "contact_made" && surveyId) {
+                  if (key === "contact_made" && surveyId && callCaptureMode === 'survey') {
                     setShowSurvey(true);
                     setSurveyDone(false);
                   } else {
@@ -381,6 +434,82 @@ export default function KnockStep() {
             contactId={target?.primary_person_id ?? `anon-${target?.item_id}`}
             onDone={() => { setShowSurvey(false); setSurveyDone(true); }}
           />
+        )}
+
+        {/* Opportunity form — shown when callCaptureMode=opportunity and contact was made */}
+        {callCaptureMode === 'opportunity' && result === 'contact_made' && (
+          <div className="mt-6" style={{ padding: '16px', borderRadius: 12, border: '1px solid rgba(255,255,255,.1)', background: 'rgba(255,255,255,.03)', display: 'grid', gap: 12 }}>
+            <div className="block text-sm" style={{ fontWeight: 600, opacity: 0.9 }}>Opportunity Details</div>
+
+            <div className="field">
+              <label className="block text-sm mb-1" style={{ opacity: 0.7 }}>Title</label>
+              <input
+                className="notes"
+                style={{ minHeight: 'unset', padding: '8px 12px' }}
+                value={oppTitle}
+                onChange={(e) => setOppTitle(e.target.value)}
+                placeholder={`Follow-up: ${people.find((p) => p.id === (selectedPersonId ?? target.primary_person_id))?.name ?? target.household_name ?? 'Contact'}`}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div className="field">
+                <label className="block text-sm mb-1" style={{ opacity: 0.7 }}>Stage</label>
+                <select className="notes" style={{ minHeight: 'unset', padding: '8px 10px', appearance: 'none' }} value={oppStage} onChange={(e) => setOppStage(e.target.value)}>
+                  <option value="">Select…</option>
+                  <option value="new">New</option>
+                  <option value="contacted">Contacted</option>
+                  <option value="qualified">Qualified</option>
+                  <option value="proposal">Proposal</option>
+                  <option value="won">Won</option>
+                  <option value="lost">Lost</option>
+                </select>
+              </div>
+              <div className="field">
+                <label className="block text-sm mb-1" style={{ opacity: 0.7 }}>Priority</label>
+                <select className="notes" style={{ minHeight: 'unset', padding: '8px 10px', appearance: 'none' }} value={oppPriority} onChange={(e) => setOppPriority(e.target.value)}>
+                  <option value="">Select…</option>
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div className="field">
+                <label className="block text-sm mb-1" style={{ opacity: 0.7 }}>Value (USD)</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="notes"
+                  style={{ minHeight: 'unset', padding: '8px 10px' }}
+                  placeholder="e.g. 250"
+                  value={oppValue}
+                  onChange={(e) => setOppValue(e.target.value === '' ? '' : Number(e.target.value))}
+                />
+              </div>
+              <div className="field">
+                <label className="block text-sm mb-1" style={{ opacity: 0.7 }}>Follow-up date</label>
+                <input
+                  type="date"
+                  className="notes"
+                  style={{ minHeight: 'unset', padding: '8px 10px' }}
+                  value={oppDue}
+                  onChange={(e) => setOppDue(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <label className="block text-sm mb-1" style={{ opacity: 0.7 }}>Opportunity notes</label>
+              <textarea
+                className="notes"
+                rows={2}
+                style={{ minHeight: 'unset' }}
+                value={oppNotes}
+                onChange={(e) => setOppNotes(e.target.value)}
+                placeholder="Context, commitment, next steps…"
+              />
+            </div>
+          </div>
         )}
 
         {/* Photo */}
@@ -475,8 +604,8 @@ export default function KnockStep() {
             type="button"
             className="btn action-submit"
             onClick={submitAndNext}
-            disabled={!result || saving || (result === "contact_made" && !!surveyId && !surveyDone)}
-            aria-disabled={!result || saving || (result === "contact_made" && !!surveyId && !surveyDone)}
+            disabled={!result || saving || (result === "contact_made" && !!surveyId && callCaptureMode === 'survey' && !surveyDone)}
+            aria-disabled={!result || saving || (result === "contact_made" && !!surveyId && callCaptureMode === 'survey' && !surveyDone)}
           >
             {saving ? "Saving…" : "Save & Next"}
           </button>

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSurvey } from "@/lib/db/supabase-surveys";
+import { createSurvey, getSurveys } from "@/lib/db/supabase-surveys";
 import { getTenant } from "@/lib/tenant";
+
+export async function GET() {
+  const tenant = await getTenant();
+  const surveys = await getSurveys(tenant.id);
+  return NextResponse.json(surveys.map((s) => ({ id: s.id, title: s.title })));
+}
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");

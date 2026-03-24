@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSupabaseWritable } from "@/lib/supabase/server";
 import { getTenant } from "@/lib/tenant";
 import { createClient } from "@supabase/supabase-js";
 
@@ -39,14 +38,18 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await request.json();
-  const survey_id = body.survey_id ?? null;
+
+  // Build update payload — caller sends either { call_capture_mode, survey_id } or legacy { survey_id }
+  const call_capture_mode: string | null = body.call_capture_mode ?? null;
+  const survey_id: string | null =
+    call_capture_mode === "opportunity" ? null : (body.survey_id ?? null);
 
   const tenant = await getTenant();
-  const sb = getServerSupabaseWritable();
+  const sb = makeSb(tenant.id);
 
   const { error } = await sb
     .from("walklists")
-    .update({ survey_id })
+    .update({ survey_id, call_capture_mode })
     .eq("id", id)
     .eq("tenant_id", tenant.id);
 

@@ -120,11 +120,19 @@ async function createWalklist(
   personIds: string[],
   locationIds: string[],
   userIds: string[],
-  knockPairs?: Array<{ person_id: string; location_id: string }>
+  knockPairs?: Array<{ person_id: string; location_id: string }>,
+  callCaptureMode?: string | null,
+  surveyId?: string | null
 ): Promise<{ id: string; name: string; mode: string; warning?: string }> {
   const { data: wl, error: wlErr } = await sb
     .from("walklists")
-    .insert({ name, mode, tenant_id: tenantId })
+    .insert({
+      name,
+      mode,
+      tenant_id: tenantId,
+      call_capture_mode: callCaptureMode ?? null,
+      survey_id: callCaptureMode === "survey" ? (surveyId ?? null) : null,
+    })
     .select("id, name, mode")
     .single();
 
@@ -184,12 +192,14 @@ export async function POST(request: NextRequest) {
   const sb = makeSb(tenant.id);
 
   const body = await request.json();
-  const { name, app_mode, target, selected_ids, user_ids } = body as {
+  const { name, app_mode, target, selected_ids, user_ids, call_capture_mode, survey_id } = body as {
     name: string;
     app_mode: AppMode;
     target: Target;
     selected_ids: string[];
     user_ids?: string[];
+    call_capture_mode?: string | null;
+    survey_id?: string | null;
   };
 
   if (!name?.trim()) {
@@ -224,13 +234,13 @@ export async function POST(request: NextRequest) {
   try {
     if (app_mode === "call" || app_mode === "both") {
       const listName = app_mode === "both" ? `${name.trim()} — Calls` : name.trim();
-      const wl = await createWalklist(sb, tenant.id, listName, "call", personIds, [], assignees);
+      const wl = await createWalklist(sb, tenant.id, listName, "call", personIds, [], assignees, undefined, call_capture_mode, survey_id);
       walklists.push(wl);
     }
 
     if (app_mode === "knock" || app_mode === "both") {
       const listName = app_mode === "both" ? `${name.trim()} — Doors` : name.trim();
-      const wl = await createWalklist(sb, tenant.id, listName, "knock", [], locationIds, assignees, knockPairs);
+      const wl = await createWalklist(sb, tenant.id, listName, "knock", [], locationIds, assignees, knockPairs, call_capture_mode, survey_id);
       walklists.push(wl);
     }
   } catch (err: any) {

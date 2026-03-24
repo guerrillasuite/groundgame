@@ -53,7 +53,7 @@ async function queryInChunks(
 }
 
 type Params = { params: { id: string } };
-type ListMeta = { id: string; name: string | null; mode: string | null; survey_id: string | null };
+type ListMeta = { id: string; name: string | null; mode: string | null; survey_id: string | null; call_capture_mode: string | null };
 
 const fmtAddr = (l: any) => {
   const nk = (l?.normalized_key ?? "").trim();
@@ -73,7 +73,7 @@ export default async function ListDetail({
   // 1) Meta + survey assignment
   const { data: meta, error: mErr } = await sb
     .from("walklists")
-    .select("id,name,mode,survey_id")
+    .select("id,name,mode,survey_id,call_capture_mode")
     .eq("id", params.id)
     .eq("tenant_id", tenant.id)
     .single();
@@ -281,6 +281,7 @@ export default async function ListDetail({
         <SurveyAssignmentPanel
           listId={params.id}
           currentSurveyId={(meta as ListMeta).survey_id ?? null}
+          currentCaptureMode={(meta as ListMeta).call_capture_mode ?? null}
           surveys={allSurveys.map((s) => ({ id: s.id, title: s.title }))}
         />
         <ListPage
@@ -307,6 +308,7 @@ export default async function ListDetail({
       <SurveyAssignmentPanel
         listId={params.id}
         currentSurveyId={(meta as ListMeta).survey_id ?? null}
+        currentCaptureMode={(meta as ListMeta).call_capture_mode ?? null}
         surveys={allSurveys.map((s) => ({ id: s.id, title: s.title }))}
       />
       <ListPage
