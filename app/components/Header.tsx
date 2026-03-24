@@ -1,24 +1,27 @@
-﻿// app/components/Header.tsx
-import { InstallButton } from "./InstallButton"; // create this from the snippet I shared
+// app/components/Header.tsx
+import Image from "next/image";
+import { InstallButton } from "./InstallButton";
 
 type Props = {
   logoUrl?: string;
   appName?: string;
-  showInstall?: boolean; // <â€” new
+  showInstall?: boolean;
 };
 
-export function Header({ logoUrl, appName, showInstall = false }: Props) {
+export function Header({ logoUrl, appName = "GroundGame", showInstall = false }: Props) {
   return (
     <header className="app-header">
-      {/* your existing header UI */}
-      <div className="left">
-        {/* logo/title */}
+      <div className="app-header__brand">
+        {logoUrl ? (
+          <Image src={logoUrl} alt={appName} width={28} height={28} className="app-header__logo" />
+        ) : (
+          <span className="app-header__initials" aria-hidden>
+            {appName.slice(0, 2).toUpperCase()}
+          </span>
+        )}
+        <span className="app-header__name">{appName}</span>
       </div>
-      <div className="right">
-        {/* e.g., link to /crm */}
-        {showInstall && <InstallButton />}
-      </div>
+      {showInstall && <InstallButton className="app-header__install" label="Install" />}
     </header>
   );
 }
-

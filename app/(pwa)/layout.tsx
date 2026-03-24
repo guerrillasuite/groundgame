@@ -1,6 +1,7 @@
 ﻿// app/(pwa)/layout.tsx
 import { Header } from "../components/Header";
 import { FooterNav } from "../components/FooterNav";
+import { OfflineBanner } from "../components/OfflineBanner";
 import PwaInit from "../components/PwaInit";
 import { getTenantBranding } from "@/lib/tenant";
 import type { Metadata, Viewport } from "next";
@@ -33,6 +34,7 @@ export default async function PwaLayout({ children }: { children: React.ReactNod
   return (
     <div className="app-wrap">
       <Header logoUrl={b.logoUrl} appName={b.appName} showInstall />
+      <OfflineBanner />
       <main className="app-main">{children}</main>
       <FooterNav />
       <PwaInit />

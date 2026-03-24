@@ -1,14 +1,20 @@
 {
+  "id": "/",
   "name": "GroundGame",
   "short_name": "GroundGame",
   "description": "Field canvassing and phone banking app",
-  "start_url": "/doors",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0a0c11",
+  "display_override": ["standalone"],
+  "background_color": "#0b0f14",
   "theme_color": "#2563EB",
   "orientation": "portrait",
+  "lang": "en-US",
+  "prefer_related_applications": false,
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

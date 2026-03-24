@@ -52,14 +52,32 @@
 }
 
 /* ---- Resets & base ---- */
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; height: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   background:
     radial-gradient(1200px 600px at 50% -10%, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.00) 38%, rgba(255,255,255,0) 100%),
     rgb(var(--bg-900));
   color: rgb(var(--text-100));
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+button, [role="button"], a, label, select {
+  touch-action: manipulation;
+}
+/* Prevent iOS from zooming on input focus (needs font-size ≥ 16px) */
+input, textarea, select {
+  font-size: max(16px, 1em) !important;
+}
+/* Non-selectable chrome */
+.app-header, .footer-nav, .footer-btn, button {
+  user-select: none;
+  -webkit-user-select: none;
 }
 a { color: inherit; text-decoration: none; }
 :focus-visible { outline: 2px solid rgb(var(--outline-400)); outline-offset: 2px; }
@@ -146,6 +164,44 @@ a { color: inherit; text-decoration: none; }
   color: rgb(var(--text-100));
 }
 
+/* ---- PWA App header ---- */
+.app-header {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  background: rgba(18,23,33,.88);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.app-header__brand { display: flex; align-items: center; gap: 10px; }
+.app-header__logo  { border-radius: 8px; width: 28px; height: 28px; object-fit: contain; }
+.app-header__initials {
+  width: 28px; height: 28px; border-radius: 8px;
+  display: grid; place-items: center;
+  background: rgb(var(--primary-600)); color: #fff;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; flex-shrink: 0;
+}
+.app-header__name { font-size: 1rem; font-weight: 700; letter-spacing: .01em; color: rgb(var(--text-100)); }
+.app-header__install {
+  font-size: .8rem; padding: 6px 12px; border-radius: 8px;
+  background: rgb(var(--primary-600)); color: #fff; font-weight: 600;
+  border: none; cursor: pointer;
+}
+
+/* ---- Offline banner ---- */
+.offline-banner {
+  background: rgba(245,158,11,.15);
+  border-bottom: 1px solid rgba(245,158,11,.3);
+  color: rgb(var(--warning-500));
+  text-align: center;
+  font-size: .82rem;
+  font-weight: 600;
+  padding: 7px 16px;
+  letter-spacing: .01em;
+}
+
 /* ---- Footer ---- */
 .footer-nav {
   position: fixed; left: 0; right: 0; bottom: 0;
@@ -162,12 +218,22 @@ a { color: inherit; text-decoration: none; }
   border-radius: 10px;
   color: rgb(var(--text-300));
   transition: background-color .12s ease, color .12s ease;
+  position: relative;
 }
 .footer-btn[aria-current="page"],
 .footer-btn.active {
   color: rgb(var(--text-100));
   background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.00));
   box-shadow: var(--shadow);
+}
+.footer-btn.active::after,
+.footer-btn[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  bottom: 4px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: rgb(var(--primary-500));
 }
 
 /* ---- Tabs (Account) ---- */
