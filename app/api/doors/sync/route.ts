@@ -61,15 +61,25 @@ export async function POST() {
     );
   }
 
-  // Sync locations for each walklist
+  // Sync locations for each walklist (paginated to bypass 1000-row cap)
   let locationCount = 0;
   for (const wl of walklists) {
     try {
-      const { data: locs, error } = await supabase.rpc(
-        "gs_get_walklist_locations_v2",
-        { _walklist_id: wl.id }
-      );
-      if (error || !locs?.length) continue;
+      const allLocs: any[] = [];
+      let from = 0;
+      const chunk = 1000;
+      while (true) {
+        const { data: page, error } = await supabase
+          .rpc("gs_get_walklist_locations_v2", { _walklist_id: wl.id })
+          .range(from, from + chunk - 1);
+        if (error) break;
+        if (!page?.length) break;
+        allLocs.push(...page);
+        if (page.length < chunk) break;
+        from += chunk;
+      }
+      const locs = allLocs;
+      if (!locs.length) continue;
       upsertLocations(
         wl.id,
         locs.map((r: any) => ({
