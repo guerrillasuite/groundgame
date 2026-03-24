@@ -81,11 +81,11 @@ function WarningModal({
 }) {
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.6)",
+      position: "fixed", inset: 0, background: "rgba(0,0,0,.75)",
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 9999, padding: 16,
     }}>
-      <div style={{ ...card, maxWidth: 500, width: "100%", border: "1px solid rgba(251,191,36,.25)" }}>
+      <div style={{ ...card, maxWidth: 500, width: "100%", background: "rgb(22 27 38)", border: "1px solid rgba(251,191,36,.4)" }}>
         <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 15, color: "#fbbf24" }}>
           ⚠ {affectedCount} opportunit{affectedCount === 1 ? "y" : "ies"} will lose their stage
         </p>
