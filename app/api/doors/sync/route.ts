@@ -53,10 +53,12 @@ export async function POST() {
       walklists.map((w) => ({
         id: w.id,
         tenant_id: tenantId,
+        user_id: uid ?? null,
         name: w.name ?? "(Untitled)",
         mode: w.mode ?? "knock",
         total_targets: w.total_targets ?? 0,
         visited_count: w.visited_count ?? 0,
+        survey_id: (w as any).survey_id ?? null,
       }))
     );
   }

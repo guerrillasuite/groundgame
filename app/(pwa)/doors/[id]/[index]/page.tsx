@@ -72,7 +72,11 @@ export default function KnockStep() {
 
   // Profile panel
   const [showProfile, setShowProfile] = useState(false);
-  const [profileDetails, setProfileDetails] = useState<{ phone?: string | null; email?: string | null; occupation?: string | null; employer?: string | null; notes?: string | null } | null>(null);
+  const [profileDetails, setProfileDetails] = useState<{
+    phone?: string | null; phone_cell?: string | null; phone_landline?: string | null;
+    email?: string | null; occupation_title?: string | null; company_name?: string | null;
+    notes?: string | null; household_name?: string | null; mailing_address?: string | null;
+  } | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
   // Photo
@@ -147,12 +151,34 @@ export default function KnockStep() {
     setProfileLoading(true);
     (async () => {
       try {
-        const { data } = await supabase
+        const { data: pd } = await supabase
           .from('people')
-          .select('phone, email, occupation, employer, notes')
+          .select('phone, phone_cell, phone_landline, email, occupation_title, company_name, notes, household_id, mailing_address')
           .eq('id', personId)
           .maybeSingle();
-        if (!cancelled) setProfileDetails(data ?? {});
+
+        // Resolve household name (the address is already shown in the location card)
+        let household_name: string | null = null;
+        let hhId: string | null = pd?.household_id ?? null;
+        if (!hhId) {
+          const { data: ph } = await supabase
+            .from('person_households')
+            .select('household_id')
+            .eq('person_id', personId)
+            .limit(1)
+            .maybeSingle();
+          hhId = ph?.household_id ?? null;
+        }
+        if (hhId) {
+          const { data: hh } = await supabase
+            .from('households')
+            .select('name')
+            .eq('id', hhId)
+            .maybeSingle();
+          household_name = hh?.name ?? null;
+        }
+
+        if (!cancelled) setProfileDetails({ ...pd, household_name });
       } catch {
         if (!cancelled) setProfileDetails({});
       } finally {
@@ -442,39 +468,36 @@ export default function KnockStep() {
 
         {/* Profile tab content */}
         {showProfile && (
-          <div style={{ padding: '14px 0', display: 'grid', gap: 10, fontSize: 13 }}>
+          <div style={{ padding: '14px 0', display: 'grid', gap: 12, fontSize: 13 }}>
             {profileLoading && <p style={{ opacity: 0.5 }}>Loading…</p>}
-            {!profileLoading && profileDetails && (
-              <>
-                {(profileDetails.occupation || profileDetails.employer) && (
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Role</div>
-                    <div>{[profileDetails.occupation, profileDetails.employer].filter(Boolean).join(' • ')}</div>
-                  </div>
-                )}
-                {profileDetails.phone && (
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Phone</div>
-                    <div>{profileDetails.phone}</div>
-                  </div>
-                )}
-                {profileDetails.email && (
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Email</div>
-                    <div>{profileDetails.email}</div>
-                  </div>
-                )}
-                {profileDetails.notes && (
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Notes</div>
-                    <div style={{ lineHeight: 1.5, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{profileDetails.notes}</div>
-                  </div>
-                )}
-                {!profileDetails.occupation && !profileDetails.phone && !profileDetails.email && !profileDetails.notes && (
-                  <p style={{ opacity: 0.5 }}>No additional details on file.</p>
-                )}
-              </>
-            )}
+            {!profileLoading && profileDetails && (() => {
+              const d = profileDetails;
+              const phones = [d.phone, d.phone_cell, d.phone_landline].filter(Boolean);
+              const hasAny = d.household_name || d.mailing_address || phones.length ||
+                d.email || d.occupation_title || d.company_name || d.notes;
+              const row = (label: string, val: string) => (
+                <div key={label}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>{label}</div>
+                  <div style={{ lineHeight: 1.5 }}>{val}</div>
+                </div>
+              );
+              return (
+                <>
+                  {!hasAny && <p style={{ opacity: 0.5 }}>No additional details on file.</p>}
+                  {d.household_name && row('Household', d.household_name)}
+                  {(d.occupation_title || d.company_name) && row('Role', [d.occupation_title, d.company_name].filter(Boolean).join(' · '))}
+                  {phones.length > 0 && row('Phone', phones.join(' / '))}
+                  {d.email && row('Email', d.email)}
+                  {d.mailing_address && row('Mailing Address', d.mailing_address)}
+                  {d.notes && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Notes</div>
+                      <div style={{ lineHeight: 1.6, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{d.notes}</div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
 

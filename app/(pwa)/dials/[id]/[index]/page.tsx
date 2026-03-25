@@ -164,6 +164,13 @@ export default function CallScreen({ params }: { params: { id: string; index: st
   const [oppNotes, setOppNotes] = useState('');
 
   const [showProfile, setShowProfile] = useState(false);
+  const [dialProfile, setDialProfile] = useState<{
+    phone?: string | null; phone_cell?: string | null; phone_landline?: string | null;
+    email?: string | null; occupation_title?: string | null; company_name?: string | null;
+    notes?: string | null; household_name?: string | null;
+    address?: string | null; mailing_address?: string | null;
+  } | null>(null);
+  const [dialProfileLoading, setDialProfileLoading] = useState(false);
 
   // Reset when moving to a different target
   useEffect(() => {
@@ -174,6 +181,7 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     setShowSurvey(false);
     setSurveyDone(false);
     setShowProfile(false);
+    setDialProfile(null);
     setOppTitle('');
     setOppStage('');
     setOppValue('');
@@ -306,6 +314,67 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
+  // Lazy-fetch rich profile when Profile tab is opened
+  useEffect(() => {
+    if (!showProfile || !people) return;
+    const person = people[idx];
+    if (!person || dialProfile) return;
+    let cancelled = false;
+    setDialProfileLoading(true);
+    (async () => {
+      try {
+        // 1) Person detail
+        const { data: pd } = await supabase
+          .from('people')
+          .select('phone, phone_cell, phone_landline, email, occupation_title, company_name, notes, household_id, mailing_address')
+          .eq('id', person.person_id)
+          .maybeSingle();
+
+        // 2) Household name + address via household_id or person_households fallback
+        let hhId: string | null = pd?.household_id ?? null;
+        if (!hhId) {
+          const { data: ph } = await supabase
+            .from('person_households')
+            .select('household_id')
+            .eq('person_id', person.person_id)
+            .limit(1)
+            .maybeSingle();
+          hhId = ph?.household_id ?? null;
+        }
+
+        let household_name: string | null = null;
+        let address: string | null = null;
+        if (hhId) {
+          const { data: hh } = await supabase
+            .from('households')
+            .select('name, location_id')
+            .eq('id', hhId)
+            .maybeSingle();
+          household_name = hh?.name ?? null;
+          if (hh?.location_id) {
+            const { data: loc } = await supabase
+              .from('locations')
+              .select('normalized_key, address_line1, city, state, postal_code')
+              .eq('id', hh.location_id)
+              .maybeSingle();
+            if (loc) {
+              address = loc.normalized_key ||
+                [loc.address_line1, loc.city, loc.state, loc.postal_code].filter(Boolean).join(', ');
+            }
+          }
+        }
+
+        if (!cancelled) setDialProfile({ ...pd, household_name, address });
+      } catch {
+        if (!cancelled) setDialProfile({});
+      } finally {
+        if (!cancelled) setDialProfileLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showProfile, idx]);
+
   const p = useMemo(() => (people && people[idx]) || null, [people, idx]);
 
   if (err) return <p className="muted">Error: {err}</p>;
@@ -328,6 +397,7 @@ export default function CallScreen({ params }: { params: { id: string; index: st
   const onStartInteraction = () => { if (!startedAt) setStartedAt(Date.now()); };
 
   async function saveAndNext() {
+    if (!p) return;
     try {
       const effectiveWalklistId = await resolveEffectiveWalklistId(params.id);
 
@@ -485,34 +555,36 @@ export default function CallScreen({ params }: { params: { id: string; index: st
 
         {/* Profile tab */}
         {showProfile && (
-          <div style={{ display: 'grid', gap: 10, fontSize: 13 }}>
-            {p.address && (
-              <div>
-                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Address</div>
-                <div>{p.address}</div>
-              </div>
-            )}
-            {p.phone && (
-              <div>
-                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Phone</div>
-                <div>{p.phone}</div>
-              </div>
-            )}
-            {p.email && (
-              <div>
-                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Email</div>
-                <div>{p.email}</div>
-              </div>
-            )}
-            {p.notes && (
-              <div>
-                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Notes</div>
-                <div style={{ lineHeight: 1.5, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{p.notes}</div>
-              </div>
-            )}
-            {!p.address && !p.notes && !p.phone && !p.email && (
-              <p className="muted">No additional details on file.</p>
-            )}
+          <div style={{ display: 'grid', gap: 12, fontSize: 13 }}>
+            {dialProfileLoading && <p className="muted">Loading…</p>}
+            {!dialProfileLoading && dialProfile && (() => {
+              const d = dialProfile;
+              const phones = [d.phone, d.phone_cell, d.phone_landline].filter(Boolean);
+              const hasAny = d.address || d.mailing_address || d.household_name ||
+                phones.length || d.email || d.occupation_title || d.company_name || d.notes;
+              const row = (label: string, val: string) => (
+                <div key={label}>
+                  <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
+                  <div style={{ lineHeight: 1.5 }}>{val}</div>
+                </div>
+              );
+              return (
+                <>
+                  {!hasAny && <p className="muted">No additional details on file.</p>}
+                  {d.household_name && row('Household', d.household_name)}
+                  {(d.address || d.mailing_address) && row('Address', (d.address || d.mailing_address)!)}
+                  {(d.occupation_title || d.company_name) && row('Role', [d.occupation_title, d.company_name].filter(Boolean).join(' · '))}
+                  {phones.length > 0 && row('Phone', phones.join(' / '))}
+                  {d.email && row('Email', d.email)}
+                  {d.notes && (
+                    <div>
+                      <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Notes</div>
+                      <div style={{ lineHeight: 1.6, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{d.notes}</div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
 
