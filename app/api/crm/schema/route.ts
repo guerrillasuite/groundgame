@@ -34,7 +34,7 @@ const LOCATION_JOIN_FIELDS: ColumnDef[] = [
   { column: "city",                         label: "City",                         data_type: "text",    is_join: true, table: "locations" },
   { column: "state",                        label: "State",                        data_type: "text",    is_join: true, table: "locations" },
   { column: "postal_code",                  label: "Zip Code",                     data_type: "text",    is_join: true, table: "locations" },
-  { column: "address",                      label: "Street Address",               data_type: "text",    is_join: true, table: "locations" },
+  { column: "address_line1",                 label: "Street Address",               data_type: "text",    is_join: true, table: "locations" },
   // Districts
   { column: "congressional_district",       label: "Congressional District",       data_type: "text",    is_join: true, table: "locations" },
   { column: "state_senate_district",        label: "State Senate District",        data_type: "text",    is_join: true, table: "locations" },
@@ -84,6 +84,7 @@ const LOCATION_JOIN_FIELDS: ColumnDef[] = [
 // Hardcoded fallback in case service role key is missing
 const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
   people: [
+    { column: "title",        label: "Title",         data_type: "text",    is_join: false },
     { column: "first_name",   label: "First Name",    data_type: "text",    is_join: false },
     { column: "last_name",    label: "Last Name",     data_type: "text",    is_join: false },
     { column: "email",        label: "Email",         data_type: "text",    is_join: false },
