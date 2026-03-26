@@ -204,6 +204,7 @@ export default function ImportPanel() {
   const [dragging, setDragging] = useState(false);
   const [oppsLoading, setOppsLoading] = useState(false);
   const [oppsCreated, setOppsCreated] = useState<number | null>(null);
+  const [createOppsOnImport, setCreateOppsOnImport] = useState(false);
   // col → canonical key override for __create_global__ fields
   const [globalKeyOverrides, setGlobalKeyOverrides] = useState<Record<string, string>>({});
   // col → cycle year (4-digit string) for __giving_cycle__ fields
@@ -408,6 +409,9 @@ export default function ImportPanel() {
       if (!res.ok) throw new Error(data.error ?? "Import failed");
       setResult(data);
       setStep("done");
+      if (createOppsOnImport && ((data.insertedPersonIds?.length ?? 0) + (data.insertedCompanyIds?.length ?? 0)) > 0) {
+        handleCreateOpps(data);
+      }
     } catch (e: any) {
       setResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [(e as Error).message] });
       setStep("done");
@@ -430,18 +434,20 @@ export default function ImportPanel() {
     setImportType("people");
     setOppsCreated(null);
     setOppsLoading(false);
+    setCreateOppsOnImport(false);
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  async function handleCreateOpps() {
-    if (!result) return;
+  async function handleCreateOpps(resultArg?: ImportResult) {
+    const r = resultArg ?? result;
+    if (!r) return;
     setOppsLoading(true);
     try {
       const token = await getToken();
       if (!token) throw new Error("Not authenticated");
       const body: Record<string, any> = {};
-      if (result.insertedPersonIds?.length)  body.personIds  = result.insertedPersonIds;
-      if (result.insertedCompanyIds?.length) body.companyIds = result.insertedCompanyIds;
+      if (r.insertedPersonIds?.length)  body.personIds  = r.insertedPersonIds;
+      if (r.insertedCompanyIds?.length) body.companyIds = r.insertedCompanyIds;
       const res = await fetch("/api/crm/opportunities/bulk-create", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -885,6 +891,17 @@ export default function ImportPanel() {
             </div>
           </div>
 
+          {importType !== "donations" && (
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 14 }}>
+              <input
+                type="checkbox"
+                checked={createOppsOnImport}
+                onChange={(e) => setCreateOppsOnImport(e.target.checked)}
+              />
+              <span>Create one <strong>Lead Opportunity</strong> per new record after import</span>
+            </label>
+          )}
+
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => setStep("map")} style={ghostBtn}>← Edit mapping</button>
             <button
@@ -1026,30 +1043,15 @@ export default function ImportPanel() {
             )}
           </div>
 
-          {/* Create Opportunities */}
-          {((result.insertedPersonIds?.length ?? 0) + (result.insertedCompanyIds?.length ?? 0)) > 0 && (
-            <div style={{
-              border: "1px solid var(--gg-border, #e5e7eb)",
-              borderRadius: 10,
-              padding: "20px 24px",
-            }}>
-              <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 15 }}>Create Lead Opportunities</p>
-              <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
-                Create one opportunity per imported record in stage 1, ready to work in the pipeline.
-              </p>
-              {oppsCreated === null ? (
-                <button onClick={handleCreateOpps} disabled={oppsLoading} style={primaryBtn(oppsLoading)}>
-                  {oppsLoading
-                    ? "Creating…"
-                    : `Create ${((result.insertedPersonIds?.length ?? 0) + (result.insertedCompanyIds?.length ?? 0)).toLocaleString()} Opportunities`}
-                </button>
-              ) : (
-                <p style={{ margin: 0, color: "#16a34a", fontWeight: 600 }}>
-                  ✓ {oppsCreated.toLocaleString()} opportunities created —{" "}
-                  <a href="/crm/opportunities" style={{ color: "#16a34a" }}>View pipeline →</a>
-                </p>
-              )}
-            </div>
+          {/* Opportunities result */}
+          {oppsCreated !== null && (
+            <p style={{ margin: 0, fontSize: 14, color: "#16a34a", fontWeight: 600 }}>
+              ✓ {oppsCreated.toLocaleString()} opportunities created —{" "}
+              <a href="/crm/opportunities" style={{ color: "#16a34a" }}>View pipeline →</a>
+            </p>
+          )}
+          {oppsLoading && (
+            <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #9ca3af)" }}>Creating opportunities…</p>
           )}
 
           <div style={{ display: "flex", gap: 10 }}>
