@@ -844,6 +844,7 @@ export async function POST(request: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const personData: Record<string, any> = {
       tenant_id: tenantId,
+      title: (row.title ?? "").trim() || null,
       first_name: fn || null,
       last_name: ln || null,
       email: email || null,

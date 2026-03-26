@@ -10,7 +10,7 @@ import { getServerSupabaseWritable } from "@/lib/supabase/server";
  */
 const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   people: [
-    "first_name", "last_name", "email", "phone",
+    "title", "first_name", "last_name", "email", "phone",
     "notes", "household_id", "contact_type",
     "phone_cell", "phone_landline",
   ],

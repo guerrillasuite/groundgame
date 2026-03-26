@@ -8,7 +8,7 @@ import { L2_FIELD_MAP } from "@/lib/crm/l2-field-map";
 
 type TargetField =
   // Core
-  | "first_name" | "last_name" | "email" | "phone"
+  | "title" | "first_name" | "last_name" | "email" | "phone"
   | "contact_type" | "occupation" | "notes"
   | "address_line1" | "city" | "state" | "postal_code"
   // People: L2 voter identity
@@ -55,6 +55,7 @@ type TargetField =
 const TARGET_FIELDS: { value: TargetField; label: string }[] = [
   { value: "__skip__",    label: "— skip —" },
   { value: "__create__",  label: "→ Create field (use column name)" },
+  { value: "title",       label: "Title (Mr./Mrs./Dr. etc.)" },
   { value: "first_name",  label: "First Name" },
   { value: "last_name",   label: "Last Name" },
   { value: "email",       label: "Email" },
@@ -70,6 +71,7 @@ const TARGET_FIELDS: { value: TargetField; label: string }[] = [
 
 // Auto-detect common column name → target field
 const AUTO_MAP: Record<string, TargetField> = {
+  title: "title", salutation: "title", honorific: "title", prefix: "title", name_prefix: "title",
   first_name: "first_name", fname: "first_name", first: "first_name", firstname: "first_name",
   last_name: "last_name", lname: "last_name", last: "last_name", lastname: "last_name", surname: "last_name",
   email: "email", email_address: "email", emailaddress: "email",
