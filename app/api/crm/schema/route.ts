@@ -84,9 +84,12 @@ const LOCATION_JOIN_FIELDS: ColumnDef[] = [
 // Hardcoded fallback in case service role key is missing
 const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
   people: [
-    { column: "title",        label: "Title",         data_type: "text",    is_join: false },
-    { column: "first_name",   label: "First Name",    data_type: "text",    is_join: false },
-    { column: "last_name",    label: "Last Name",     data_type: "text",    is_join: false },
+    { column: "title",          label: "Title",          data_type: "text", is_join: false },
+    { column: "first_name",     label: "First Name",     data_type: "text", is_join: false },
+    { column: "middle_name",    label: "Middle Name",    data_type: "text", is_join: false },
+    { column: "middle_initial", label: "Middle Initial", data_type: "text", is_join: false },
+    { column: "last_name",      label: "Last Name",      data_type: "text", is_join: false },
+    { column: "suffix",         label: "Suffix",         data_type: "text", is_join: false },
     { column: "email",        label: "Email",         data_type: "text",    is_join: false },
     { column: "phone",        label: "Phone",         data_type: "text",    is_join: false },
     { column: "contact_type", label: "Contact Type",  data_type: "text",    is_join: false },

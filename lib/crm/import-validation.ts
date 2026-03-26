@@ -6,7 +6,10 @@ export interface MappedRow {
   // ── Core fields (existing) ─────────────────────────────────────────────────
   title?: string;
   first_name?: string;
+  middle_name?: string;
+  middle_initial?: string;
   last_name?: string;
+  suffix?: string;
   email?: string;
   phone?: string;
   address_line1?: string;

@@ -36,7 +36,7 @@ export default async function PersonDetail({ params }: Params) {
   // 1) Person (joined through tenant_people to enforce tenant isolation)
   const { data: person, error: pErr } = await sb
     .from("people")
-    .select(`id, title, first_name, last_name, email, phone, contact_type, notes, created_at, household_id,
+    .select(`id, title, first_name, middle_name, middle_initial, last_name, suffix, email, phone, contact_type, notes, created_at, household_id,
       lalvoteid, state_voter_id, county_voter_id, gender, birth_date, age, party, party_switcher,
       voter_status, registration_date, permanent_absentee, veteran, do_not_call, place_of_birth,
       phone_cell, phone_landline, mailing_address,
@@ -118,7 +118,13 @@ export default async function PersonDetail({ params }: Params) {
     assignedLists = (wls ?? []) as typeof assignedLists;
   }
 
-  const fullName = [(person as any).title, person.first_name, person.last_name].filter(Boolean).join(" ") || "(Unnamed)";
+  const fullName = [
+    (person as any).title,
+    person.first_name,
+    (person as any).middle_name ?? ((person as any).middle_initial ? (person as any).middle_initial + "." : null),
+    person.last_name,
+    (person as any).suffix,
+  ].filter(Boolean).join(" ") || "(Unnamed)";
   const initials = [person.first_name?.[0], person.last_name?.[0]].filter(Boolean).join("").toUpperCase();
   const addedDate = person.created_at
     ? new Date(person.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
@@ -204,7 +210,10 @@ export default async function PersonDetail({ params }: Params) {
           fields={[
             { name: "title", label: "Title (Mr./Mrs./Dr.)" },
             { name: "first_name", label: "First Name" },
+            { name: "middle_name", label: "Middle Name" },
+            { name: "middle_initial", label: "Middle Initial" },
             { name: "last_name", label: "Last Name" },
+            { name: "suffix", label: "Suffix (Jr./Sr./III)" },
             { name: "email", label: "Email", type: "email" },
             { name: "phone", label: "Phone", type: "tel" },
             { name: "contact_type", label: "Contact Type" },
