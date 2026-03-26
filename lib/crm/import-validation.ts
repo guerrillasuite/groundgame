@@ -111,6 +111,24 @@ export interface MappedRow {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __meta?: Record<string, any>;
+
+  // ── Tenant-specific (link table) ──────────────────────────────────────────
+  // Named typed columns on tenant_people (notes, contact_type)
+  __tenant_people?: Record<string, string>;
+  // Freeform keys → tenant_people.custom_data JSONB
+  __tenant_custom?: Record<string, string>;
+  // External giving history: cycle_year (string) → amount in cents (string)
+  // e.g. { "2024": "32500", "2022": "15000" }
+  __giving?: Record<string, string>;
+
+  // ── Company import ─────────────────────────────────────────────────────────
+  // Fields for the companies table
+  __company?: Record<string, string>;
+  // Point-of-contact person fields
+  __contact?: Record<string, string>;
+
+  // ── Donation history import (Shape B: one transaction per row) ─────────────
+  __donation?: { amount: string; date: string };
 }
 
 export type ValidationResult =

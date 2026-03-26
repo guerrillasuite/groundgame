@@ -41,7 +41,16 @@ type TargetField =
   | "county_supervisor_district" | "school_district" | "college_district"
   | "judicial_district" | "time_zone" | "urbanicity" | "population_density"
   | "census_tract" | "census_block_group" | "census_block" | "dma"
-  | "__skip__" | "__create__";
+  // Tenant-specific (link table)
+  | "tp_notes" | "tp_contact_type"
+  // Company import
+  | "co_name" | "co_domain" | "co_phone" | "co_email"
+  | "co_industry" | "co_status" | "co_presence"
+  | "co_contact_first" | "co_contact_last" | "co_contact_email"
+  | "co_contact_phone" | "co_contact_title"
+  // Donation history (Shape B — transaction per row)
+  | "dn_first" | "dn_last" | "dn_email" | "dn_zip" | "dn_amount" | "dn_date"
+  | "__skip__" | "__create__" | "__create_global__" | "__giving_cycle__";
 
 const TARGET_FIELDS: { value: TargetField; label: string }[] = [
   { value: "__skip__",    label: "— skip —" },
@@ -82,10 +91,23 @@ function autoDetect(col: string): TargetField {
   // Check L2 map first
   const l2 = L2_FIELD_MAP[key];
   if (l2) {
-    if (l2.dest === "meta") return "__create__";
+    if (l2.dest === "meta") return "__create_global__"; // L2 extra fields → shared community data
     return l2.column as TargetField;
   }
+  // Detect giving cycle columns: "2024 Total", "giving_2022", "FY2024", "cycle_2026", etc.
+  if (/\b(20[12]\d)\b/.test(key)) return "__giving_cycle__";
   return AUTO_MAP[key] ?? "__skip__";
+}
+
+/** Extract a 4-digit year from a column name, if present. */
+function extractYearFromCol(col: string): string {
+  const m = col.match(/\b(20[12]\d)\b/);
+  return m ? m[1] : "";
+}
+
+/** Snap any year to its election cycle end year (odd → next even). */
+function toCycleYear(year: number): number {
+  return year % 2 === 0 ? year : year + 1;
 }
 
 type ParsedData = {
@@ -102,6 +124,9 @@ type ImportResult = {
   skipped: number;
   failed: number;
   errors: string[];
+  insertedPersonIds?: string[];
+  insertedCompanyIds?: string[];
+  importType?: 'people' | 'companies';
 };
 
 // ── Parser helpers ─────────────────────────────────────────────────────────
@@ -169,11 +194,18 @@ export default function ImportPanel() {
   const [selectedTenant, setSelectedTenant] = useState("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [importMode, setImportMode] = useState<"fill_blanks" | "smart_merge" | "override">("smart_merge");
+  const [importType, setImportType] = useState<"people" | "companies" | "donations">("people");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [validateResult, setValidateResult] = useState<ImportResult | null>(null);
   const [parseErr, setParseErr] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [oppsLoading, setOppsLoading] = useState(false);
+  const [oppsCreated, setOppsCreated] = useState<number | null>(null);
+  // col → canonical key override for __create_global__ fields
+  const [globalKeyOverrides, setGlobalKeyOverrides] = useState<Record<string, string>>({});
+  // col → cycle year (4-digit string) for __giving_cycle__ fields
+  const [givingCycleYears, setGivingCycleYears] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Get session token
@@ -220,9 +252,17 @@ export default function ImportPanel() {
       setSchemaFields(schema);
 
       const autoMapping: Record<string, TargetField> = {};
-      for (const h of data.headers) autoMapping[h] = autoDetect(h);
+      const autoGivingYears: Record<string, string> = {};
+      for (const h of data.headers) {
+        autoMapping[h] = autoDetect(h);
+        if (autoMapping[h] === "__giving_cycle__") {
+          const y = extractYearFromCol(h);
+          if (y) autoGivingYears[h] = String(toCycleYear(parseInt(y)));
+        }
+      }
       setParsed(data);
       setMapping(autoMapping);
+      setGivingCycleYears(autoGivingYears);
       setStep("map");
     } catch (e: any) {
       setParseErr(`Failed to parse file: ${e?.message ?? e}`);
@@ -255,17 +295,55 @@ export default function ImportPanel() {
     return parsed.rows.map((row) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const out: Record<string, any> = {};
-      const meta: Record<string, string> = {};
+      const globalMeta: Record<string, string> = {};
+      const tenantNamed: Record<string, string> = {};
+      const tenantCustom: Record<string, string> = {};
+      const giving: Record<string, string> = {};   // cycleYear → raw amount string
+      const donation: { amount: string; date: string } = { amount: "", date: "" };
+      const company: Record<string, string> = {};
+      const contact: Record<string, string> = {};
       for (const [col, target] of Object.entries(mapping)) {
         const val = (row[col] ?? "").trim();
         if (!val) continue;
-        if (target === "__create__") {
-          meta[col] = val;
+        if (target === "__giving_cycle__") {
+          const year = (givingCycleYears[col] ?? extractYearFromCol(col)).trim();
+          if (year) giving[String(toCycleYear(parseInt(year) || 0))] = val;
+        } else if (target === "__create_global__") {
+          const key = (globalKeyOverrides[col] ?? col).trim() || col;
+          globalMeta[key] = val;
+        } else if (target === "__create__") {
+          tenantCustom[col] = val;
+        } else if (target === "tp_notes") {
+          tenantNamed.notes = val;
+        } else if (target === "tp_contact_type") {
+          tenantNamed.contact_type = val;
+        } else if (target === "dn_amount") {
+          donation.amount = val;
+        } else if (target === "dn_date") {
+          donation.date = val;
+        } else if (target === "dn_first") {
+          out.first_name = val;
+        } else if (target === "dn_last") {
+          out.last_name = val;
+        } else if (target === "dn_email") {
+          out.email = val;
+        } else if (target === "dn_zip") {
+          out.postal_code = val;
+        } else if (target.startsWith("co_contact_")) {
+          contact[target.slice("co_contact_".length)] = val;
+        } else if (target.startsWith("co_")) {
+          company[target.slice(3)] = val;
         } else if (target !== "__skip__") {
           out[target] = val;
         }
       }
-      if (Object.keys(meta).length > 0) out.__meta = meta;
+      if (Object.keys(globalMeta).length > 0)   out.__meta          = globalMeta;
+      if (Object.keys(tenantNamed).length > 0)  out.__tenant_people = tenantNamed;
+      if (Object.keys(tenantCustom).length > 0) out.__tenant_custom = tenantCustom;
+      if (Object.keys(giving).length > 0)       out.__giving        = giving;
+      if (donation.amount)                       out.__donation      = donation;
+      if (Object.keys(company).length > 0)      out.__company       = company;
+      if (Object.keys(contact).length > 0)      out.__contact       = contact;
       return out;
     });
   }
@@ -282,7 +360,7 @@ export default function ImportPanel() {
       if (!token) throw new Error("Not authenticated");
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: true, importMode };
+      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: true, importMode, importType };
       if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
 
       const res = await fetch("/api/crm/import", {
@@ -315,7 +393,7 @@ export default function ImportPanel() {
       if (!token) throw new Error("Not authenticated");
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: false, importMode };
+      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: false, importMode, importType };
       if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
 
       const res = await fetch("/api/crm/import", {
@@ -347,20 +425,61 @@ export default function ImportPanel() {
     setTenants([]);
     setSelectedTenant("");
     setImportMode("smart_merge");
+    setImportType("people");
+    setOppsCreated(null);
+    setOppsLoading(false);
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function handleCreateOpps() {
+    if (!result) return;
+    setOppsLoading(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Not authenticated");
+      const body: Record<string, any> = {};
+      if (result.insertedPersonIds?.length)  body.personIds  = result.insertedPersonIds;
+      if (result.insertedCompanyIds?.length) body.companyIds = result.insertedCompanyIds;
+      const res = await fetch("/api/crm/opportunities/bulk-create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to create opportunities");
+      setOppsCreated(data.created ?? 0);
+    } catch (e: any) {
+      alert((e as Error).message);
+    } finally {
+      setOppsLoading(false);
+    }
   }
 
   // ── Check mapping validity ──────────────────────────────────────────────────
 
   const mappedTargets = Object.values(mapping);
-  const hasName = mappedTargets.includes("first_name") || mappedTargets.includes("last_name");
+  const canProceed = importType === "companies"
+    ? mappedTargets.includes("co_name")
+    : importType === "donations"
+    ? mappedTargets.includes("dn_amount") &&
+      (mappedTargets.includes("dn_email") || mappedTargets.includes("dn_first") || mappedTargets.includes("dn_last"))
+    : (mappedTargets.includes("first_name") || mappedTargets.includes("last_name"));
 
   // Preview rows (first 5, with mapping applied)
   const previewRows = (parsed?.rows ?? []).slice(0, 5).map((row) => {
     const out: Record<string, string> = {};
     for (const [col, target] of Object.entries(mapping)) {
-      if (target === "__create__") out[`__custom__${col}`] = (row[col] ?? "").trim();
-      else if (target !== "__skip__") out[target] = (row[col] ?? "").trim();
+      if (target === "__giving_cycle__") {
+        const year = (givingCycleYears[col] ?? extractYearFromCol(col)).trim();
+        if (year) out[`__giving__${toCycleYear(parseInt(year) || 0)}`] = (row[col] ?? "").trim();
+      } else if (target === "__create_global__") {
+        const key = (globalKeyOverrides[col] ?? col).trim() || col;
+        out[`__global__${key}`] = (row[col] ?? "").trim();
+      } else if (target === "__create__") {
+        out[`__custom__${col}`] = (row[col] ?? "").trim();
+      } else if (target !== "__skip__") {
+        out[target] = (row[col] ?? "").trim();
+      }
     }
     return out;
   });
@@ -368,13 +487,26 @@ export default function ImportPanel() {
   // Build preview column list: schema-known fields + custom "create" columns
   const allFieldOptions = schemaFields.length > 0
     ? schemaFields.map((f) => ({ value: f.column, label: f.label }))
-    : TARGET_FIELDS.filter((f) => f.value !== "__skip__" && f.value !== "__create__");
+    : TARGET_FIELDS.filter((f) => f.value !== "__skip__" && f.value !== "__create__" && f.value !== "__create_global__");
 
   const mappedFields = [
     ...allFieldOptions.filter((f) => mappedTargets.includes(f.value as TargetField)),
     ...Object.entries(mapping)
+      .filter(([, t]) => t === "__giving_cycle__")
+      .map(([col]) => {
+        const year = (givingCycleYears[col] ?? extractYearFromCol(col)).trim();
+        const cy = year ? toCycleYear(parseInt(year) || 0) : "?";
+        return { value: `__giving__${cy}`, label: `Giving ${cy} cycle` };
+      }),
+    ...Object.entries(mapping)
+      .filter(([, t]) => t === "__create_global__")
+      .map(([col]) => {
+        const key = (globalKeyOverrides[col] ?? col).trim() || col;
+        return { value: `__global__${key}`, label: `${key} (shared)` };
+      }),
+    ...Object.entries(mapping)
       .filter(([, t]) => t === "__create__")
-      .map(([col]) => ({ value: `__custom__${col}`, label: `${col} (custom)` })),
+      .map(([col]) => ({ value: `__custom__${col}`, label: `${col} (org only)` })),
   ];
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -386,6 +518,25 @@ export default function ImportPanel() {
       {/* ── Step 1: Upload ── */}
       {step === "upload" && (
         <>
+          {/* Import type toggle */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+            {(["people", "companies", "donations"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setImportType(t)}
+                style={{
+                  padding: "7px 18px", borderRadius: 6, fontWeight: 600, fontSize: 14,
+                  border: `1px solid ${importType === t ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
+                  background: importType === t ? "var(--gg-primary-faint, #eff6ff)" : "transparent",
+                  color: importType === t ? "var(--gg-primary, #2563eb)" : "var(--gg-text, #374151)",
+                  cursor: "pointer",
+                  textTransform: "capitalize",
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
           <p style={{ margin: 0, color: "var(--gg-text-dim, #6b7280)", fontSize: 14 }}>
             Upload a CSV, Excel, TSV, or JSON file. You&rsquo;ll map columns to fields before importing.
           </p>
@@ -472,9 +623,53 @@ export default function ImportPanel() {
                       >
                         {/* Always-present options */}
                         <option value="__skip__">— skip —</option>
-                        <option value="__create__">→ Create field (use column name)</option>
+                        {importType !== "donations" && (
+                          <>
+                            <option value="__create__">→ Custom field (this org only)</option>
+                            <option value="__create_global__">→ Custom field (shared / community)</option>
+                          </>
+                        )}
 
-                        {schemaFields.length > 0 ? (
+                        {importType === "donations" ? (
+                          <>
+                            <optgroup label="Person Identifier">
+                              <option value="dn_first">First Name</option>
+                              <option value="dn_last">Last Name</option>
+                              <option value="dn_email">Email</option>
+                              <option value="dn_zip">Zip Code</option>
+                            </optgroup>
+                            <optgroup label="Transaction">
+                              <option value="dn_amount">Amount (dollars)</option>
+                              <option value="dn_date">Date</option>
+                            </optgroup>
+                          </>
+                        ) : importType === "companies" ? (
+                          <>
+                            <optgroup label="Company">
+                              <option value="co_name">Company Name</option>
+                              <option value="co_domain">Domain</option>
+                              <option value="co_phone">Phone</option>
+                              <option value="co_email">Email</option>
+                              <option value="co_industry">Industry</option>
+                              <option value="co_status">Status</option>
+                              <option value="co_presence">Presence</option>
+                            </optgroup>
+                            <optgroup label="Point of Contact">
+                              <option value="co_contact_first">First Name</option>
+                              <option value="co_contact_last">Last Name</option>
+                              <option value="co_contact_email">Email</option>
+                              <option value="co_contact_phone">Phone</option>
+                              <option value="co_contact_title">Job Title</option>
+                            </optgroup>
+                            <optgroup label="Tenant Tracking">
+                              <option value="tp_notes">Notes (this org only)</option>
+                              <option value="tp_contact_type">Contact Type (this org only)</option>
+                            </optgroup>
+                            <optgroup label="Giving History (external)">
+                              <option value="__giving_cycle__">→ Giving – cycle year (set below)</option>
+                            </optgroup>
+                          </>
+                        ) : schemaFields.length > 0 ? (
                           <>
                             <optgroup label="People">
                               {schemaFields
@@ -497,13 +692,22 @@ export default function ImportPanel() {
                                   <option key={f.column} value={f.column}>{f.label}</option>
                                 ))}
                             </optgroup>
+                            <optgroup label="Tenant Tracking">
+                              <option value="tp_notes">Notes (this org only)</option>
+                              <option value="tp_contact_type">Contact Type (this org only)</option>
+                            </optgroup>
+                            <optgroup label="Giving History (external)">
+                              <option value="__giving_cycle__">→ Giving – cycle year (set below)</option>
+                            </optgroup>
                           </>
                         ) : (
                           /* Fallback if schema didn't load */
                           <>
                             <optgroup label="People">
                               {TARGET_FIELDS.filter((f) =>
-                                f.value !== "__skip__" && f.value !== "__create__" && !LOCATION_FIELD_COLS.has(f.value)
+                                f.value !== "__skip__" && f.value !== "__create__" && f.value !== "__create_global__"
+                                && !LOCATION_FIELD_COLS.has(f.value)
+                                && !f.value.startsWith("tp_") && !f.value.startsWith("co_")
                               ).map((f) => (
                                 <option key={f.value} value={f.value}>{f.label}</option>
                               ))}
@@ -513,9 +717,62 @@ export default function ImportPanel() {
                                 <option key={f.value} value={f.value}>{f.label}</option>
                               ))}
                             </optgroup>
+                            <optgroup label="Tenant Tracking">
+                              <option value="tp_notes">Notes (this org only)</option>
+                              <option value="tp_contact_type">Contact Type (this org only)</option>
+                            </optgroup>
+                            <optgroup label="Giving History (external)">
+                              <option value="__giving_cycle__">→ Giving – cycle year (set below)</option>
+                            </optgroup>
                           </>
                         )}
                       </select>
+                      {mapping[col] === "__giving_cycle__" && (
+                        <div style={{ marginTop: 5 }}>
+                          <span style={{ fontSize: 11, color: "var(--gg-text-dim, #6b7280)" }}>
+                            Cycle year (even):
+                          </span>
+                          <input
+                            type="number"
+                            value={givingCycleYears[col] ?? extractYearFromCol(col)}
+                            onChange={(e) => {
+                              const raw = parseInt(e.target.value) || 0;
+                              setGivingCycleYears((prev) => ({ ...prev, [col]: String(toCycleYear(raw)) }));
+                            }}
+                            placeholder="e.g. 2024"
+                            min={2000} max={2060} step={2}
+                            style={{
+                              display: "block", width: "100%", marginTop: 2,
+                              padding: "3px 7px", fontSize: 12,
+                              border: "1px solid var(--gg-border, #d1d5db)",
+                              borderRadius: 4, fontFamily: "monospace",
+                              background: "rgba(34,197,94,0.06)",
+                            }}
+                          />
+                        </div>
+                      )}
+                      {mapping[col] === "__create_global__" && (
+                        <div style={{ marginTop: 5 }}>
+                          <span style={{ fontSize: 11, color: "var(--gg-text-dim, #6b7280)" }}>
+                            Canonical key:
+                          </span>
+                          <input
+                            type="text"
+                            value={globalKeyOverrides[col] ?? col}
+                            onChange={(e) =>
+                              setGlobalKeyOverrides((prev) => ({ ...prev, [col]: e.target.value }))
+                            }
+                            placeholder={col}
+                            style={{
+                              display: "block", width: "100%", marginTop: 2,
+                              padding: "3px 7px", fontSize: 12,
+                              border: "1px solid var(--gg-border, #d1d5db)",
+                              borderRadius: 4, fontFamily: "monospace",
+                              background: "rgba(234,179,8,0.06)",
+                            }}
+                          />
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...td, color: "var(--gg-text-dim, #9ca3af)", fontSize: 12 }}>
                       {parsed.rows.slice(0, 3).map((r) => r[col]).filter(Boolean).join(" · ") || "—"}
@@ -526,9 +783,11 @@ export default function ImportPanel() {
             </table>
           </div>
 
-          {!hasName && (
+          {!canProceed && (
             <p style={{ margin: 0, fontSize: 13, color: "#f59e0b" }}>
-              ⚠ Map at least one of First Name or Last Name to continue.
+              {importType === "companies"
+                ? "⚠ Map Company Name to continue."
+                : "⚠ Map at least one of First Name or Last Name to continue."}
             </p>
           )}
 
@@ -536,8 +795,8 @@ export default function ImportPanel() {
             <button onClick={reset} style={ghostBtn}>← Back</button>
             <button
               onClick={goToPreview}
-              disabled={!hasName}
-              style={primaryBtn(!hasName)}
+              disabled={!canProceed}
+              style={primaryBtn(!canProceed)}
             >
               Preview →
             </button>
@@ -765,10 +1024,39 @@ export default function ImportPanel() {
             )}
           </div>
 
+          {/* Create Opportunities */}
+          {((result.insertedPersonIds?.length ?? 0) + (result.insertedCompanyIds?.length ?? 0)) > 0 && (
+            <div style={{
+              border: "1px solid var(--gg-border, #e5e7eb)",
+              borderRadius: 10,
+              padding: "20px 24px",
+            }}>
+              <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 15 }}>Create Lead Opportunities</p>
+              <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+                Create one opportunity per imported record in stage 1, ready to work in the pipeline.
+              </p>
+              {oppsCreated === null ? (
+                <button onClick={handleCreateOpps} disabled={oppsLoading} style={primaryBtn(oppsLoading)}>
+                  {oppsLoading
+                    ? "Creating…"
+                    : `Create ${((result.insertedPersonIds?.length ?? 0) + (result.insertedCompanyIds?.length ?? 0)).toLocaleString()} Opportunities`}
+                </button>
+              ) : (
+                <p style={{ margin: 0, color: "#16a34a", fontWeight: 600 }}>
+                  ✓ {oppsCreated.toLocaleString()} opportunities created —{" "}
+                  <a href="/crm/opportunities" style={{ color: "#16a34a" }}>View pipeline →</a>
+                </p>
+              )}
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={reset} style={primaryBtn(false)}>Import another file</button>
-            <a href="/crm/people" style={{ ...ghostBtn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-              View People →
+            <a
+              href={result.importType === "companies" ? "/crm/companies" : "/crm/people"}
+              style={{ ...ghostBtn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+            >
+              View {result.importType === "companies" ? "Companies" : "People"} →
             </a>
           </div>
         </>

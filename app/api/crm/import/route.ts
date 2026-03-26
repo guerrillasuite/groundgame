@@ -97,6 +97,27 @@ function addrKey(row: MappedRow): string | null {
   return `${a}|${(row.postal_code ?? "").trim()}`;
 }
 
+function parseDollarsToCents(raw: string): number {
+  const n = parseFloat(raw.replace(/[$,\s]/g, ""));
+  return isNaN(n) || n <= 0 ? 0 : Math.round(n * 100);
+}
+
+function cycleYearFromDate(raw: string): number {
+  const d = new Date(raw);
+  const y = isNaN(d.getTime())
+    ? (() => { const m = raw.match(/\b(20[12]\d)\b/); return m ? parseInt(m[1]) : new Date().getFullYear(); })()
+    : d.getFullYear();
+  return y % 2 === 0 ? y : y + 1;
+}
+
+function normalizeDomain(d: string): string {
+  return d.trim().toLowerCase()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/.*$/, "")
+    .replace(/\s+/g, "");
+}
+
 export async function POST(request: Request) {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const identity = await getAdminIdentity(request);
@@ -113,6 +134,7 @@ export async function POST(request: Request) {
   const requestedTenantId: string | undefined = body.tenant_id;
   const dryRun: boolean = body.dryRun === true;
   const importMode: ImportMode = (body.importMode as ImportMode) ?? "smart_merge";
+  const importType: string = body.importType ?? "people";
 
   // Resolve tenant: explicit body param first, then URL-based tenant
   let tenantId: string;
@@ -136,19 +158,45 @@ export async function POST(request: Request) {
 
   // ── Validation pass ───────────────────────────────────────────────────────
   const validRows: MappedRow[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const result = validateRow(rows[i], i + 1);
-    if (result.valid) {
-      validRows.push(result.normalized);
-    } else {
-      skipped++;
-      errors.push(result.reason);
+  if (importType === "companies") {
+    // Company import: require __company.name
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const name = (row.__company?.name ?? "").trim();
+      if (!name) {
+        skipped++;
+        errors.push(`Row ${i + 1}: company must have a name`);
+      } else {
+        validRows.push(row);
+      }
     }
+  } else if (importType === "donations") {
+    // Donations import: require amount + at least one person identifier
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const hasAmount = !!parseDollarsToCents((row.__donation?.amount ?? "").trim());
+      const hasId = !!(row.email || row.first_name || row.last_name);
+      if (!hasAmount || !hasId) {
+        skipped++;
+        errors.push(`Row ${i + 1}: donation must have an amount and a person identifier (email or name)`);
+      } else {
+        validRows.push(row);
+      }
+    }
+  } else {
+    for (let i = 0; i < rows.length; i++) {
+      const result = validateRow(rows[i], i + 1);
+      if (result.valid) {
+        validRows.push(result.normalized);
+      } else {
+        skipped++;
+        errors.push(result.reason);
+      }
+    }
+    // Warn about intra-file duplicate emails (not a skip, just informational)
+    const dupWarnings = findDuplicateEmails(validRows);
+    errors.push(...dupWarnings);
   }
-
-  // Warn about intra-file duplicate emails (not a skip, just informational)
-  const dupWarnings = findDuplicateEmails(validRows);
-  errors.push(...dupWarnings);
 
   if (!validRows.length) {
     return NextResponse.json({ dryRun, inserted: 0, updated: 0, skipped, failed: 0, errors: errors.slice(0, 50) });
@@ -293,11 +341,268 @@ export async function POST(request: Request) {
     });
   }
 
-  // ── Real import: phases A–D ───────────────────────────────────────────────
+  // ── Real import: phases A–D (people) / E–G (companies) ─────────────────
   const sb = makeSb(tenantId);
   const sbGlobal = makeSbGlobal();
   let inserted = 0;
   let updated = 0;
+
+  // ── Donations import path (Shape B: one transaction per row) ─────────────
+  if (importType === "donations") {
+    // Group rows by person identifier, accumulate amounts by cycle year
+    const personGroups = new Map<string, {
+      email: string; first: string; last: string; zip: string;
+      cycles: Record<number, number>;
+    }>();
+
+    for (const row of validRows) {
+      const email = (row.email ?? "").trim().toLowerCase();
+      const first = (row.first_name ?? "").trim();
+      const last  = (row.last_name  ?? "").trim();
+      const zip   = (row.postal_code ?? "").trim();
+      const amountCents = parseDollarsToCents((row.__donation?.amount ?? "").trim());
+      if (amountCents <= 0) { skipped++; continue; }
+
+      const cycleYear = cycleYearFromDate((row.__donation?.date ?? "").trim());
+      const groupKey  = email || `${first.toLowerCase()}|${last.toLowerCase()}|${zip}`;
+      if (!groupKey) { skipped++; continue; }
+
+      const g = personGroups.get(groupKey) ?? { email, first, last, zip, cycles: {} };
+      g.cycles[cycleYear] = (g.cycles[cycleYear] ?? 0) + amountCents;
+      personGroups.set(groupKey, g);
+    }
+
+    // Dedup by email against existing people
+    const uniqueEmails = [...new Set(
+      [...personGroups.values()].map(g => g.email).filter(Boolean)
+    )];
+    const existingByEmail = new Map<string, string>();
+    if (uniqueEmails.length > 0) {
+      for (const emailChunk of chunk(uniqueEmails, 200)) {
+        const { data } = await sbGlobal.from("people").select("id, email").in("email", emailChunk);
+        for (const p of data ?? []) {
+          if (p.email) existingByEmail.set(p.email.toLowerCase(), p.id);
+        }
+      }
+    }
+
+    // Find or create each person, then merge giving history
+    for (const [, group] of personGroups) {
+      let personId: string | null = group.email
+        ? (existingByEmail.get(group.email) ?? null)
+        : null;
+
+      if (!personId) {
+        const { data: newP, error: pErr } = await sb
+          .from("people")
+          .insert({
+            first_name: group.first || null,
+            last_name:  group.last  || null,
+            email:      group.email || null,
+            data_source: "import",
+            data_updated_at: new Date().toISOString(),
+          })
+          .select("id")
+          .maybeSingle();
+        if (pErr || !newP) {
+          errors.push(`Donation insert error: ${pErr?.message ?? "unknown"}`);
+          continue;
+        }
+        personId = newP.id;
+        inserted++;
+      } else {
+        updated++;
+      }
+
+      // Link to tenant
+      await sb.from("tenant_people").upsert(
+        { tenant_id: tenantId, person_id: personId, linked_at: new Date().toISOString() },
+        { onConflict: "tenant_id,person_id", ignoreDuplicates: true }
+      );
+
+      // Merge giving history
+      const cyclesJsonb: Record<string, number> = {};
+      for (const [year, cents] of Object.entries(group.cycles)) {
+        cyclesJsonb[String(year)] = cents;
+      }
+      await sb.rpc("gs_merge_giving_cycles", {
+        p_person_id: personId,
+        p_tenant_id: tenantId,
+        p_cycles: cyclesJsonb,
+      });
+    }
+
+    return NextResponse.json({
+      dryRun: false,
+      inserted,
+      updated,
+      skipped,
+      failed: errors.filter(e => e.startsWith("Donation")).length,
+      errors: errors.slice(0, 50),
+      importType,
+    });
+  }
+
+  // ── Company import path (phases E–G) ──────────────────────────────────────
+  if (importType === "companies") {
+    type RowCoAssignment = {
+      row: MappedRow;
+      companyId: string | null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      companyData: Record<string, any>;
+    };
+
+    // Phase E: build company rows, dedup by domain
+    const assignments: RowCoAssignment[] = [];
+    for (const row of validRows) {
+      const co = row.__company ?? {};
+      const name = (co.name ?? "").trim();
+      if (!name) continue;
+      const domain = normalizeDomain(co.domain ?? "");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const companyData: Record<string, any> = {
+        name,
+        ...(domain       ? { domain }            : {}),
+        ...(co.phone     ? { phone: co.phone }     : {}),
+        ...(co.email     ? { email: co.email }     : {}),
+        ...(co.industry  ? { industry: co.industry}: {}),
+        ...(co.status    ? { status: co.status }   : {}),
+        ...(co.presence  ? { presence: co.presence}: {}),
+      };
+      assignments.push({ row, companyId: null, companyData });
+    }
+
+    // Fetch existing companies by normalized domain
+    const uniqueDomains = [...new Set(
+      assignments.map(a => normalizeDomain(a.companyData.domain ?? "")).filter(Boolean)
+    )];
+    const existingByDomain = new Map<string, string>();
+    if (uniqueDomains.length > 0) {
+      for (const domainChunk of chunk(uniqueDomains, 200)) {
+        const { data } = await sbGlobal.from("companies").select("id, domain").in("domain", domainChunk);
+        for (const co of data ?? []) {
+          if (co.domain) existingByDomain.set(normalizeDomain(co.domain), co.id);
+        }
+      }
+    }
+
+    for (const a of assignments) {
+      const domain = normalizeDomain(a.companyData.domain ?? "");
+      if (domain) a.companyId = existingByDomain.get(domain) ?? null;
+    }
+
+    const newAssignments    = assignments.filter(a => !a.companyId);
+    const existingAssignments = assignments.filter(a => !!a.companyId);
+    const insertedCompanyIds: string[] = [];
+
+    // Insert new companies (batch, preserve order to pair back IDs)
+    for (let i = 0; i < newAssignments.length; i += 500) {
+      const batch = newAssignments.slice(i, i + 500);
+      const { data: newCos, error: coErr } = await sb
+        .from("companies")
+        .insert(batch.map(a => a.companyData))
+        .select("id");
+      if (coErr) {
+        errors.push(`Company insert error: ${coErr.message}`);
+      } else {
+        inserted += batch.length;
+        (newCos ?? []).forEach((co, j) => {
+          const a = newAssignments[i + j];
+          if (a) { a.companyId = co.id; insertedCompanyIds.push(co.id); }
+        });
+      }
+    }
+
+    // Update existing companies
+    for (const a of existingAssignments) {
+      const { error: coErr } = await sb.from("companies").update(a.companyData).eq("id", a.companyId!);
+      if (coErr) errors.push(`Company update error: ${coErr.message}`);
+      else updated++;
+    }
+
+    // Phase F: Upsert tenant_companies links
+    const allCompanyIds = assignments.map(a => a.companyId).filter(Boolean) as string[];
+    if (allCompanyIds.length > 0) {
+      const linkRows = [...new Set(allCompanyIds)].map(companyId => ({
+        tenant_id: tenantId,
+        company_id: companyId,
+        linked_at: new Date().toISOString(),
+      }));
+      for (const linkChunk of chunk(linkRows, 500)) {
+        await sb.from("tenant_companies").upsert(linkChunk, { onConflict: "tenant_id,company_id", ignoreDuplicates: true });
+      }
+    }
+
+    // Phase G: Point-of-contact persons
+    const contactAssignments = assignments.filter(
+      a => a.companyId && a.row.__contact && Object.keys(a.row.__contact).length > 0
+    );
+
+    if (contactAssignments.length > 0) {
+      const contactEmails = contactAssignments
+        .map(a => (a.row.__contact?.email ?? "").trim().toLowerCase())
+        .filter(Boolean);
+
+      const existingContactByEmail = new Map<string, string>();
+      if (contactEmails.length > 0) {
+        for (const emailChunk of chunk([...new Set(contactEmails)], 200)) {
+          const { data } = await sbGlobal.from("people").select("id, email").in("email", emailChunk);
+          for (const p of data ?? []) {
+            if (p.email) existingContactByEmail.set(p.email.toLowerCase(), p.id);
+          }
+        }
+      }
+
+      for (const { row, companyId } of contactAssignments) {
+        const c = row.__contact!;
+        const fn    = (c.first ?? "").trim();
+        const ln    = (c.last  ?? "").trim();
+        const email = (c.email ?? "").trim().toLowerCase();
+        const phone = (c.phone ?? "").trim();
+        const title = (c.title ?? "").trim();
+        if (!fn && !ln && !email) continue;
+
+        let personId: string | null = email ? (existingContactByEmail.get(email) ?? null) : null;
+        if (!personId) {
+          const { data: newP, error: pErr } = await sb
+            .from("people")
+            .insert({
+              first_name: fn || null,
+              last_name:  ln || null,
+              email:      email || null,
+              phone:      phone || null,
+              data_source: "import",
+              data_updated_at: new Date().toISOString(),
+            })
+            .select("id")
+            .maybeSingle();
+          if (pErr || !newP) { errors.push(`Contact insert error: ${pErr?.message ?? "unknown"}`); continue; }
+          personId = newP.id;
+        }
+
+        await sb.from("tenant_people").upsert(
+          { tenant_id: tenantId, person_id: personId, linked_at: new Date().toISOString() },
+          { onConflict: "tenant_id,person_id", ignoreDuplicates: true }
+        );
+
+        await sb.from("person_companies").upsert(
+          { person_id: personId, company_id: companyId!, tenant_id: tenantId, title: title || null, is_primary: true, is_current: true },
+          { onConflict: "person_id,company_id" }
+        );
+      }
+    }
+
+    return NextResponse.json({
+      dryRun: false,
+      inserted,
+      updated,
+      skipped,
+      failed: errors.filter(e => e.startsWith("Company") || e.startsWith("Contact")).length,
+      errors: errors.slice(0, 50),
+      insertedCompanyIds,
+      importType,
+    });
+  }
 
   // ── Phase A: Locations ────────────────────────────────────────────────────
 
@@ -516,12 +821,15 @@ export async function POST(request: Request) {
     }
   }
 
+  type TenantPeopleData = { named: Record<string, string>; custom: Record<string, string>; giving: Record<string, number> };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toInsert: Record<string, any>[] = [];
+  const toInsertTp: TenantPeopleData[] = []; // parallel to toInsert
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toUpdate: Array<{ id: string; existing: Record<string, any>; data: Record<string, any> }> = [];
-  // Collected person IDs to link to this tenant after insert/update
-  const personIdsToLink: string[] = [];
+  const toUpdate: Array<{ id: string; existing: Record<string, any>; data: Record<string, any>; tp: TenantPeopleData }> = [];
+  const personTenantMap = new Map<string, TenantPeopleData>(); // personId → tenant data
+  const insertedPersonIds: string[] = [];
 
   for (const row of validRows) {
     const fn = (row.first_name ?? "").trim();
@@ -550,6 +858,20 @@ export async function POST(request: Request) {
       ...(row.__meta && Object.keys(row.__meta).length > 0 ? { meta_json: row.__meta } : {}),
     };
 
+    // Tenant-specific data (→ tenant_people link table, not people table)
+    const tpNamed: Record<string, string> = {};
+    const tpCustom: Record<string, string> = {};
+    const tpGiving: Record<string, number> = {};
+    if (row.__tenant_people) Object.assign(tpNamed, row.__tenant_people);
+    if (row.__tenant_custom) Object.assign(tpCustom, row.__tenant_custom);
+    if (row.__giving) {
+      for (const [year, amtStr] of Object.entries(row.__giving)) {
+        const cents = parseDollarsToCents(amtStr);
+        if (cents > 0) tpGiving[year] = cents;
+      }
+    }
+    const tp: TenantPeopleData = { named: tpNamed, custom: tpCustom, giving: tpGiving };
+
     // Global dedup priority: lalvoteid → state_voter_id → email → name+household
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let existingRecord: Record<string, any> | undefined;
@@ -562,23 +884,29 @@ export async function POST(request: Request) {
     }
 
     if (existingRecord) {
-      toUpdate.push({ id: existingRecord.id, existing: existingRecord, data: personData });
+      toUpdate.push({ id: existingRecord.id, existing: existingRecord, data: personData, tp });
     } else {
       toInsert.push(personData);
+      toInsertTp.push(tp);
     }
   }
 
-  for (const personChunk of chunk(toInsert, 500)) {
+  for (let i = 0; i < toInsert.length; i += 500) {
+    const personChunk = toInsert.slice(i, i + 500);
+    const tpChunk     = toInsertTp.slice(i, i + 500);
     const { data: newPeople, error: insErr } = await sb.from("people").insert(personChunk).select("id");
     if (insErr) {
       errors.push(`Person insert error: ${insErr.message}`);
     } else {
       inserted += personChunk.length;
-      for (const p of newPeople ?? []) personIdsToLink.push(p.id);
+      (newPeople ?? []).forEach((p, j) => {
+        insertedPersonIds.push(p.id);
+        personTenantMap.set(p.id, tpChunk[j] ?? { named: {}, custom: {}, giving: {} });
+      });
     }
   }
 
-  for (const { id, existing, data: personData } of toUpdate) {
+  for (const { id, existing, data: personData, tp } of toUpdate) {
     // Strip always-set metadata fields before mode filtering, then re-add
     const { data_source, data_updated_at, tenant_id, household_id, ...filterable } = personData;
     const modeFiltered = applyImportMode(
@@ -594,20 +922,37 @@ export async function POST(request: Request) {
       errors.push(`Person update error: ${upErr.message}`);
     } else {
       updated++;
-      personIdsToLink.push(id);
+      personTenantMap.set(id, tp);
     }
   }
 
-  // ── Link all processed people to this tenant ──────────────────────────────
-  if (personIdsToLink.length > 0) {
-    const linkRows = [...new Set(personIdsToLink)].map((personId) => ({
-      tenant_id: tenantId,
-      person_id: personId,
-      linked_at: new Date().toISOString(),
-    }));
+  // ── Link all processed people to this tenant (with tenant-specific data) ──
+  if (personTenantMap.size > 0) {
+    const linkRows = [...personTenantMap.entries()].map(([personId, tp]) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r: Record<string, any> = {
+        tenant_id: tenantId,
+        person_id: personId,
+        linked_at: new Date().toISOString(),
+      };
+      if (tp.named.notes)                     r.notes        = tp.named.notes;
+      if (tp.named.contact_type)              r.contact_type = tp.named.contact_type;
+      if (Object.keys(tp.custom).length > 0)  r.custom_data  = tp.custom;
+      return r;
+    });
     for (const linkChunk of chunk(linkRows, 500)) {
-      await sb.from("tenant_people").upsert(linkChunk, { onConflict: "tenant_id,person_id", ignoreDuplicates: true });
+      await sb.from("tenant_people").upsert(linkChunk, { onConflict: "tenant_id,person_id" });
     }
+  }
+
+  // ── Shape A giving history: merge giving_cycles for people with __giving data ──
+  for (const [personId, tp] of personTenantMap.entries()) {
+    if (Object.keys(tp.giving).length === 0) continue;
+    await sb.rpc("gs_merge_giving_cycles", {
+      p_person_id: personId,
+      p_tenant_id: tenantId,
+      p_cycles: tp.giving,
+    });
   }
 
   // ── Phase D: Rename households from last names of residents ───────────────
@@ -655,5 +1000,7 @@ export async function POST(request: Request) {
     skipped,
     failed: errors.filter((e) => e.startsWith("Person") || e.startsWith("Location") || e.startsWith("Household")).length,
     errors: errors.slice(0, 50),
+    insertedPersonIds,
+    importType,
   });
 }

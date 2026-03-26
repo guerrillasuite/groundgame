@@ -46,7 +46,7 @@ export default async function PersonDetail({ params }: Params) {
       education_level, marital_status, religion,
       occupation_title, company_name, income_range, net_worth_range,
       length_of_residence, moved_from_state, meta_json,
-      tenant_people!inner(tenant_id)`)
+      tenant_people!inner(tenant_id, notes, contact_type, custom_data)`)
     .eq("id", personId)
     .eq("tenant_people.tenant_id", tenant.id)
     .single();
@@ -377,7 +377,28 @@ export default async function PersonDetail({ params }: Params) {
         </div>
       ) : null}
 
-      {/* Extended Data (meta_json) */}
+      {/* Tenant Custom Fields (tenant_people.custom_data) */}
+      {(() => {
+        const cd = (person as any).tenant_people?.[0]?.custom_data;
+        if (!cd || Object.keys(cd).length === 0) return null;
+        return (
+          <details style={cardStyle}>
+            <summary style={{ ...labelStyle, cursor: "pointer", marginBottom: 0 }}>
+              Custom Fields ({Object.keys(cd).length} fields)
+            </summary>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "8px 20px", marginTop: 12 }}>
+              {Object.entries(cd as Record<string, unknown>).map(([k, v]) => (
+                <div key={k}>
+                  <p style={{ ...labelStyle, marginBottom: 2 }}>{k}</p>
+                  <p style={valueStyle}>{String(v ?? "")}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+        );
+      })()}
+
+      {/* Extended Data (meta_json — global shared) */}
       {(person as any).meta_json && Object.keys((person as any).meta_json).length > 0 ? (
         <details style={cardStyle}>
           <summary style={{ ...labelStyle, cursor: "pointer", marginBottom: 0 }}>
