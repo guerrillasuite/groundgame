@@ -11,7 +11,7 @@ export const ALL_FEATURE_KEYS = [
   "crm_import",        // CSV bulk import
   "crm_dedupe",        // duplicate detection & merge
   "crm_cleanup",       // data cleanup tools
-  "crm_enrichment",    // L2 voter / community enrichment data (meta_json)
+  "crm_enrichment",    // GS community enrichment data (meta_json)
   "pwa_doors",         // door canvassing app
   "pwa_dials",         // phone banking app
   "pwa_storefront",    // storefront / ordering
@@ -36,7 +36,7 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   crm_import:        { label: "Import (CSV Bulk Upload)",                 group: "CRM Data" },
   crm_dedupe:        { label: "Dedupe",                                   group: "CRM Data" },
   crm_cleanup:       { label: "Cleanup Tools",                            group: "CRM Data" },
-  crm_enrichment:    { label: "Community Enrichment (L2 Voter Data)",    group: "CRM Data" },
+  crm_enrichment:    { label: "Community Enrichment (GS Data)",          group: "CRM Data" },
   pwa_doors:         { label: "Doors (Door Canvassing)",                  group: "PWA" },
   pwa_dials:         { label: "Dials (Phone Banking)",                    group: "PWA" },
   pwa_storefront:    { label: "Storefront / Ordering",                    group: "PWA" },

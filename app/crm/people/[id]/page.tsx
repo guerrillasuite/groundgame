@@ -296,7 +296,7 @@ export default async function PersonDetail({ params }: Params) {
           <p style={{ ...labelStyle, marginBottom: 12 }}>Voter Record</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
             {[
-              { label: "L2 Voter ID", val: (person as any).lalvoteid },
+              { label: "Voter ID", val: (person as any).lalvoteid },
               { label: "State Voter ID", val: (person as any).state_voter_id },
               { label: "County Voter ID", val: (person as any).county_voter_id },
               { label: "Voter Status", val: (person as any).voter_status },
