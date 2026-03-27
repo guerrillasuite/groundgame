@@ -1,6 +1,8 @@
 // app/crm/stops/page.tsx
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { hasFeature } from "@/lib/features";
+import { redirect } from "next/navigation";
 import ListPage from "../_shared/ListPage";
 import PeopleSearch from "../_shared/PeopleSearch";
 
@@ -30,6 +32,7 @@ export default async function StopsPage({
   searchParams,
 }: { searchParams?: { q?: string } }) {
   const tenant = await getTenant();
+  if (!hasFeature(tenant.features, "crm_stops")) redirect("/crm");
   const sb = makeSb(tenant.id);
   const q = (searchParams?.q ?? "").trim();
 

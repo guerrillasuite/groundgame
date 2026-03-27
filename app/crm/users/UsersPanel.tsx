@@ -897,6 +897,12 @@ export default function UsersPanel() {
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</div>
                   <div style={{ fontSize: 11, opacity: 0.45 }}>{t.slug} · {t.id}</div>
                 </div>
+                <a
+                  href={`/crm/admin/tenants/${t.id}`}
+                  style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none", whiteSpace: "nowrap" }}
+                >
+                  Edit →
+                </a>
               </div>
             ))}
             {tenants.length === 0 && (

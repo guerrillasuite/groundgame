@@ -1,20 +1,25 @@
-﻿// app/crm/page.tsx
+// app/crm/page.tsx
 import Link from "next/link";
 import { Wallet, Users, MapPinHouse, Building2, Map, ListChecks, ClipboardList, ShieldCheck, Upload } from "lucide-react";
+import { getTenant } from "@/lib/tenant";
+import { hasFeature, type FeatureKey } from "@/lib/features";
 
-const TILES = [
-  { href: "/crm/opportunities", label: "Opportunities", desc: "Quotes, orders, and pipeline", icon: Wallet },
-  { href: "/crm/people",        label: "People",        desc: "Contacts & leads",           icon: Users },
-  { href: "/crm/households",    label: "Households",    desc: "Linked people & addresses",  icon: MapPinHouse },
-  { href: "/crm/locations",     label: "Locations",     desc: "Delivery/service addresses", icon: Building2 },
-  { href: "/crm/stops",         label: "Stops",         desc: "Activity & visit history",   icon: Map },
-  { href: "/crm/lists",         label: "Lists",         desc: "Dial & walklists",           icon: ListChecks },
-  { href: "/crm/survey",        label: "Surveys",       desc: "Polls & questionnaires",     icon: ClipboardList },
-  { href: "/crm/users",         label: "Users",         desc: "Manage accounts & tenants",  icon: ShieldCheck },
-  { href: "/crm/import",        label: "Import",        desc: "Bulk upload people & locations", icon: Upload },
+const TILES: { href: string; label: string; desc: string; icon: React.ElementType; featureKey: FeatureKey | null }[] = [
+  { href: "/crm/opportunities", label: "Opportunities", desc: "Quotes, orders, and pipeline",      icon: Wallet,        featureKey: "crm_opportunities" },
+  { href: "/crm/people",        label: "People",        desc: "Contacts & leads",                  icon: Users,         featureKey: "crm" },
+  { href: "/crm/households",    label: "Households",    desc: "Linked people & addresses",         icon: MapPinHouse,   featureKey: "crm" },
+  { href: "/crm/locations",     label: "Locations",     desc: "Delivery/service addresses",        icon: Building2,     featureKey: "crm" },
+  { href: "/crm/stops",         label: "Stops",         desc: "Activity & visit history",          icon: Map,           featureKey: "crm_stops" },
+  { href: "/crm/lists",         label: "Lists",         desc: "Dial & walklists",                  icon: ListChecks,    featureKey: "crm_lists" },
+  { href: "/crm/survey",        label: "Surveys",       desc: "Polls & questionnaires",            icon: ClipboardList, featureKey: "crm_surveys" },
+  { href: "/crm/users",         label: "Users",         desc: "Manage accounts & tenants",         icon: ShieldCheck,   featureKey: null },
+  { href: "/crm/import",        label: "Import",        desc: "Bulk upload people & locations",    icon: Upload,        featureKey: "crm_import" },
 ];
 
-export default function CrmHome() {
+export default async function CrmHome() {
+  const { features } = await getTenant();
+  const visible = TILES.filter((t) => t.featureKey === null || hasFeature(features, t.featureKey));
+
   return (
     <section className="stack">
       <div>
@@ -22,9 +27,8 @@ export default function CrmHome() {
         <p className="text-dim" style={{ marginTop: 6 }}>Choose a workspace to get started.</p>
       </div>
 
-      {/* Uses your app grid + app tiles */}
       <div className="stack">
-        {TILES.map(({ href, label, desc, icon: Icon }) => (
+        {visible.map(({ href, label, desc, icon: Icon }) => (
           <Link key={href} href={href} className="press-card">
             <div className="press-card__icon"><Icon size={24} /></div>
             <div>

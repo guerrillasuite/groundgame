@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     const sb = makeSb();
     const { data, error } = await sb
       .from("tenants")
-      .select("id, slug, name, created_at")
+      .select("id, slug, name, plan, features, created_at")
       .order("name");
 
     if (error) throw new Error(error.message);
@@ -53,6 +53,8 @@ export async function GET(request: Request) {
         id: t.id,
         slug: t.slug,
         name: t.name,
+        plan: t.plan ?? "pro",
+        features: t.features ?? [],
         createdAt: t.created_at,
       }))
     );
@@ -86,7 +88,7 @@ export async function POST(request: Request) {
     const { data, error } = await sb
       .from("tenants")
       .insert({ slug, name })
-      .select("id, slug, name, created_at")
+      .select("id, slug, name, plan, features, created_at")
       .single();
 
     if (error) {
@@ -101,6 +103,8 @@ export async function POST(request: Request) {
       id: data.id,
       slug: data.slug,
       name: data.name,
+      plan: data.plan ?? "pro",
+      features: data.features ?? [],
       createdAt: data.created_at,
     });
   } catch (err) {

@@ -1,7 +1,8 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { type FeatureKey, hasFeature } from '@/lib/features';
 
 function Icon({ name }: { name: 'home'|'dial'|'door'|'user' }) {
   const common = { width: 22, height: 22, role: 'img', 'aria-hidden': true } as any;
@@ -13,20 +14,30 @@ function Icon({ name }: { name: 'home'|'dial'|'door'|'user' }) {
   }
 }
 
-export function FooterNav() {
+interface FooterNavProps {
+  features: readonly FeatureKey[];
+}
+
+export function FooterNav({ features }: FooterNavProps) {
   const pathname = usePathname();
 
-  const items = [
-    { href: '/', label: 'Home', icon: 'home' as const },
-    { href: '/dials', label: 'Dials', icon: 'dial' as const },
-    { href: '/doors', label: 'Doors', icon: 'door' as const },
-    { href: '/account', label: 'Account', icon: 'user' as const },
+  const allItems = [
+    { href: '/',        label: 'Home',    icon: 'home' as const, featureKey: null as FeatureKey | null },
+    { href: '/dials',   label: 'Dials',   icon: 'dial' as const, featureKey: 'pwa_dials' as FeatureKey },
+    { href: '/doors',   label: 'Doors',   icon: 'door' as const, featureKey: 'pwa_doors' as FeatureKey },
+    { href: '/account', label: 'Account', icon: 'user' as const, featureKey: null as FeatureKey | null },
   ];
+
+  const items = allItems.filter(
+    (it) => it.featureKey === null || hasFeature(features, it.featureKey)
+  );
 
   return (
     <nav className="footer-nav" aria-label="Primary">
       {items.map((it) => {
-        const active = pathname === it.href || pathname.startsWith(it.href + '/');
+        const active = it.href === '/'
+          ? pathname === '/'
+          : pathname === it.href || pathname.startsWith(it.href + '/');
         return (
           <Link key={it.href} href={it.href} className={`footer-btn ${active ? 'active' : ''}`} aria-current={active ? 'page' : undefined}>
             <Icon name={it.icon} />
@@ -37,4 +48,3 @@ export function FooterNav() {
     </nav>
   );
 }
-

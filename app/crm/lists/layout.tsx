@@ -1,10 +1,9 @@
 import { getTenant } from "@/lib/tenant";
 import { hasFeature } from "@/lib/features";
 import { redirect } from "next/navigation";
-import DedupePanel from "./DedupePanel";
 
-export default async function DedupePage() {
+export default async function Layout({ children }: { children: React.ReactNode }) {
   const { features } = await getTenant();
-  if (!hasFeature(features, "crm_dedupe")) redirect("/crm");
-  return <DedupePanel />;
+  if (!hasFeature(features, "crm_lists")) redirect("/crm");
+  return <>{children}</>;
 }

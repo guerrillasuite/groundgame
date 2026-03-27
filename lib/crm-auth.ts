@@ -13,6 +13,7 @@ const SUPER_ADMIN_EMAILS = (process.env.SUPER_ADMIN_EMAILS ?? "")
 export type CrmUser = {
   userId: string;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
 };
 
 export async function getCrmUser(): Promise<CrmUser | null> {
@@ -58,5 +59,5 @@ export async function getCrmUser(): Promise<CrmUser | null> {
     isSuperAdmin ||
     memberships?.some((m) => ["admin", "owner", "manager"].includes(m.role)) === true;
 
-  return { userId: user.id, isAdmin };
+  return { userId: user.id, isAdmin, isSuperAdmin };
 }

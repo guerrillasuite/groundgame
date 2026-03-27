@@ -71,6 +71,8 @@ function AuthPageInner() {
   const router = useRouter();
   const next = searchParams.get('next') ?? '/crm';
 
+  const error = searchParams.get('error');
+
   const [session, setSession] = useState<any>(null);
   const [mode, setMode] = useState<'password' | 'magic' | 'forgot'>('password');
   const [email, setEmail] = useState('');
@@ -129,6 +131,11 @@ function AuthPageInner() {
   return (
     <div className="stack">
       <h2 style={{ margin: 0 }}>Login / Logout</h2>
+      {error === 'wrong_tenant' && (
+        <div style={{ background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#fca5a5' }}>
+          Your account doesn't have access to this organization. Log in with a different account, or contact your administrator.
+        </div>
+      )}
       <div className="tabs">
         {tabs.map(t => (
           <Link key={t.href} href={t.href} className={`tab${t.href === '/crm/account/auth' ? ' active' : ''}`}>

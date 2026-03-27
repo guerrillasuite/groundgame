@@ -1,9 +1,9 @@
-﻿// app/(pwa)/layout.tsx
+// app/(pwa)/layout.tsx
 import { Header } from "../components/Header";
 import { FooterNav } from "../components/FooterNav";
 import { OfflineBanner } from "../components/OfflineBanner";
 import PwaInit from "../components/PwaInit";
-import { getTenantBranding } from "@/lib/tenant";
+import { getTenantBranding, getTenant } from "@/lib/tenant";
 import type { Metadata, Viewport } from "next";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -23,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-// âœ… themeColor must be in viewport (or generateViewport) in Next 15
+// ✅ themeColor must be in viewport (or generateViewport) in Next 15
 export async function generateViewport(): Promise<Viewport> {
   const b = await getTenantBranding();
   return { themeColor: b.primaryColor, viewportFit: "cover", width: "device-width", initialScale: 1 };
@@ -31,14 +31,14 @@ export async function generateViewport(): Promise<Viewport> {
 
 export default async function PwaLayout({ children }: { children: React.ReactNode }) {
   const b = await getTenantBranding();
+  const { features } = await getTenant();
   return (
     <div className="app-wrap">
       <Header logoUrl={b.logoUrl} appName={b.appName} showInstall />
       <OfflineBanner />
       <main className="app-main">{children}</main>
-      <FooterNav />
+      <FooterNav features={features} />
       <PwaInit />
     </div>
   );
 }
-

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { hasFeature } from "@/lib/features";
 import EditButton from "@/app/crm/_shared/EditButton";
 import { updateRowAction } from "@/app/crm/_shared/mutations";
 
@@ -408,8 +409,8 @@ export default async function PersonDetail({ params }: Params) {
         );
       })()}
 
-      {/* Extended Data (meta_json — global shared) */}
-      {(person as any).meta_json && Object.keys((person as any).meta_json).length > 0 ? (
+      {/* Extended Data (meta_json — global shared, Pro only) */}
+      {hasFeature(tenant.features, "crm_enrichment") && (person as any).meta_json && Object.keys((person as any).meta_json).length > 0 ? (
         <details style={cardStyle}>
           <summary style={{ ...labelStyle, cursor: "pointer", marginBottom: 0 }}>
             Extended Data ({Object.keys((person as any).meta_json).length} fields)

@@ -3,34 +3,62 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { type FeatureKey, hasFeature } from "@/lib/features";
 
-type NavItem  = { href: string; label: string };
+type NavItem  = { href: string; label: string; feature?: FeatureKey; superAdminOnly?: boolean };
 type NavGroup = { label: string; items: NavItem[] };
-type NavEntry = NavItem | NavGroup;
+type NavEntry = (NavItem & { superAdminOnly?: boolean }) | NavGroup;
 
-const NAV: NavEntry[] = [
-  { href: "/crm/opportunities",   label: "Opportunities" },
-  { label: "Records", items: [
-    { href: "/crm/people",        label: "People" },
-    { href: "/crm/households",    label: "Households" },
-    { href: "/crm/locations",     label: "Locations" },
-    { href: "/crm/companies",     label: "Companies" },
-  ]},
-  { label: "Field", items: [
-    { href: "/crm/lists",         label: "Lists" },
-    { href: "/crm/survey",        label: "Surveys" },
-    { href: "/crm/stops",         label: "Stops" },
-  ]},
-  { label: "Data", items: [
-    { href: "/crm/import",        label: "Import" },
-    { href: "/crm/dedupe",        label: "Dedupe" },
-  ]},
-  { label: "Settings", items: [
-    { href: "/crm/settings/users",  label: "Users" },
-    { href: "/crm/settings/stages", label: "Pipeline Stages" },
-  ]},
-  { href: "/crm/account",         label: "Account" },
-];
+function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEntry[] {
+  const f = (key: FeatureKey) => hasFeature(features, key);
+
+  const nav: NavEntry[] = [];
+
+  if (f("crm_opportunities")) {
+    nav.push({ href: "/crm/opportunities", label: "Opportunities" });
+  }
+
+  // Records: always show if crm is on; filter Companies by crm_companies
+  if (f("crm")) {
+    const recordItems: NavItem[] = [
+      { href: "/crm/people",      label: "People" },
+      { href: "/crm/households",  label: "Households" },
+      { href: "/crm/locations",   label: "Locations" },
+    ];
+    if (f("crm_companies")) recordItems.push({ href: "/crm/companies", label: "Companies" });
+    nav.push({ label: "Records", items: recordItems });
+  }
+
+  // Field: show dropdown if any child is enabled
+  const fieldItems: NavItem[] = [];
+  if (f("crm_lists"))   fieldItems.push({ href: "/crm/lists",   label: "Lists" });
+  if (f("crm_surveys")) fieldItems.push({ href: "/crm/survey",  label: "Surveys" });
+  if (f("crm_stops"))   fieldItems.push({ href: "/crm/stops",   label: "Stops" });
+  if (fieldItems.length > 0) nav.push({ label: "Field", items: fieldItems });
+
+  // Data: show dropdown if any child is enabled
+  const dataItems: NavItem[] = [];
+  if (f("crm_import"))  dataItems.push({ href: "/crm/import",   label: "Import" });
+  if (f("crm_dedupe"))  dataItems.push({ href: "/crm/dedupe",   label: "Dedupe" });
+  if (f("crm_cleanup")) dataItems.push({ href: "/crm/cleanup",  label: "Cleanup" });
+  if (dataItems.length > 0) nav.push({ label: "Data", items: dataItems });
+
+  // Settings: always show; Pipeline Stages only with crm_opportunities; Tenants for superadmin only
+  const settingsItems: NavItem[] = [
+    { href: "/crm/settings/users", label: "Users" },
+  ];
+  if (f("crm_opportunities")) {
+    settingsItems.push({ href: "/crm/settings/stages", label: "Pipeline Stages" });
+  }
+  if (isSuperAdmin) {
+    settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });
+  }
+  nav.push({ label: "Settings", items: settingsItems });
+
+  nav.push({ href: "/crm/account", label: "Account" });
+
+  return nav;
+}
 
 function isGroup(entry: NavEntry): entry is NavGroup {
   return "items" in entry;
@@ -107,8 +135,14 @@ function NavGroupItem({ group, pathname }: { group: NavGroup; pathname: string |
   );
 }
 
-export default function CrmHeader() {
+interface CrmHeaderProps {
+  features: readonly FeatureKey[];
+  isSuperAdmin: boolean;
+}
+
+export default function CrmHeader({ features, isSuperAdmin }: CrmHeaderProps) {
   const pathname = usePathname();
+  const nav = buildNav(features, isSuperAdmin);
 
   return (
     <header className="crm-header topbar-dark sticky top-0 z-40">
@@ -119,7 +153,7 @@ export default function CrmHeader() {
         </Link>
 
         <nav className="crm-nav" role="navigation" aria-label="CRM">
-          {NAV.map((entry) => {
+          {nav.map((entry) => {
             if (isGroup(entry)) {
               return <NavGroupItem key={entry.label} group={entry} pathname={pathname} />;
             }

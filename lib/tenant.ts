@@ -2,8 +2,9 @@
 
 import { headers } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
+import { ALL_FEATURE_KEYS, type FeatureKey } from '@/lib/features';
 
-export type Tenant = { id: string; slug: string };
+export type Tenant = { id: string; slug: string; features: FeatureKey[]; plan: string };
 export type Branding = {
   appName: string; logoUrl: string;
   primaryColor: string; accentColor: string;
@@ -49,11 +50,42 @@ async function mapSlugToTenantId(slug: string): Promise<string | null> {
 export async function getTenant(): Promise<Tenant> {
   const host = await getHost();
   const slug = (host.split('.')[0] || 'default').toLowerCase();
-  const id = await mapSlugToTenantId(slug);
-  if (!id) {
-    throw new Error(`Unknown tenant: ${slug}`);
+
+  const sb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  const hardcodedId = HARDCODED_TENANTS[slug] ?? null;
+
+  if (hardcodedId) {
+    const { data } = await sb
+      .from('tenants')
+      .select('features, plan')
+      .eq('id', hardcodedId)
+      .single();
+    return {
+      id: hardcodedId,
+      slug,
+      features: (data?.features as FeatureKey[]) ?? [...ALL_FEATURE_KEYS],
+      plan: data?.plan ?? 'pro',
+    };
   }
-  return { id, slug };
+
+  // Dynamic tenant: lookup by slug
+  const { data } = await sb
+    .from('tenants')
+    .select('id, features, plan')
+    .eq('slug', slug)
+    .single();
+
+  if (!data?.id) throw new Error(`Unknown tenant: ${slug}`);
+  return {
+    id: data.id,
+    slug,
+    features: (data.features as FeatureKey[]) ?? [...ALL_FEATURE_KEYS],
+    plan: data.plan ?? 'pro',
+  };
 }
 
 export async function getTenantBranding(): Promise<Branding> {

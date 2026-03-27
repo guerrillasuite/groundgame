@@ -194,7 +194,7 @@ type SchemaField = { column: string; label: string; data_type: string; is_join: 
 // Address fields that route to the locations table
 const LOCATION_FIELD_COLS = new Set(["address_line1", "city", "state", "postal_code"]);
 
-export default function ImportPanel() {
+export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: boolean }) {
   const [step, setStep] = useState<Step>("upload");
   const [parsed, setParsed] = useState<ParsedData | null>(null);
   const [mapping, setMapping] = useState<Record<string, TargetField>>({});
@@ -265,6 +265,9 @@ export default function ImportPanel() {
       const autoGivingYears: Record<string, string> = {};
       for (const h of data.headers) {
         autoMapping[h] = autoDetect(h);
+        if (!hasEnrichment && autoMapping[h] === "__create_global__") {
+          autoMapping[h] = "__skip__";
+        }
         if (autoMapping[h] === "__giving_cycle__") {
           const y = extractYearFromCol(h);
           if (y) autoGivingYears[h] = String(toCycleYear(parseInt(y)));
@@ -641,7 +644,9 @@ export default function ImportPanel() {
                         {importType !== "donations" && (
                           <>
                             <option value="__create__">→ Custom field (this org only)</option>
-                            <option value="__create_global__">→ Custom field (shared / community)</option>
+                            {hasEnrichment && (
+                              <option value="__create_global__">→ Custom field (shared / community)</option>
+                            )}
                           </>
                         )}
 
