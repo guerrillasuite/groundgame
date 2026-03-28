@@ -413,6 +413,41 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
 
   // ── Validate (dry run) ─────────────────────────────────────────────────────
 
+  // ── Chunked POST helper ────────────────────────────────────────────────────
+
+  const CHUNK_SIZE = 500;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function postChunk(rows: Record<string, any>[], dryRun: boolean, token: string): Promise<ImportResult> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body: Record<string, any> = { rows, dryRun, importMode, importType };
+    if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
+
+    const res = await fetch("/api/crm/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let msg = `Server error ${res.status}`;
+      try { msg = JSON.parse(text).error ?? msg; } catch { /* non-JSON error body */ }
+      throw new Error(msg);
+    }
+
+    return res.json();
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function chunkArr<T>(arr: T[], size: number): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  }
+
+  // ── Validate (dry run) ─────────────────────────────────────────────────────
+
   async function runValidate() {
     if (!parsed) return;
     setImporting(true);
@@ -422,19 +457,19 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
       const token = await getToken();
       if (!token) throw new Error("Not authenticated");
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: true, importMode, importType };
-      if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
+      const chunks = chunkArr(buildMappedRows(), CHUNK_SIZE);
+      const acc: ImportResult = { dryRun: true, inserted: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
 
-      const res = await fetch("/api/crm/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
+      for (const chunk of chunks) {
+        const data = await postChunk(chunk, true, token);
+        acc.inserted += data.inserted;
+        acc.updated  += data.updated;
+        acc.skipped  += data.skipped;
+        acc.failed   += data.failed;
+        if (data.errors) acc.errors.push(...data.errors);
+      }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Validation failed");
-      setValidateResult(data);
+      setValidateResult(acc);
       setStep("validate");
     } catch (e: any) {
       setValidateResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [(e as Error).message] });
@@ -455,22 +490,25 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
       const token = await getToken();
       if (!token) throw new Error("Not authenticated");
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = { rows: buildMappedRows(), dryRun: false, importMode, importType };
-      if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
+      const chunks = chunkArr(buildMappedRows(), CHUNK_SIZE);
+      const acc: ImportResult = { inserted: 0, updated: 0, skipped: 0, failed: 0, errors: [], insertedPersonIds: [], insertedCompanyIds: [] };
 
-      const res = await fetch("/api/crm/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
+      for (const chunk of chunks) {
+        const data = await postChunk(chunk, false, token);
+        acc.inserted += data.inserted;
+        acc.updated  += data.updated;
+        acc.skipped  += data.skipped;
+        acc.failed   += data.failed;
+        if (data.errors) acc.errors.push(...data.errors);
+        if (data.insertedPersonIds)  acc.insertedPersonIds!.push(...data.insertedPersonIds);
+        if (data.insertedCompanyIds) acc.insertedCompanyIds!.push(...data.insertedCompanyIds);
+        if (data.importType) acc.importType = data.importType;
+      }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Import failed");
-      setResult(data);
+      setResult(acc);
       setStep("done");
-      if (createOppsOnImport && ((data.insertedPersonIds?.length ?? 0) + (data.insertedCompanyIds?.length ?? 0)) > 0) {
-        handleCreateOpps(data);
+      if (createOppsOnImport && ((acc.insertedPersonIds?.length ?? 0) + (acc.insertedCompanyIds?.length ?? 0)) > 0) {
+        handleCreateOpps(acc);
       }
     } catch (e: any) {
       setResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [(e as Error).message] });
