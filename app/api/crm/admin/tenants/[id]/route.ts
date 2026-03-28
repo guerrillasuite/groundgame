@@ -26,7 +26,7 @@ export async function GET(
   const sb = makeSb();
   const { data, error } = await sb
     .from("tenants")
-    .select("id, slug, name, plan, features, created_at")
+    .select("id, slug, name, plan, features, branding, settings, created_at")
     .eq("id", params.id)
     .single();
 
@@ -40,6 +40,8 @@ export async function GET(
     name: data.name,
     plan: data.plan ?? "pro",
     features: (data.features as FeatureKey[]) ?? [...ALL_FEATURE_KEYS],
+    branding: (data.branding as Record<string, unknown>) ?? {},
+    settings: (data.settings as Record<string, unknown>) ?? {},
     createdAt: data.created_at,
   });
 }
@@ -55,7 +57,7 @@ export async function PUT(
     return NextResponse.json({ error: err.message }, { status: err.status ?? 403 });
   }
 
-  let body: { name?: string; plan?: string; features?: string[] };
+  let body: { name?: string; plan?: string; features?: string[]; branding?: Record<string, unknown>; settings?: Record<string, unknown> };
   try {
     body = await request.json();
   } catch {
@@ -88,6 +90,9 @@ export async function PUT(
     patch.features = body.features;
   }
 
+  if (body.branding !== undefined) patch.branding = body.branding;
+  if (body.settings !== undefined) patch.settings = body.settings;
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
@@ -97,7 +102,7 @@ export async function PUT(
     .from("tenants")
     .update(patch)
     .eq("id", params.id)
-    .select("id, slug, name, plan, features, created_at")
+    .select("id, slug, name, plan, features, branding, settings, created_at")
     .single();
 
   if (error || !data) {
@@ -110,6 +115,8 @@ export async function PUT(
     name: data.name,
     plan: data.plan ?? "pro",
     features: (data.features as FeatureKey[]) ?? [...ALL_FEATURE_KEYS],
+    branding: (data.branding as Record<string, unknown>) ?? {},
+    settings: (data.settings as Record<string, unknown>) ?? {},
     createdAt: data.created_at,
   });
 }

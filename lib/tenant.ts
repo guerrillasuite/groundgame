@@ -1,15 +1,34 @@
-﻿// lib/tenant.ts (server-only)
+// lib/tenant.ts (server-only)
 
 import { headers } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { ALL_FEATURE_KEYS, type FeatureKey } from '@/lib/features';
 
-export type Tenant = { id: string; slug: string; features: FeatureKey[]; plan: string };
+export type Tenant = {
+  id: string;
+  slug: string;
+  features: FeatureKey[];
+  plan: string;
+  branding: Partial<Branding>;
+  settings: Record<string, unknown>;
+};
+
 export type Branding = {
   appName: string; logoUrl: string;
   primaryColor: string; accentColor: string;
   bgColor: string; surfaceColor: string;
   textColor: string; mutedTextColor: string;
+};
+
+export const BASE_BRANDING: Branding = {
+  appName: 'GroundGame',
+  logoUrl: '/icons/app-192.png',
+  primaryColor: '#2563EB',
+  accentColor: '#3B82F6',
+  bgColor: '#0B0F17',
+  surfaceColor: '#111827',
+  textColor: '#F9FAFB',
+  mutedTextColor: '#9CA3AF',
 };
 
 // Known tenants — fast path, no DB hit required
@@ -61,7 +80,7 @@ export async function getTenant(): Promise<Tenant> {
   if (hardcodedId) {
     const { data } = await sb
       .from('tenants')
-      .select('features, plan')
+      .select('features, plan, branding, settings')
       .eq('id', hardcodedId)
       .single();
     return {
@@ -69,13 +88,15 @@ export async function getTenant(): Promise<Tenant> {
       slug,
       features: (data?.features as FeatureKey[]) ?? [...ALL_FEATURE_KEYS],
       plan: data?.plan ?? 'pro',
+      branding: (data?.branding as Partial<Branding>) ?? {},
+      settings: (data?.settings as Record<string, unknown>) ?? {},
     };
   }
 
   // Dynamic tenant: lookup by slug
   const { data } = await sb
     .from('tenants')
-    .select('id, features, plan')
+    .select('id, features, plan, branding, settings')
     .eq('slug', slug)
     .single();
 
@@ -85,27 +106,12 @@ export async function getTenant(): Promise<Tenant> {
     slug,
     features: (data.features as FeatureKey[]) ?? [...ALL_FEATURE_KEYS],
     plan: data.plan ?? 'pro',
+    branding: (data.branding as Partial<Branding>) ?? {},
+    settings: (data.settings as Record<string, unknown>) ?? {},
   };
 }
 
 export async function getTenantBranding(): Promise<Branding> {
-  const { slug } = await getTenant();
-
-  const base: Branding = {
-    appName: 'GroundGame',
-    logoUrl: '/icons/app-192.png',
-    primaryColor: '#2563EB',
-    accentColor: '#3B82F6',
-    bgColor: '#0B0F17',
-    surfaceColor: '#111827',
-    textColor: '#F9FAFB',
-    mutedTextColor: '#9CA3AF',
-  };
-
-  const perTenant: Partial<Record<string, Partial<Branding>>> = {
-    thunder: { appName: 'GroundGame — Thunder' },
-    guerrillasuite: { appName: 'Guerrilla Suite — GroundGame' },
-  };
-
-  return { ...base, ...(perTenant[slug] || {}) } as Branding;
+  const tenant = await getTenant();
+  return { ...BASE_BRANDING, ...tenant.branding } as Branding;
 }

@@ -3,7 +3,7 @@ import { Header } from "../components/Header";
 import { FooterNav } from "../components/FooterNav";
 import { OfflineBanner } from "../components/OfflineBanner";
 import PwaInit from "../components/PwaInit";
-import { getTenantBranding, getTenant } from "@/lib/tenant";
+import { getTenantBranding, getTenant, BASE_BRANDING } from "@/lib/tenant";
 import type { Metadata, Viewport } from "next";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -30,10 +30,12 @@ export async function generateViewport(): Promise<Viewport> {
 }
 
 export default async function PwaLayout({ children }: { children: React.ReactNode }) {
-  const b = await getTenantBranding();
-  const { features } = await getTenant();
+  const [b, { features }] = await Promise.all([getTenantBranding(), getTenant()]);
   return (
     <div className="app-wrap">
+      {b.primaryColor !== BASE_BRANDING.primaryColor && (
+        <style>{`:root { --gg-primary: ${b.primaryColor}; }`}</style>
+      )}
       <Header logoUrl={b.logoUrl} appName={b.appName} showInstall />
       <OfflineBanner />
       <main className="app-main">{children}</main>

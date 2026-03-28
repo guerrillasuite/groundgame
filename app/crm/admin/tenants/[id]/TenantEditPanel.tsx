@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import {
@@ -10,6 +10,7 @@ import {
   type FeatureKey,
   type Plan,
 } from "@/lib/features";
+import type { Branding } from "@/lib/tenant";
 
 type TenantData = {
   id: string;
@@ -17,6 +18,8 @@ type TenantData = {
   name: string;
   plan: string;
   features: FeatureKey[];
+  branding: Partial<Branding>;
+  settings: Record<string, unknown>;
 };
 
 // Group features for the toggle grid
@@ -49,13 +52,43 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
   );
 }
 
+const inputStyle: React.CSSProperties = {
+  width: "100%", maxWidth: 360, padding: "8px 12px", borderRadius: 8,
+  border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)",
+  color: "inherit", fontSize: 14, boxSizing: "border-box",
+};
+
+const labelStyle: React.CSSProperties = { display: "block", fontSize: 12, opacity: 0.6, marginBottom: 4 };
+
+const TIMEZONES = [
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+];
+
+const IMPORT_MODES = [
+  { value: "fill_blanks", label: "Fill Blanks (only update empty fields)" },
+  { value: "smart_merge", label: "Smart Merge (update if newer or higher authority)" },
+  { value: "override",    label: "Override (overwrite all mapped fields)" },
+];
+
 export default function TenantEditPanel({ id }: { id: string }) {
   const [tenant, setTenant] = useState<TenantData | null>(null);
   const [name, setName] = useState("");
   const [features, setFeatures] = useState<FeatureKey[]>([]);
+  const [branding, setBranding] = useState<Partial<Branding>>({});
+  const [settings, setSettings] = useState<Record<string, unknown>>({});
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const getToken = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -74,9 +107,18 @@ export default function TenantEditPanel({ id }: { id: string }) {
       setTenant(data);
       setName(data.name);
       setFeatures(data.features ?? [...ALL_FEATURE_KEYS]);
+      setBranding(data.branding ?? {});
+      setSettings(data.settings ?? {});
       setLoading(false);
     })();
   }, [id, getToken]);
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  }
 
   const currentPlan = planFromFeatures(features);
 
@@ -90,15 +132,44 @@ export default function TenantEditPanel({ id }: { id: string }) {
     );
   }
 
+  function setBrandingField(key: keyof Branding, value: string) {
+    setBranding((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setSettingsField(key: string, value: unknown) {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+  }
+
   async function save() {
     const token = await getToken();
     if (!token) { setMsg({ type: "err", text: "Not authenticated" }); return; }
     setSaving(true);
     setMsg(null);
+
+    let finalBranding = { ...branding };
+
+    // Upload logo if a new file was selected
+    if (logoFile) {
+      const ext = logoFile.type.split("/")[1]?.toLowerCase() || "png";
+      const path = `${id}/logo.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("tenant_logos")
+        .upload(path, logoFile, { upsert: true, contentType: logoFile.type });
+      if (uploadErr) {
+        setSaving(false);
+        setMsg({ type: "err", text: `Logo upload failed: ${uploadErr.message}` });
+        return;
+      }
+      const { data: urlData } = supabase.storage.from("tenant_logos").getPublicUrl(path);
+      finalBranding.logoUrl = urlData.publicUrl;
+      setBranding(finalBranding);
+      setLogoFile(null);
+    }
+
     const res = await fetch(`/api/crm/admin/tenants/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name, plan: currentPlan, features }),
+      body: JSON.stringify({ name, plan: currentPlan, features, branding: finalBranding, settings }),
     });
     setSaving(false);
     if (res.ok) {
@@ -111,6 +182,8 @@ export default function TenantEditPanel({ id }: { id: string }) {
 
   if (loading) return <div className="stack"><p className="text-dim">Loading…</p></div>;
   if (!tenant) return <div className="stack"><p style={{ color: "#f87171" }}>Tenant not found.</p></div>;
+
+  const currentLogo = logoPreview ?? branding.logoUrl ?? null;
 
   return (
     <div className="stack">
@@ -126,18 +199,114 @@ export default function TenantEditPanel({ id }: { id: string }) {
         </p>
       </div>
 
-      {/* Name */}
+      {/* Display Name */}
       <div>
-        <label style={{ display: "block", fontSize: 12, opacity: 0.6, marginBottom: 4 }}>Display Name</label>
+        <label style={labelStyle}>Display Name</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          style={{
-            width: "100%", maxWidth: 360, padding: "8px 12px", borderRadius: 8,
-            border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)",
-            color: "inherit", fontSize: 14, boxSizing: "border-box",
-          }}
+          style={inputStyle}
         />
+      </div>
+
+      {/* ── Branding ─────────────────────────────────────────────────────── */}
+      <div>
+        <p style={{ fontSize: 12, fontWeight: 700, opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
+          Branding
+        </p>
+        <div style={{ display: "grid", gap: 16 }}>
+
+          {/* App Name */}
+          <div>
+            <label style={labelStyle}>App Name</label>
+            <input
+              value={branding.appName ?? ""}
+              onChange={(e) => setBrandingField("appName", e.target.value)}
+              placeholder="GroundGame"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Logo */}
+          <div>
+            <label style={labelStyle}>Logo</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {currentLogo && (
+                <img
+                  src={currentLogo}
+                  alt="Logo preview"
+                  style={{ width: 48, height: 48, objectFit: "contain", borderRadius: 8, background: "rgba(255,255,255,.06)", padding: 4 }}
+                />
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  style={{
+                    padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,.15)",
+                    background: "rgba(255,255,255,.06)", color: "inherit", cursor: "pointer", fontSize: 13,
+                  }}
+                >
+                  {currentLogo ? "Change Logo" : "Upload Logo"}
+                </button>
+                {branding.logoUrl && !logoPreview && (
+                  <button
+                    type="button"
+                    onClick={() => { setBrandingField("logoUrl", ""); }}
+                    style={{ fontSize: 11, opacity: 0.5, background: "none", border: "none", color: "inherit", cursor: "pointer", textAlign: "left", padding: 0 }}
+                  >
+                    Remove
+                  </button>
+                )}
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  style={{ display: "none" }}
+                  onChange={handleLogoChange}
+                />
+              </div>
+            </div>
+            <p style={{ fontSize: 11, opacity: 0.4, marginTop: 6 }}>PNG, JPG, WebP, or SVG · Max 5MB</p>
+          </div>
+
+          {/* Colors */}
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+            <div>
+              <label style={labelStyle}>Primary Color</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="color"
+                  value={branding.primaryColor ?? "#2563EB"}
+                  onChange={(e) => setBrandingField("primaryColor", e.target.value)}
+                  style={{ width: 40, height: 32, borderRadius: 6, border: "1px solid rgba(255,255,255,.12)", background: "none", cursor: "pointer", padding: 2 }}
+                />
+                <input
+                  value={branding.primaryColor ?? "#2563EB"}
+                  onChange={(e) => setBrandingField("primaryColor", e.target.value)}
+                  style={{ ...inputStyle, maxWidth: 110, fontFamily: "monospace" }}
+                />
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Accent Color</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="color"
+                  value={branding.accentColor ?? "#3B82F6"}
+                  onChange={(e) => setBrandingField("accentColor", e.target.value)}
+                  style={{ width: 40, height: 32, borderRadius: 6, border: "1px solid rgba(255,255,255,.12)", background: "none", cursor: "pointer", padding: 2 }}
+                />
+                <input
+                  value={branding.accentColor ?? "#3B82F6"}
+                  onChange={(e) => setBrandingField("accentColor", e.target.value)}
+                  style={{ ...inputStyle, maxWidth: 110, fontFamily: "monospace" }}
+                />
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
 
       {/* Plan presets */}
@@ -189,6 +358,58 @@ export default function TenantEditPanel({ id }: { id: string }) {
           </div>
         );
       })}
+
+      {/* ── Settings ─────────────────────────────────────────────────────── */}
+      <div>
+        <p style={{ fontSize: 12, fontWeight: 700, opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
+          Settings
+        </p>
+        <div style={{ display: "grid", gap: 16 }}>
+
+          {/* Timezone */}
+          <div>
+            <label style={labelStyle}>Timezone</label>
+            <select
+              value={(settings.timezone as string) ?? ""}
+              onChange={(e) => setSettingsField("timezone", e.target.value)}
+              style={{ ...inputStyle, maxWidth: 300 }}
+            >
+              <option value="">— Default (UTC) —</option>
+              {TIMEZONES.map((tz) => (
+                <option key={tz} value={tz}>{tz}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Default Import Mode */}
+          <div>
+            <label style={labelStyle}>Default Import Mode</label>
+            <select
+              value={(settings.defaultImportMode as string) ?? ""}
+              onChange={(e) => setSettingsField("defaultImportMode", e.target.value)}
+              style={{ ...inputStyle, maxWidth: 380 }}
+            >
+              <option value="">— Not set —</option>
+              {IMPORT_MODES.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Support Email */}
+          <div>
+            <label style={labelStyle}>Support Email</label>
+            <input
+              type="email"
+              value={(settings.supportEmail as string) ?? ""}
+              onChange={(e) => setSettingsField("supportEmail", e.target.value)}
+              placeholder="support@example.com"
+              style={{ ...inputStyle, maxWidth: 300 }}
+            />
+          </div>
+
+        </div>
+      </div>
 
       {/* Save */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
