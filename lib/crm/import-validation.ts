@@ -90,6 +90,18 @@ export interface MappedRow {
   home_sqft?: string;
   home_bedrooms?: string;
 
+  // ── Locations: GIS address components ─────────────────────────────────────
+  house_number?: string;      // "Address Number" in GIS exports
+  pre_dir?: string;           // "Street Name Pre Directional" (N/S/E/W)
+  street_name?: string;       // "Street Name"
+  street_suffix?: string;     // "Street Name Post Type" (Way/Road/Trail/etc.)
+  post_dir?: string;          // "Street Name Post Directional"
+  unit?: string;              // Unit / Apt
+  parcel_id?: string;         // APN / Assessor Parcel Number
+  postal_community?: string;  // "ZIP_COMMUNITY" (community/city name)
+  full_address?: string;      // Pre-assembled full address string (ccra_address)
+  source_row_id?: string;     // GIS OBJECTID or source system row reference
+
   // ── Locations: L2 districts + geo ─────────────────────────────────────────
   congressional_district?: string;
   state_house_district?: string;

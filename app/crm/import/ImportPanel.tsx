@@ -35,6 +35,9 @@ type TargetField =
   | "head_of_household" | "household_gender" | "home_owner"
   | "home_estimated_value" | "home_purchase_year" | "home_dwelling_type"
   | "home_sqft" | "home_bedrooms"
+  // Locations: GIS address components
+  | "house_number" | "pre_dir" | "street_name" | "street_suffix" | "post_dir"
+  | "unit" | "parcel_id" | "postal_community" | "full_address" | "source_row_id"
   // Locations: L2 districts + geo
   | "congressional_district" | "state_house_district" | "state_senate_district"
   | "state_legislative_district" | "county_name" | "fips_code" | "precinct"
@@ -67,10 +70,21 @@ const TARGET_FIELDS: { value: TargetField; label: string }[] = [
   { value: "contact_type",label: "Contact Type" },
   { value: "occupation",  label: "Occupation" },
   { value: "notes",       label: "Notes" },
-  { value: "address_line1",label: "Street Address" },
-  { value: "city",        label: "City" },
-  { value: "state",       label: "State" },
-  { value: "postal_code", label: "Zip Code" },
+  { value: "address_line1",  label: "Street Address (full)" },
+  { value: "city",           label: "City" },
+  { value: "state",          label: "State" },
+  { value: "postal_code",    label: "Zip Code" },
+  { value: "unit",           label: "Unit / Apt" },
+  // GIS address components — assembled into address_line1 automatically
+  { value: "house_number",   label: "GIS: Address Number" },
+  { value: "pre_dir",        label: "GIS: Pre-Directional (N/S/E/W)" },
+  { value: "street_name",    label: "GIS: Street Name" },
+  { value: "street_suffix",  label: "GIS: Street Suffix (Way/Road/etc.)" },
+  { value: "post_dir",       label: "GIS: Post-Directional" },
+  { value: "postal_community", label: "GIS: Postal Community (city name)" },
+  { value: "parcel_id",      label: "GIS: Parcel ID / APN" },
+  { value: "full_address",   label: "GIS: Full Address String" },
+  { value: "source_row_id",  label: "GIS: Source Row ID (OBJECTID)" },
 ];
 
 // Auto-detect common column name → target field
@@ -89,10 +103,28 @@ const AUTO_MAP: Record<string, TargetField> = {
   state: "state", st: "state",
   zip: "postal_code", zipcode: "postal_code", zip_code: "postal_code",
   postal_code: "postal_code", zip5: "postal_code", postalcode: "postal_code",
+  post_code: "postal_code",
   contact_type: "contact_type", type: "contact_type", party: "contact_type",
   party_affiliation: "contact_type", partyaffiliation: "contact_type",
   occupation: "occupation", job: "occupation", employer_name: "occupation",
   notes: "notes", comments: "notes", note: "notes",
+  // GIS address component column names
+  address_number: "house_number", house_number: "house_number", houseno: "house_number",
+  street_name_pre_directional: "pre_dir", pre_directional: "pre_dir", pre_dir: "pre_dir",
+  street_name_pre_modifier: "__skip__",
+  street_name_pre_type: "__skip__",
+  street_name_pre_type_separator: "__skip__",
+  street_name: "street_name",
+  street_name_post_type: "street_suffix", street_suffix: "street_suffix", post_type: "street_suffix",
+  street_name_post_directional: "post_dir", post_directional: "post_dir", post_dir: "post_dir",
+  street_name_post_modifier: "__skip__",
+  unit: "unit", apt: "unit", apartment: "unit", suite: "unit",
+  zip_community: "postal_community", postal_community: "postal_community",
+  incorporated_municipality: "__skip__",
+  apn: "parcel_id", parcel_id: "parcel_id", parcel_number: "parcel_id",
+  ccra_address: "full_address", full_address: "full_address",
+  objectid: "source_row_id", source_row_id: "source_row_id", gid: "source_row_id",
+  x: "__skip__", y: "__skip__",  // projected coordinates need reprojection — skip by default
 };
 
 function autoDetect(col: string): TargetField {
@@ -135,7 +167,7 @@ type ImportResult = {
   errors: string[];
   insertedPersonIds?: string[];
   insertedCompanyIds?: string[];
-  importType?: 'people' | 'companies';
+  importType?: 'people' | 'companies' | 'donations' | 'locations';
 };
 
 // ── Parser helpers ─────────────────────────────────────────────────────────
@@ -203,7 +235,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
   const [selectedTenant, setSelectedTenant] = useState("");
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [importMode, setImportMode] = useState<"fill_blanks" | "smart_merge" | "override">("smart_merge");
-  const [importType, setImportType] = useState<"people" | "companies" | "donations">("people");
+  const [importType, setImportType] = useState<"people" | "companies" | "donations" | "locations">("people");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [validateResult, setValidateResult] = useState<ImportResult | null>(null);
@@ -303,6 +335,9 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
 
   // ── Build mapped rows from parsed data ────────────────────────────────────
 
+  // GIS address component keys — these get assembled into address_line1 post-loop
+  const GIS_ADDR_PARTS = ["house_number", "pre_dir", "street_name", "street_suffix", "post_dir"] as const;
+
   function buildMappedRows() {
     if (!parsed) return [];
     return parsed.rows.map((row) => {
@@ -357,6 +392,21 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
       if (donation.amount)                       out.__donation      = donation;
       if (Object.keys(company).length > 0)      out.__company       = company;
       if (Object.keys(contact).length > 0)      out.__contact       = contact;
+
+      // Assemble address_line1 from GIS components if not already provided
+      if (!out.address_line1) {
+        const parts = GIS_ADDR_PARTS.map((k) => (out[k] ?? "").trim()).filter(Boolean);
+        if (parts.length > 0) out.address_line1 = parts.join(" ");
+      }
+      // Fall back to full_address if still no address_line1
+      if (!out.address_line1 && out.full_address) {
+        out.address_line1 = out.full_address;
+      }
+      // Use postal_community as city if city not set
+      if (!out.city && out.postal_community) {
+        out.city = out.postal_community;
+      }
+
       return out;
     });
   }
@@ -481,6 +531,10 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
     : importType === "donations"
     ? mappedTargets.includes("dn_amount") &&
       (mappedTargets.includes("dn_email") || mappedTargets.includes("dn_first") || mappedTargets.includes("dn_last"))
+    : importType === "locations"
+    ? mappedTargets.includes("address_line1") || mappedTargets.includes("full_address") ||
+      (mappedTargets.includes("house_number") && mappedTargets.includes("street_name")) ||
+      (mappedTargets.includes("house_number") && mappedTargets.includes("street_suffix"))
     : (mappedTargets.includes("first_name") || mappedTargets.includes("last_name"));
 
   // Preview rows (first 5, with mapping applied)
@@ -538,7 +592,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
         <>
           {/* Import type toggle */}
           <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-            {(["people", "companies", "donations"] as const).map((t) => (
+            {(["people", "companies", "donations", "locations"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setImportType(t)}

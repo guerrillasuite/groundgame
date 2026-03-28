@@ -267,6 +267,10 @@ export const HOUSEHOLD_L2_COLS = new Set([
 ]);
 
 export const LOCATION_L2_COLS = new Set([
+  // GIS address components (stored alongside address_line1)
+  "house_number", "pre_dir", "street_name", "street_suffix", "post_dir",
+  "unit", "parcel_id", "postal_community", "full_address", "source_row_id",
+  // L2 districts + geo
   "congressional_district", "state_house_district", "state_senate_district",
   "state_legislative_district", "county_name", "fips_code", "precinct",
   "municipality", "municipal_subdistrict", "county_commission_district",

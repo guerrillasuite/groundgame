@@ -91,8 +91,21 @@ function normalizeAddr(s: string): string {
     .replace(/\s+/g, " "); // collapse whitespace
 }
 
+/** Assemble address_line1 from GIS component fields when a pre-built string isn't present. */
+function assembleGisAddress(row: MappedRow): string {
+  const parts = [
+    row.house_number,
+    row.pre_dir,
+    row.street_name,
+    row.street_suffix,
+    row.post_dir,
+  ].map((p) => (p ?? "").trim()).filter(Boolean);
+  return parts.join(" ");
+}
+
 function addrKey(row: MappedRow): string | null {
-  const a = normalizeAddr(row.address_line1 ?? row.address ?? "");
+  const raw = row.address_line1 ?? row.address ?? assembleGisAddress(row);
+  const a = normalizeAddr(raw);
   if (!a) return null;
   return `${a}|${(row.postal_code ?? "").trim()}`;
 }
@@ -183,6 +196,19 @@ export async function POST(request: Request) {
         validRows.push(row);
       }
     }
+  } else if (importType === "locations") {
+    // Locations import: require a resolvable address
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const addr = (row.address_line1 ?? row.address ?? assembleGisAddress(row)).trim();
+      if (!addr) {
+        skipped++;
+        errors.push(`Row ${i + 1}: location must have an address`);
+      } else {
+        // Ensure address_line1 is always set for consistent downstream processing
+        validRows.push({ ...row, address_line1: row.address_line1 ?? row.address ?? addr });
+      }
+    }
   } else {
     for (let i = 0; i < rows.length; i++) {
       const result = validateRow(rows[i], i + 1);
@@ -216,7 +242,7 @@ export async function POST(request: Request) {
     const locMap = new Map<string, string>(); // addressKey → location_id (existing only)
     if (uniqueAddrKeys.size > 0) {
       const addrs = [...uniqueAddrKeys.values()]
-        .map((r) => (r.address_line1 ?? r.address ?? "").trim())
+        .map((r) => (r.address_line1 ?? r.address ?? assembleGisAddress(r)).trim())
         .filter(Boolean);
       for (const addrChunk of chunk(addrs, 500)) {
         const { data: existing } = await sbGlobal
@@ -244,6 +270,19 @@ export async function POST(request: Request) {
           if (hh.location_id) hhMap.set(hh.location_id, hh.id);
         }
       }
+    }
+
+    // Locations-only dry run: skip people simulation
+    if (importType === "locations") {
+      return NextResponse.json({
+        dryRun: true,
+        inserted: uniqueAddrKeys.size - locMap.size, // new locations
+        updated: locMap.size,                         // existing locations
+        skipped,
+        failed: 0,
+        errors: errors.slice(0, 50),
+        importType,
+      });
     }
 
     // Simulate Phase C: global dedup — voter IDs, email, name+HH (mirrors real import path)
@@ -635,8 +674,8 @@ export async function POST(request: Request) {
       .filter(([k]) => !locMap.has(k))
       .map(([, row]) => ({
         tenant_id: tenantId,
-        address_line1: (row.address_line1 ?? row.address ?? "").trim() || null,
-        city: (row.city ?? "").trim() || null,
+        address_line1: (row.address_line1 ?? row.address ?? assembleGisAddress(row)).trim() || null,
+        city: (row.city ?? row.postal_community ?? "").trim() || null,
         state: (row.state ?? "").trim() || null,
         postal_code: (row.postal_code ?? "").trim() || null,
         ...pickL2(row, LOCATION_L2_COLS),
@@ -747,6 +786,19 @@ export async function POST(request: Request) {
         await sb.from("households").update(l2Data).eq("id", id).eq("tenant_id", tenantId);
       }
     }
+  }
+
+  // ── Locations-only import: return after Phase B ───────────────────────────
+  if (importType === "locations") {
+    return NextResponse.json({
+      dryRun,
+      inserted: locMap.size,
+      updated: 0,
+      skipped,
+      failed: errors.filter(e => e.startsWith("Location") || e.startsWith("Household")).length,
+      errors: errors.slice(0, 50),
+      importType,
+    });
   }
 
   // ── Phase C: People (global dedup + upsert) ──────────────────────────────
