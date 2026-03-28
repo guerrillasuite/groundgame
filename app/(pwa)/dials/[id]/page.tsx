@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import LogCallInListButton from "./LogCallInListButton";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -121,6 +122,8 @@ export default async function DialListStart({
           <p className="muted">Add people to this list, then come back to start dialing.</p>
         </div>
       )}
+
+      <LogCallInListButton walklistId={wl.id} />
 
       <Link
         href="/dials"

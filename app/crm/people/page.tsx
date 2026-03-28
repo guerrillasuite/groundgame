@@ -1,4 +1,11 @@
 import SearchListPage from "@/app/components/crm/SearchListPage";
+import CreatePersonWizard from "@/app/crm/_shared/CreatePersonWizard";
+import { createPersonAction } from "@/app/crm/_shared/mutations";
+
+function boundCreateAction(fd: FormData) {
+  "use server";
+  return createPersonAction("/crm/people", fd);
+}
 
 export default function PeoplePage() {
   return (
@@ -14,6 +21,7 @@ export default function PeoplePage() {
       ]}
       target="people"
       rowHrefPrefix="/crm/people/"
+      headerActions={<CreatePersonWizard action={boundCreateAction} />}
     />
   );
 }

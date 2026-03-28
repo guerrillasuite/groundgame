@@ -153,9 +153,62 @@ export default function KnockMap(props: {
           .setLngLat([p.lng, p.lat])
           .addTo(map);
       });
+
+      // --- Live GPS "you are here" dot ---
+      if (!document.getElementById("gg-gps-pulse-style")) {
+        const styleEl = document.createElement("style");
+        styleEl.id = "gg-gps-pulse-style";
+        styleEl.textContent = `
+          @keyframes gg-gps-pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(37,99,235,0.55); }
+            70%  { box-shadow: 0 0 0 10px rgba(37,99,235,0); }
+            100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+          }
+          .gg-gps-dot {
+            width: 14px; height: 14px;
+            background: #2563eb;
+            border: 2.5px solid #fff;
+            border-radius: 50%;
+            animation: gg-gps-pulse 1.6s ease-out infinite;
+            pointer-events: none;
+          }
+        `;
+        document.head.appendChild(styleEl);
+      }
+
+      let gpsMarker: maplibregl.Marker | null = null;
+      const gpsDot = document.createElement("div");
+      gpsDot.className = "gg-gps-dot";
+
+      let watchId: number | null = null;
+      if (typeof navigator !== "undefined" && navigator.geolocation) {
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude: lat, longitude: lng } = pos.coords;
+            if (gpsMarker) {
+              gpsMarker.setLngLat([lng, lat]);
+            } else {
+              gpsMarker = new maplibregl.Marker({ element: gpsDot, anchor: "center" })
+                .setLngLat([lng, lat])
+                .addTo(map);
+            }
+          },
+          () => { /* silently no-op if GPS unavailable */ },
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+        );
+      }
+
+      // Store watchId for cleanup
+      (map as any)._gpsWatchId = watchId;
     });
 
-    return () => map.remove();
+    return () => {
+      const watchId: number | null = (map as any)._gpsWatchId ?? null;
+      if (watchId !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      map.remove();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pins, points, onGo, onMarkerClick]);
 

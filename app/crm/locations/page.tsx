@@ -2,6 +2,7 @@
 
 import SearchListPage from "@/app/components/crm/SearchListPage";
 import GeocodeButton from "./GeocodeButton";
+import CreateLocationButton from "./CreateLocationButton";
 
 export default function LocationsPage() {
   return (
@@ -12,7 +13,12 @@ export default function LocationsPage() {
       target="locations"
       columns={[{ key: "address", label: "Address", width: 520 }]}
       rowHrefPrefix="/crm/locations/"
-      headerActions={<GeocodeButton />}
+      headerActions={
+        <div style={{ display: "flex", gap: 8 }}>
+          <CreateLocationButton />
+          <GeocodeButton />
+        </div>
+      }
     />
   );
 }

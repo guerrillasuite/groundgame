@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import KanbanBoard from "./ui/KanbanBoard";
+import CreateOpportunityButton from "./CreateOpportunityButton";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -114,9 +115,12 @@ export default async function OpportunitiesPage() {
 
   return (
     <section className="stack">
-      <div>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Opportunities</h1>
-        <p className="text-dim" style={{ marginTop: 4 }}>Drag items between stages.</p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Opportunities</h1>
+          <p className="text-dim" style={{ marginTop: 4 }}>Drag items between stages.</p>
+        </div>
+        <CreateOpportunityButton />
       </div>
       <div className="crm-board-rail">
         <div className="crm-board-inner">

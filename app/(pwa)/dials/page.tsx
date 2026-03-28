@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { Icon } from "../../components/Icon";
+import LogCallButton from "./LogCallButton";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +88,10 @@ export default async function DialsPage() {
 
   return (
     <section style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Call Lists</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 12 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Call Lists</h1>
+        <LogCallButton />
+      </div>
 
       {errorMessage ? (
         <div

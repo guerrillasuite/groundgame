@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import dynamic from "next/dynamic";
+import StopModal from "@/app/components/StopModal";
 const KnockMap = dynamic(() => import("@/app/components/KnockMap"), {
   ssr: false,
   loading: () => <div style={{ height: "60vh", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}>Loading map…</div>,
@@ -44,6 +45,7 @@ export default function WalklistKnockView() {
   const [resumeIndex, setResumeIndex] = useState<number>(0);
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(50);
+  const [showStopModal, setShowStopModal] = useState(false);
 
   const resumeKey = `doors:cursor:${params.id}`;
 
@@ -156,14 +158,37 @@ export default function WalklistKnockView() {
             {(rows?.length ?? 0)} locations • resume at #{startIndex + 1}
           </p>
         </div>
-        <Link
-          href={startHref}
-          className="btn btn-lg"
-          data-testid="start-btn"
-        >
-          ➤ Start knocking
-        </Link>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={() => setShowStopModal(true)}
+            style={{
+              background: "none",
+              border: "1px solid var(--gg-border, #22283a)",
+              borderRadius: 8, padding: "6px 12px",
+              fontSize: 13, cursor: "pointer", color: "inherit",
+            }}
+          >
+            + Stop
+          </button>
+          <Link href={startHref} className="btn btn-lg" data-testid="start-btn">
+            ➤ Start knocking
+          </Link>
+        </div>
       </header>
+
+      {showStopModal && (
+        <StopModal
+          channel="doors"
+          mode={{ type: "walklist", walklist_id: params.id }}
+          onSaved={(opts) => {
+            setShowStopModal(false);
+            if (opts?.idx !== undefined) {
+              router.push(`/doors/${params.id}/${opts.idx}`);
+            }
+          }}
+          onClose={() => setShowStopModal(false)}
+        />
+      )}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="tabs" role="tablist" aria-label="View">

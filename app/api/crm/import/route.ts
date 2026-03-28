@@ -7,6 +7,7 @@ import {
   PEOPLE_L2_COLS, HOUSEHOLD_L2_COLS, LOCATION_L2_COLS,
   applyL2Transform,
 } from "@/lib/crm/l2-field-map";
+import { normalizeAddr, addrKey as addrKeyUtil } from "@/lib/crm/location-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -85,12 +86,6 @@ function pickL2(row: MappedRow, cols: Set<string>): Record<string, unknown> {
   return out;
 }
 
-function normalizeAddr(s: string): string {
-  return s.trim().toLowerCase()
-    .replace(/\.+$/, "")   // remove trailing period(s)
-    .replace(/\s+/g, " "); // collapse whitespace
-}
-
 /** Assemble address_line1 from GIS component fields when a pre-built string isn't present. */
 function assembleGisAddress(row: MappedRow): string {
   const parts = [
@@ -105,9 +100,7 @@ function assembleGisAddress(row: MappedRow): string {
 
 function addrKey(row: MappedRow): string | null {
   const raw = row.address_line1 ?? row.address ?? assembleGisAddress(row);
-  const a = normalizeAddr(raw);
-  if (!a) return null;
-  return `${a}|${(row.postal_code ?? "").trim()}`;
+  return addrKeyUtil(raw, row.postal_code ?? "");
 }
 
 function parseDollarsToCents(raw: string): number {

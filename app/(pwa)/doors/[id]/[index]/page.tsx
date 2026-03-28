@@ -103,6 +103,9 @@ export default function KnockStep() {
   const [queued, setQueued] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
 
+  // Correct Pin
+  const [pinStatus, setPinStatus] = useState<null | "updating" | "done" | "error">(null);
+
   const resumeKey = `doors:cursor:${params.id}`;
 
   // Load rows — SQLite cache first, fall back to direct Supabase
@@ -219,6 +222,7 @@ export default function KnockStep() {
     setOppDue('');
     setOppPriority('');
     setOppNotes('');
+    setPinStatus(null);
   }, [resumeKey, safeIndex, total]);
 
   // Photo preview lifecycle
@@ -278,6 +282,28 @@ export default function KnockStep() {
       return data?.publicUrl ?? null;
     } catch {
       return null;
+    }
+  }
+
+  async function correctPin() {
+    if (!target?.location_id) return;
+    setPinStatus("updating");
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+        })
+      );
+      const res = await fetch(`/api/crm/locations/${target.location_id}/coords`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      setPinStatus("done");
+    } catch {
+      setPinStatus("error");
     }
   }
 
@@ -401,11 +427,43 @@ export default function KnockStep() {
       <section className="rounded-2xl p-5 shadow bg-[var(--card-bg)] mt-3">
         {/* Address & household */}
         <div className="press-card plain info-box">
-          <div className="info-title">Address</div>
-          <div className="info-line strong">
-            {target.address_line1 ?? "Unnamed location"}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div className="info-title">Address</div>
+              <div className="info-line strong">
+                {target.address_line1 ?? "Unnamed location"}
+              </div>
+              {addr2 && <div className="info-line">{addr2}</div>}
+            </div>
+            {target.location_id && (
+              <button
+                type="button"
+                onClick={correctPin}
+                disabled={pinStatus === "updating"}
+                title="Update this address's map pin to your current GPS position"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: pinStatus === "updating" ? "default" : "pointer",
+                  padding: "2px 0",
+                  fontSize: 11,
+                  opacity: pinStatus === "done" ? 0.9 : 0.45,
+                  color: pinStatus === "done" ? "#22c55e" : pinStatus === "error" ? "#f87171" : "inherit",
+                  whiteSpace: "nowrap",
+                  lineHeight: 1.3,
+                  textAlign: "right",
+                }}
+              >
+                {pinStatus === "updating"
+                  ? "Updating…"
+                  : pinStatus === "done"
+                  ? "Pin updated ✓"
+                  : pinStatus === "error"
+                  ? "Update failed"
+                  : "📍 Correct pin"}
+              </button>
+            )}
           </div>
-          {addr2 && <div className="info-line">{addr2}</div>}
           {householdName && (
             <div className="info-line" style={{ marginTop: 6 }}>
               <strong>Household:&nbsp;</strong>

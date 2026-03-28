@@ -1,4 +1,5 @@
 import SearchListPage from "@/app/components/crm/SearchListPage";
+import CreateHouseholdButton from "./CreateHouseholdButton";
 
 export default function HouseholdsPage() {
   return (
@@ -12,6 +13,7 @@ export default function HouseholdsPage() {
       ]}
       target="households"
       rowHrefPrefix="/crm/households/"
+      headerActions={<CreateHouseholdButton />}
     />
   );
 }

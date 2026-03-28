@@ -217,6 +217,13 @@ export function updateLocationCoords(itemId: string, lat: number, lng: number): 
     .run(lat, lng, itemId);
 }
 
+/** Update coords for all door_locations entries sharing a location_id (used by "Correct Pin"). */
+export function updateCoordsForLocation(locationId: string, lat: number, lng: number): void {
+  getDb()
+    .prepare("UPDATE door_locations SET lat = ?, lng = ? WHERE location_id = ?")
+    .run(lat, lng, locationId);
+}
+
 /** Clears coordinates that fall outside the continental US + HI + AK bounding box */
 export function clearOutOfBoundsCoords(): number {
   const result = getDb()

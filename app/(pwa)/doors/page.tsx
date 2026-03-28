@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
 import { getWalklists, upsertWalklists, upsertLocations } from "@/lib/db/doors";
+import RecordStopButton from "./RecordStopButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -123,9 +124,12 @@ export default async function DoorsHome() {
 
   return (
     <main className="mx-auto max-w-3xl p-4">
-      <header className="mb-4">
-        <h1 className="text-2xl font-semibold">Doors</h1>
-        <p className="opacity-70">Choose a walklist to start knocking.</p>
+      <header className="mb-4" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <h1 className="text-2xl font-semibold">Doors</h1>
+          <p className="opacity-70">Choose a walklist to start knocking.</p>
+        </div>
+        <RecordStopButton />
       </header>
 
       <div className="gg-list">
