@@ -213,6 +213,11 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
+  // Step 1 — identity mode toggle (both channels support both)
+  const [identifyBy, setIdentifyBy] = useState<"address" | "person">(
+    channel === "call" ? "person" : "address"
+  );
+
   // Step 1 — identity
   const [address, setAddress]     = useState("");
   const [city, setCity]           = useState("");
@@ -294,10 +299,10 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
   // ── Step navigation ──────────────────────────────────────────────────────────
   async function confirmIdentity() {
     setErr(null);
-    if (channel === "doors" && !address.trim()) { setErr("Address is required"); return; }
-    if (channel === "call" && !personId) { setErr("Select a person first"); return; }
+    if (identifyBy === "address" && !address.trim()) { setErr("Address is required"); return; }
+    if (identifyBy === "person" && !personId) { setErr("Select a person first"); return; }
 
-    if (channel === "doors" && address.trim()) {
+    if (identifyBy === "address" && address.trim()) {
       await lookupAddress(address, zip);
       setOppTitle(`Follow-up: ${address.trim()}`);
     }
@@ -326,10 +331,10 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               channel,
-              address_line1: channel === "doors" ? address : undefined,
-              city: channel === "doors" ? city : undefined,
-              state: channel === "doors" ? state : undefined,
-              postal_code: channel === "doors" ? zip : undefined,
+              address_line1: identifyBy === "address" ? address : undefined,
+              city: identifyBy === "address" ? city : undefined,
+              state: identifyBy === "address" ? state : undefined,
+              postal_code: identifyBy === "address" ? zip : undefined,
               person_id: personId ?? undefined,
               result,
               notes: notes || null,
@@ -347,10 +352,10 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               walklist_id: mode.walklist_id,
-              address_line1: channel === "doors" ? address : undefined,
-              city: channel === "doors" ? city : undefined,
-              state: channel === "doors" ? state : undefined,
-              postal_code: channel === "doors" ? zip : undefined,
+              address_line1: identifyBy === "address" ? address : undefined,
+              city: identifyBy === "address" ? city : undefined,
+              state: identifyBy === "address" ? state : undefined,
+              postal_code: identifyBy === "address" ? zip : undefined,
               person_id: personId ?? undefined,
             }),
           });
@@ -369,6 +374,9 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
 
   return (
     <div style={S.overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <style>{`
+        .gg-result-btn:hover { background: var(--gg-primary, #2563eb) !important; color: #fff !important; border-color: var(--gg-primary, #2563eb) !important; }
+      `}</style>
       <div style={S.sheet}>
 
         {/* Header */}
@@ -388,7 +396,26 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
         {/* ── STEP 1 ── */}
         {step === 1 && (
           <>
-            {channel === "doors" ? (
+            {/* Identity mode toggle */}
+            <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.06)", borderRadius: 8, padding: 3 }}>
+              {(["person", "address"] as const).map((mode_) => (
+                <button
+                  key={mode_}
+                  type="button"
+                  onClick={() => { setIdentifyBy(mode_); setErr(null); }}
+                  style={{
+                    flex: 1, padding: "6px 0", borderRadius: 6, border: "none",
+                    cursor: "pointer", fontSize: 13, fontWeight: identifyBy === mode_ ? 600 : 400,
+                    background: identifyBy === mode_ ? "var(--gg-primary, #2563eb)" : "transparent",
+                    color: identifyBy === mode_ ? "#fff" : "inherit",
+                  }}
+                >
+                  {mode_ === "person" ? "👤 By Person" : "📍 By Address"}
+                </button>
+              ))}
+            </div>
+
+            {identifyBy === "address" ? (
               <>
                 <label style={S.label}>
                   <span style={S.dim}>Street Address</span>
@@ -476,6 +503,7 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
                     <button
                       key={r.key}
                       type="button"
+                      className="gg-result-btn"
                       onClick={() => { setResult(r.key); setShowOpp(false); }}
                       style={{
                         padding: "7px 14px",
@@ -484,7 +512,7 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
                           ? "2px solid var(--gg-primary, #2563eb)"
                           : "1px solid var(--gg-border, #22283a)",
                         background: result === r.key ? "var(--gg-primary, #2563eb)" : "none",
-                        color: "inherit",
+                        color: result === r.key ? "#fff" : "inherit",
                         fontSize: 13,
                         cursor: "pointer",
                         fontWeight: result === r.key ? 600 : 400,
