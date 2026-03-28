@@ -743,6 +743,43 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                               <option value="__giving_cycle__">→ Giving – cycle year (set below)</option>
                             </optgroup>
                           </>
+                        ) : importType === "locations" ? (
+                          <>
+                            <optgroup label="Address (full string)">
+                              <option value="address_line1">Street Address (full)</option>
+                              <option value="full_address">Full Address String (GIS)</option>
+                            </optgroup>
+                            <optgroup label="GIS Address Components → assembled into address_line1">
+                              <option value="house_number">Address Number</option>
+                              <option value="pre_dir">Pre-Directional (N/S/E/W)</option>
+                              <option value="street_name">Street Name</option>
+                              <option value="street_suffix">Street Suffix (Way/Road/etc.)</option>
+                              <option value="post_dir">Post-Directional</option>
+                              <option value="unit">Unit / Apt</option>
+                            </optgroup>
+                            <optgroup label="City / State / Zip">
+                              <option value="city">City</option>
+                              <option value="postal_community">Postal Community (GIS city name)</option>
+                              <option value="state">State</option>
+                              <option value="postal_code">Zip Code</option>
+                            </optgroup>
+                            <optgroup label="GIS Extras">
+                              <option value="parcel_id">Parcel ID / APN</option>
+                              <option value="source_row_id">Source Row ID (OBJECTID)</option>
+                              <option value="municipality">Municipality</option>
+                            </optgroup>
+                            <optgroup label="Districts">
+                              <option value="congressional_district">Congressional District</option>
+                              <option value="state_house_district">State House District</option>
+                              <option value="state_senate_district">State Senate District</option>
+                              <option value="county_name">County Name</option>
+                              <option value="precinct">Precinct</option>
+                              <option value="fips_code">FIPS Code</option>
+                              <option value="census_tract">Census Tract</option>
+                              <option value="census_block_group">Census Block Group</option>
+                              <option value="census_block">Census Block</option>
+                            </optgroup>
+                          </>
                         ) : schemaFields.length > 0 ? (
                           <>
                             <optgroup label="People">
@@ -758,6 +795,18 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                                 .map((f) => (
                                   <option key={f.column} value={f.column}>{f.label}</option>
                                 ))}
+                            </optgroup>
+                            <optgroup label="GIS Address Components → assembled into address_line1">
+                              <option value="house_number">Address Number</option>
+                              <option value="pre_dir">Pre-Directional (N/S/E/W)</option>
+                              <option value="street_name">Street Name</option>
+                              <option value="street_suffix">Street Suffix (Way/Road/etc.)</option>
+                              <option value="post_dir">Post-Directional</option>
+                              <option value="unit">Unit / Apt</option>
+                              <option value="postal_community">Postal Community (GIS city name)</option>
+                              <option value="parcel_id">Parcel ID / APN</option>
+                              <option value="full_address">Full Address String (GIS)</option>
+                              <option value="source_row_id">Source Row ID (OBJECTID)</option>
                             </optgroup>
                             <optgroup label="Household">
                               {schemaFields
@@ -782,6 +831,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                                 f.value !== "__skip__" && f.value !== "__create__" && f.value !== "__create_global__"
                                 && !LOCATION_FIELD_COLS.has(f.value)
                                 && !f.value.startsWith("tp_") && !f.value.startsWith("co_")
+                                && !f.value.startsWith("gis_")
                               ).map((f) => (
                                 <option key={f.value} value={f.value}>{f.label}</option>
                               ))}
@@ -790,6 +840,18 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                               {TARGET_FIELDS.filter((f) => LOCATION_FIELD_COLS.has(f.value)).map((f) => (
                                 <option key={f.value} value={f.value}>{f.label}</option>
                               ))}
+                            </optgroup>
+                            <optgroup label="GIS Address Components → assembled into address_line1">
+                              <option value="house_number">Address Number</option>
+                              <option value="pre_dir">Pre-Directional (N/S/E/W)</option>
+                              <option value="street_name">Street Name</option>
+                              <option value="street_suffix">Street Suffix (Way/Road/etc.)</option>
+                              <option value="post_dir">Post-Directional</option>
+                              <option value="unit">Unit / Apt</option>
+                              <option value="postal_community">Postal Community (GIS city name)</option>
+                              <option value="parcel_id">Parcel ID / APN</option>
+                              <option value="full_address">Full Address String (GIS)</option>
+                              <option value="source_row_id">Source Row ID (OBJECTID)</option>
                             </optgroup>
                             <optgroup label="Tenant Tracking">
                               <option value="tp_notes">Notes (this org only)</option>
