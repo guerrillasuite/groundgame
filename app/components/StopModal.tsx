@@ -10,7 +10,8 @@
  *  Step 2: Result + Notes + optional opportunity (progressive)
  */
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import LocationSearchInput from "@/app/crm/_shared/LocationSearchInput";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -218,12 +219,16 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
     channel === "call" ? "person" : "address"
   );
 
-  // Step 1 — identity
-  const [address, setAddress]     = useState("");
-  const [city, setCity]           = useState("");
-  const [state, setState_]        = useState("");
-  const [zip, setZip]             = useState("");
+  // Step 1 — address identity (via LocationSearchInput)
+  type LocValue = { type: "existing"; id: string; address: string } | { type: "new"; address: string };
+  const [locationValue, setLocationValue] = useState<LocValue | null>(null);
+
+  // Step 1 — person identity
   const [personId, setPersonId]   = useState<string | null>(null);
+  const [showCreatePerson, setShowCreatePerson] = useState(false);
+  const [newFirstName, setNewFirstName] = useState("");
+  const [newLastName, setNewLastName]   = useState("");
+  const [newPhone, setNewPhone]         = useState("");
 
   // Step 1b — contact card (loaded after address/person confirmed)
   const [card, setCard]           = useState<ContactCard | null>(null);
@@ -246,41 +251,25 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
   const results = channel === "doors" ? DOOR_RESULTS : CALL_RESULTS;
   const positiveResult = results.find((r) => r.key === result)?.positive ?? false;
 
-  // ── Address GPS fill ────────────────────────────────────────────────────────
-  function fillGps() {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition((pos) => {
-      // GPS gives coords but not an address — just populate a placeholder the user can edit
-      setAddress(`GPS: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
-    });
-  }
-
   // ── Lookup existing CRM record ───────────────────────────────────────────────
-  async function lookupAddress(addr: string, postal: string) {
-    if (!addr.trim()) return;
+  async function lookupLocation(val: LocValue) {
+    if (val.type === "existing") {
+      // Already have the record — show it directly
+      setCard({ location_id: val.id, address: val.address });
+      return;
+    }
+    // "new" — try a quick search to see if it exists anyway (normalised dedupe)
     setCardLoading(true);
     try {
-      const q = encodeURIComponent(`${addr} ${postal}`.trim());
-      const r = await fetch(`/api/crm/locations/search?q=${q}&limit=3`);
+      const r = await fetch(`/api/crm/locations/search?q=${encodeURIComponent(val.address)}&limit=1`);
       const d = await r.json();
       const rows = Array.isArray(d?.rows) ? d.rows : [];
-      if (rows.length === 0) { setCard({ address: addr }); return; }
-
-      const loc = rows[0];
-      // Fetch household + residents
-      const hRes = await fetch(`/api/crm/search`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: "people", filters: [{ field: "city", op: "equals", value: loc.city ?? "" }] }),
-      });
-      // Simpler: just show location data from search result
-      setCard({
-        location_id: loc.id,
-        address: loc.address,
-        household_name: null,
-        residents: [],
-      });
-    } catch { setCard({ address: addr }); }
+      if (rows.length > 0) {
+        setCard({ location_id: rows[0].id, address: rows[0].address });
+      } else {
+        setCard({ address: val.address });
+      }
+    } catch { setCard({ address: val.address }); }
     finally { setCardLoading(false); }
   }
 
@@ -299,12 +288,18 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
   // ── Step navigation ──────────────────────────────────────────────────────────
   async function confirmIdentity() {
     setErr(null);
-    if (identifyBy === "address" && !address.trim()) { setErr("Address is required"); return; }
-    if (identifyBy === "person" && !personId) { setErr("Select a person first"); return; }
-
-    if (identifyBy === "address" && address.trim()) {
-      await lookupAddress(address, zip);
-      setOppTitle(`Follow-up: ${address.trim()}`);
+    if (identifyBy === "address") {
+      if (!locationValue) { setErr("Enter or select an address first"); return; }
+      await lookupLocation(locationValue);
+      setOppTitle(`Follow-up: ${locationValue.address}`);
+    } else {
+      if (!personId && !showCreatePerson) { setErr("Search for a person or create a new one"); return; }
+      if (showCreatePerson && !newFirstName.trim()) { setErr("First name is required"); return; }
+      if (showCreatePerson) {
+        const fullName = [newFirstName.trim(), newLastName.trim()].filter(Boolean).join(" ");
+        setCard({ person_name: fullName, phone: newPhone || null });
+        setOppTitle(`Follow-up: ${fullName}`);
+      }
     }
     setStep(2);
   }
@@ -331,11 +326,11 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               channel,
-              address_line1: identifyBy === "address" ? address : undefined,
-              city: identifyBy === "address" ? city : undefined,
-              state: identifyBy === "address" ? state : undefined,
-              postal_code: identifyBy === "address" ? zip : undefined,
+              address_line1: identifyBy === "address" ? locationValue?.address : undefined,
               person_id: personId ?? undefined,
+              new_person: (identifyBy === "person" && showCreatePerson && newFirstName.trim())
+                ? { first_name: newFirstName.trim(), last_name: newLastName.trim() || null, phone: newPhone || null }
+                : undefined,
               result,
               notes: notes || null,
               opportunity,
@@ -352,11 +347,11 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               walklist_id: mode.walklist_id,
-              address_line1: identifyBy === "address" ? address : undefined,
-              city: identifyBy === "address" ? city : undefined,
-              state: identifyBy === "address" ? state : undefined,
-              postal_code: identifyBy === "address" ? zip : undefined,
+              address_line1: identifyBy === "address" ? locationValue?.address : undefined,
               person_id: personId ?? undefined,
+              new_person: (identifyBy === "person" && showCreatePerson && newFirstName.trim())
+                ? { first_name: newFirstName.trim(), last_name: newLastName.trim() || null, phone: newPhone || null }
+                : undefined,
             }),
           });
           const d = await res.json();
@@ -416,59 +411,60 @@ export default function StopModal({ channel, mode, onSaved, onClose }: StopModal
             </div>
 
             {identifyBy === "address" ? (
-              <>
-                <label style={S.label}>
-                  <span style={S.dim}>Street Address</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      type="text"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="123 Main St"
-                      style={{ flex: 1, fontSize: 15 }}
-                      autoFocus
-                      onKeyDown={(e) => { if (e.key === "Enter") confirmIdentity(); }}
-                    />
-                    <button
-                      type="button"
-                      title="Use GPS location"
-                      onClick={fillGps}
-                      style={{
-                        background: "none", border: "1px solid var(--gg-border,#22283a)",
-                        borderRadius: 6, padding: "0 10px", cursor: "pointer",
-                        color: "inherit", fontSize: 16,
-                      }}
-                    >
-                      📍
-                    </button>
-                  </div>
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <label style={{ ...S.label, flex: 2 }}>
-                    <span style={S.dim}>City</span>
-                    <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Springfield" />
-                  </label>
-                  <label style={{ ...S.label, flex: 1 }}>
-                    <span style={S.dim}>State</span>
-                    <input value={state} onChange={(e) => setState_(e.target.value)} placeholder="IL" maxLength={2} />
-                  </label>
-                  <label style={{ ...S.label, flex: 1 }}>
-                    <span style={S.dim}>Zip</span>
-                    <input value={zip} onChange={(e) => setZip(e.target.value)} placeholder="62701" maxLength={10} />
-                  </label>
-                </div>
-              </>
+              <label style={S.label}>
+                <span style={S.dim}>Search or enter address</span>
+                <LocationSearchInput
+                  value={locationValue as any}
+                  onChange={(v) => setLocationValue(v as LocValue | null)}
+                  placeholder="123 Main St…"
+                />
+              </label>
             ) : (
               <>
                 <label style={{ ...S.label, marginBottom: 2 }}>
                   <span style={S.dim}>Search for a person</span>
                 </label>
-                <PersonSearch
-                  onSelect={(p) => {
-                    if (p) { setPersonId(p.id); lookupPerson(p.id, p); }
-                    else { setPersonId(null); setCard(null); }
-                  }}
-                />
+                {!showCreatePerson ? (
+                  <>
+                    <PersonSearch
+                      onSelect={(p) => {
+                        if (p) { setPersonId(p.id); lookupPerson(p.id, p); }
+                        else { setPersonId(null); setCard(null); }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setShowCreatePerson(true); setPersonId(null); setCard(null); }}
+                      style={{ background: "none", border: "none", color: "var(--gg-primary,#2563eb)", fontSize: 13, cursor: "pointer", padding: 0, textAlign: "left" as const }}
+                    >
+                      + Create new contact
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <label style={{ ...S.label, flex: 1 }}>
+                        <span style={S.dim}>First name *</span>
+                        <input value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} autoFocus placeholder="Jane" />
+                      </label>
+                      <label style={{ ...S.label, flex: 1 }}>
+                        <span style={S.dim}>Last name</span>
+                        <input value={newLastName} onChange={(e) => setNewLastName(e.target.value)} placeholder="Smith" />
+                      </label>
+                    </div>
+                    <label style={S.label}>
+                      <span style={S.dim}>Phone (optional)</span>
+                      <input type="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="555-555-5555" />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowCreatePerson(false); setNewFirstName(""); setNewLastName(""); setNewPhone(""); }}
+                      style={{ background: "none", border: "none", color: "var(--gg-primary,#2563eb)", fontSize: 13, cursor: "pointer", padding: 0, textAlign: "left" as const }}
+                    >
+                      ← Back to search
+                    </button>
+                  </>
+                )}
               </>
             )}
 

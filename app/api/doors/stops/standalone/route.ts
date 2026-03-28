@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
     city,
     state,
     postal_code,
-    person_id = null,
+    person_id: rawPersonId = null,
+    new_person = null,
     result,
     notes = null,
     opportunity = null,
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
     state?: string;
     postal_code?: string;
     person_id?: string | null;
+    new_person?: { first_name: string; last_name?: string | null; phone?: string | null } | null;
     result: string;
     notes?: string | null;
     opportunity?: {
@@ -50,6 +52,19 @@ export async function POST(req: NextRequest) {
       description?: string | null;
     } | null;
   };
+
+  // Create person inline if requested
+  let person_id = rawPersonId;
+  if (!person_id && new_person?.first_name) {
+    const { data: np } = await sb
+      .from("people")
+      .insert({ first_name: new_person.first_name, last_name: new_person.last_name ?? null, phone: new_person.phone ?? null, tenant_id: tenantId })
+      .select("id").single();
+    if (np?.id) {
+      person_id = np.id;
+      await sb.from("tenant_people").insert({ person_id: np.id, tenant_id: tenantId });
+    }
+  }
 
   let locationId: string | null = null;
 

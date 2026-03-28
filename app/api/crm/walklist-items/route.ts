@@ -19,13 +19,26 @@ export async function POST(req: NextRequest) {
   const sb = makeSb(tenantId);
 
   const body = await req.json().catch(() => null);
-  const { walklist_id, address_line1, city, state, postal_code, person_id } = body ?? {};
+  const { walklist_id, address_line1, city, state, postal_code, person_id: rawPersonId, new_person } = body ?? {};
 
   if (!walklist_id) {
     return NextResponse.json({ error: "walklist_id is required" }, { status: 400 });
   }
-  if (!address_line1?.trim() && !person_id) {
-    return NextResponse.json({ error: "address_line1 or person_id is required" }, { status: 400 });
+  if (!address_line1?.trim() && !rawPersonId && !new_person?.first_name) {
+    return NextResponse.json({ error: "address_line1 or person_id or new_person is required" }, { status: 400 });
+  }
+
+  // Create person inline if requested
+  let person_id = rawPersonId ?? null;
+  if (!person_id && new_person?.first_name) {
+    const { data: np } = await sb
+      .from("people")
+      .insert({ first_name: new_person.first_name, last_name: new_person.last_name ?? null, phone: new_person.phone ?? null, tenant_id: tenantId })
+      .select("id").single();
+    if (np?.id) {
+      person_id = np.id;
+      await sb.from("tenant_people").insert({ person_id: np.id, tenant_id: tenantId });
+    }
   }
 
   // Resolve location (for doors stops) or just use person (for dials stops)
