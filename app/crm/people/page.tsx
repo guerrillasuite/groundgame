@@ -2,7 +2,7 @@ import SearchListPage from "@/app/components/crm/SearchListPage";
 import CreatePersonWizard from "@/app/crm/_shared/CreatePersonWizard";
 import { createPersonAction } from "@/app/crm/_shared/mutations";
 
-function boundCreateAction(fd: FormData) {
+async function boundCreateAction(fd: FormData) {
   "use server";
   return createPersonAction("/crm/people", fd);
 }
