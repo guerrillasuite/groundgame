@@ -93,11 +93,18 @@ const FALLBACK_SCHEMA: Record<Target, ColumnDef[]> = {
     { column: "address", label: "Street Address", data_type: "text", is_join: true },
   ],
   locations: [
-    { column: "address_line1", label: "Street Address", data_type: "text", is_join: false },
-    { column: "city", label: "City", data_type: "text", is_join: false },
-    { column: "state", label: "State", data_type: "text", is_join: false },
-    { column: "postal_code", label: "Zip Code", data_type: "text", is_join: false },
-    { column: "notes", label: "Notes", data_type: "text", is_join: false },
+    { column: "address_line1",   label: "Street Address",   data_type: "text", is_join: false },
+    { column: "city",            label: "City",             data_type: "text", is_join: false },
+    { column: "state",           label: "State",            data_type: "text", is_join: false },
+    { column: "postal_code",     label: "Zip Code",         data_type: "text", is_join: false },
+    { column: "postal_community",label: "Postal Community", data_type: "text", is_join: false },
+    { column: "house_number",    label: "House Number",     data_type: "text", is_join: false },
+    { column: "street_name",     label: "Street Name",      data_type: "text", is_join: false },
+    { column: "street_suffix",   label: "Street Suffix",    data_type: "text", is_join: false },
+    { column: "pre_dir",         label: "Pre-Directional",  data_type: "text", is_join: false },
+    { column: "parcel_id",       label: "Parcel ID / APN",  data_type: "text", is_join: false },
+    { column: "land_use",        label: "Land Use",         data_type: "text", is_join: false },
+    { column: "subdivision",     label: "Subdivision",      data_type: "text", is_join: false },
   ],
 };
 

@@ -41,8 +41,25 @@ export type FilterOp =
 export type SearchFilter = { field: string; op: FilterOp; value: string };
 export type SearchTarget = "people" | "households" | "locations";
 
-// Fields that live on the location table, resolved via join for people/households
-const LOCATION_JOIN_FIELDS = new Set(["city", "state", "postal_code", "address"]);
+// Fields that live on the locations table, resolved via join for people/households searches.
+// Any field NOT in this set is treated as a direct column on the people/households table.
+const LOCATION_JOIN_FIELDS = new Set([
+  // Core address
+  "city", "state", "postal_code", "address", "address_line1", "unit",
+  // GIS address components
+  "house_number", "pre_dir", "street_name", "street_suffix", "post_dir",
+  "postal_community", "parcel_id", "full_address",
+  // Other location columns
+  "subdivision", "land_use", "type", "common_place_name", "place_name",
+  "postal_city", "council_district", "is_residential",
+  // Districts + geo
+  "congressional_district", "state_senate_district", "state_house_district",
+  "state_legislative_district", "precinct", "county_name", "municipality",
+  "municipal_subdistrict", "county_commission_district", "county_supervisor_district",
+  "school_district", "college_district", "judicial_district", "fips_code",
+  "urbanicity", "population_density", "time_zone",
+  "census_tract", "census_block_group", "census_block", "dma",
+]);
 
 // "address" is a virtual alias → maps to address_line1 in the DB
 function resolveCol(field: string): string {
@@ -232,7 +249,7 @@ export async function POST(request: NextRequest) {
       locations = await fetchAll(() => {
         let q = sb
           .from("locations")
-          .select("id, address_line1, city, state, postal_code, notes")
+          .select("id, address_line1, city, state, postal_code")
           .eq("tenant_id", tenant.id);
         for (const f of filters) q = applyFilter(q, resolveCol(f.field), f.op, f.value);
         return q;

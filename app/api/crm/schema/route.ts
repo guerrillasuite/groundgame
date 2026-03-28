@@ -34,7 +34,17 @@ const LOCATION_JOIN_FIELDS: ColumnDef[] = [
   { column: "city",                         label: "City",                         data_type: "text",    is_join: true, table: "locations" },
   { column: "state",                        label: "State",                        data_type: "text",    is_join: true, table: "locations" },
   { column: "postal_code",                  label: "Zip Code",                     data_type: "text",    is_join: true, table: "locations" },
-  { column: "address_line1",                 label: "Street Address",               data_type: "text",    is_join: true, table: "locations" },
+  { column: "address_line1",                label: "Street Address",               data_type: "text",    is_join: true, table: "locations" },
+  // GIS address components
+  { column: "house_number",                 label: "House Number",                 data_type: "text",    is_join: true, table: "locations" },
+  { column: "pre_dir",                      label: "Pre-Directional",              data_type: "text",    is_join: true, table: "locations" },
+  { column: "street_name",                  label: "Street Name",                  data_type: "text",    is_join: true, table: "locations" },
+  { column: "street_suffix",                label: "Street Suffix",                data_type: "text",    is_join: true, table: "locations" },
+  { column: "post_dir",                     label: "Post-Directional",             data_type: "text",    is_join: true, table: "locations" },
+  { column: "postal_community",             label: "Postal Community",             data_type: "text",    is_join: true, table: "locations" },
+  { column: "parcel_id",                    label: "Parcel ID / APN",              data_type: "text",    is_join: true, table: "locations" },
+  { column: "subdivision",                  label: "Subdivision",                  data_type: "text",    is_join: true, table: "locations" },
+  { column: "land_use",                     label: "Land Use",                     data_type: "text",    is_join: true, table: "locations" },
   // Districts
   { column: "congressional_district",       label: "Congressional District",       data_type: "text",    is_join: true, table: "locations" },
   { column: "state_senate_district",        label: "State Senate District",        data_type: "text",    is_join: true, table: "locations" },
@@ -159,9 +169,6 @@ export async function GET(request: NextRequest) {
 
   try {
     // Query information_schema via the REST API (PostgREST exposes it with service role)
-    const url = `${supabaseUrl}/rest/v1/rpc/get_table_columns`;
-
-    // First try RPC approach, fallback to direct information_schema query
     const res = await fetch(
       `${supabaseUrl}/rest/v1/information_schema/columns?select=column_name,data_type&table_schema=eq.public&table_name=eq.${table}&order=ordinal_position`,
       {
