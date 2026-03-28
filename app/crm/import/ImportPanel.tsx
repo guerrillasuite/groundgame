@@ -418,7 +418,11 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
   const CHUNK_SIZE = 500;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function postChunk(rows: Record<string, any>[], dryRun: boolean, token: string): Promise<ImportResult> {
+  async function postChunk(rows: Record<string, any>[], dryRun: boolean): Promise<ImportResult> {
+    // Fetch a fresh token every chunk so token rotation mid-loop never causes 401s
+    const token = await getToken();
+    if (!token) throw new Error("Not authenticated");
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body: Record<string, any> = { rows, dryRun, importMode, importType };
     if (isSuperAdmin && selectedTenant) body.tenant_id = selectedTenant;
@@ -454,14 +458,11 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
     setValidateResult(null);
 
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Not authenticated");
-
       const chunks = chunkArr(buildMappedRows(), CHUNK_SIZE);
       const acc: ImportResult = { dryRun: true, inserted: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
 
       for (const chunk of chunks) {
-        const data = await postChunk(chunk, true, token);
+        const data = await postChunk(chunk, true);
         acc.inserted += data.inserted;
         acc.updated  += data.updated;
         acc.skipped  += data.skipped;
@@ -487,14 +488,11 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
     setResult(null);
 
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Not authenticated");
-
       const chunks = chunkArr(buildMappedRows(), CHUNK_SIZE);
       const acc: ImportResult = { inserted: 0, updated: 0, skipped: 0, failed: 0, errors: [], insertedPersonIds: [], insertedCompanyIds: [] };
 
       for (const chunk of chunks) {
-        const data = await postChunk(chunk, false, token);
+        const data = await postChunk(chunk, false);
         acc.inserted += data.inserted;
         acc.updated  += data.updated;
         acc.skipped  += data.skipped;
