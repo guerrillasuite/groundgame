@@ -20,8 +20,16 @@ type TargetField =
   | "phone_cell" | "phone_landline" | "mailing_address"
   // People: L2 political scores
   | "score_prog_dem" | "score_mod_dem" | "score_cons_rep" | "score_mod_rep"
+  // People: L2 propensity scores
+  | "likelihood_to_vote" | "primary_likelihood" | "general_primary_likelihood"
+  | "phone_cell_confidence" | "party_switch_type"
+  // People: mailing address components
+  | "mailing_city" | "mailing_state" | "mailing_zip"
   // People: L2 voting history
   | "voting_frequency" | "early_voter" | "absentee_type"
+  // People: per-election voting history
+  | "voted_general_2024" | "voted_general_2022" | "voted_general_2020" | "voted_general_2018"
+  | "voted_primary_2024" | "voted_primary_2022" | "voted_primary_2020" | "voted_primary_2018"
   // People: L2 demographics
   | "ethnicity" | "ethnicity_source" | "hispanic_origin" | "language"
   | "english_proficiency" | "education_level" | "marital_status" | "religion"
@@ -35,6 +43,8 @@ type TargetField =
   | "head_of_household" | "household_gender" | "home_owner"
   | "home_estimated_value" | "home_purchase_year" | "home_dwelling_type"
   | "home_sqft" | "home_bedrooms"
+  // Locations: geocoordinates + address extras
+  | "lat" | "lon" | "zip4" | "street_parity"
   // Locations: GIS address components
   | "house_number" | "pre_dir" | "street_name" | "street_suffix" | "post_dir"
   | "unit" | "parcel_id" | "postal_community" | "full_address" | "source_row_id"
@@ -75,6 +85,28 @@ const TARGET_FIELDS: { value: TargetField; label: string }[] = [
   { value: "state",          label: "State" },
   { value: "postal_code",    label: "Zip Code" },
   { value: "unit",           label: "Unit / Apt" },
+  { value: "zip4",           label: "Zip+4 Extension" },
+  { value: "street_parity",  label: "Street Number Odd/Even" },
+  { value: "lat",            label: "Geo: Latitude" },
+  { value: "lon",            label: "Geo: Longitude" },
+  // Propensity scores
+  { value: "likelihood_to_vote",         label: "Likelihood to Vote (0–100)" },
+  { value: "primary_likelihood",         label: "Primary Likelihood (0–100)" },
+  { value: "general_primary_likelihood", label: "General+Primary Likelihood (0–100)" },
+  { value: "phone_cell_confidence",      label: "Cell Phone Confidence Code" },
+  { value: "party_switch_type",          label: "Party Change (When Changed)" },
+  { value: "mailing_city",               label: "Mailing City" },
+  { value: "mailing_state",              label: "Mailing State" },
+  { value: "mailing_zip",                label: "Mailing Zip" },
+  // Per-election voting history
+  { value: "voted_general_2024",         label: "Voted: General 2024" },
+  { value: "voted_general_2022",         label: "Voted: General 2022" },
+  { value: "voted_general_2020",         label: "Voted: General 2020" },
+  { value: "voted_general_2018",         label: "Voted: General 2018" },
+  { value: "voted_primary_2024",         label: "Voted: Primary 2024" },
+  { value: "voted_primary_2022",         label: "Voted: Primary 2022" },
+  { value: "voted_primary_2020",         label: "Voted: Primary 2020" },
+  { value: "voted_primary_2018",         label: "Voted: Primary 2018" },
   // GIS address components — assembled into address_line1 automatically
   { value: "house_number",   label: "GIS: Address Number" },
   { value: "pre_dir",        label: "GIS: Pre-Directional (N/S/E/W)" },
