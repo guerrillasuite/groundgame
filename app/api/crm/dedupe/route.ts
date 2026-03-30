@@ -47,53 +47,14 @@ export async function GET(request: Request) {
 
   // ── People duplicates ─────────────────────────────────────────────────────
   if (type === "people") {
-    // ── Phase 1: scan ALL people with minimal columns ──────────────────────
-    // Fetch only 4 small columns (vs 13) to find dup group IDs cheaply.
-    // fetchAll paginates in 1000-row chunks — must match PostgREST's max_rows cap.
-    let slim: any[];
-    try {
-      slim = await fetchAll(() =>
-        sb
-          .from("people")
-          .select("id, first_name, last_name, lalvoteid, tenant_people!inner(tenant_id)")
-          .eq("tenant_people.tenant_id", tenant.id)
-          .order("last_name")
-          .order("first_name")
-      );
-    } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 500 });
-    }
+    // ── Phase 1: find dup group IDs via a single server-side SQL query ──────
+    // The RPC does GROUP BY in Postgres — no need to stream 200K rows over HTTP.
+    const { data: groupRows, error: rpcError } = await sb.rpc("find_dup_people", { p_tenant_id: tenant.id });
+    if (rpcError) return NextResponse.json({ error: rpcError.message }, { status: 500 });
+    if (!groupRows?.length) return NextResponse.json({ groups: [], total: 0 });
 
-    // ── Find dup groups from slim data ────────────────────────────────────
-    // Pass 1: lalvoteid buckets (definite identity — different IDs = different people)
-    const lalvoteidGroupIds = new Map<string, string[]>();
-    const noLalvoteid: any[] = [];
-    for (const p of slim) {
-      const lid = (p.lalvoteid ?? "").trim();
-      if (lid) {
-        if (!lalvoteidGroupIds.has(lid)) lalvoteidGroupIds.set(lid, []);
-        lalvoteidGroupIds.get(lid)!.push(p.id);
-      } else {
-        noLalvoteid.push(p);
-      }
-    }
-    // Pass 2: name buckets for records without lalvoteid
-    const nameGroupIds = new Map<string, string[]>();
-    for (const p of noLalvoteid) {
-      const key = `${(p.first_name ?? "").trim().toLowerCase()}|${(p.last_name ?? "").trim().toLowerCase()}`;
-      if (!key || key === "|") continue;
-      if (!nameGroupIds.has(key)) nameGroupIds.set(key, []);
-      nameGroupIds.get(key)!.push(p.id);
-    }
-
-    const dupLalvoteids = [...lalvoteidGroupIds.entries()].filter(([, ids]) => ids.length > 1);
-    const dupNames = [...nameGroupIds.entries()].filter(([, ids]) => ids.length > 1);
-    const allDupIds = [...new Set([
-      ...dupLalvoteids.flatMap(([, ids]) => ids),
-      ...dupNames.flatMap(([, ids]) => ids),
-    ])];
-
-    if (allDupIds.length === 0) return NextResponse.json({ groups: [], total: 0 });
+    // Each row: { group_key: string, person_ids: string[] }
+    const allDupIds = [...new Set((groupRows as any[]).flatMap((r) => r.person_ids as string[]))];
 
     // ── Phase 2: fetch full details only for the dup IDs ──────────────────
     const fullPeopleMap = new Map<string, any>();
@@ -106,10 +67,10 @@ export async function GET(request: Request) {
     }
 
     // Rebuild groups with full-detail records
-    const allCandidateGroups: [string, any[]][] = [
-      ...dupLalvoteids.map(([k, ids]) => [`lid:${k}`, ids.map(id => fullPeopleMap.get(id)).filter(Boolean)] as [string, any[]]),
-      ...dupNames.map(([k, ids]) => [`name:${k}`, ids.map(id => fullPeopleMap.get(id)).filter(Boolean)] as [string, any[]]),
-    ];
+    const allCandidateGroups: [string, any[]][] = (groupRows as any[]).map((r) => [
+      r.group_key as string,
+      (r.person_ids as string[]).map((id) => fullPeopleMap.get(id)).filter(Boolean),
+    ]);
     const dupCandidates = allCandidateGroups.filter(([, recs]) => recs.length > 1);
 
     const allCandidatePeople = dupCandidates.flatMap(([, recs]) => recs);
