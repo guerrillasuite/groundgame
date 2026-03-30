@@ -9,7 +9,12 @@ type PersonRecord = {
   last_name: string;
   email: string;
   phone: string;
+  phone_cell: string;
+  phone_landline: string;
   contact_type: string;
+  lalvoteid: string;
+  birth_date: string;
+  gender: string;
   household_id: string | null;
   address: string;
 };
@@ -193,8 +198,12 @@ function PeopleTab() {
                 <tr>
                   <th style={thStyle}>Keep</th>
                   <th style={thStyle}>Name</th>
+                  <th style={thStyle}>Voter ID</th>
+                  <th style={thStyle}>Gender</th>
+                  <th style={thStyle}>DOB</th>
+                  <th style={thStyle}>Cell</th>
+                  <th style={thStyle}>Landline</th>
                   <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Phone</th>
                   <th style={thStyle}>Type</th>
                   <th style={thStyle}>Address</th>
                 </tr>
@@ -202,6 +211,7 @@ function PeopleTab() {
               <tbody>
                 {group.records.map((rec) => {
                   const isKeep = (keepMap[group.key] ?? group.suggestedKeepId) === rec.id;
+                  const dim = <span style={{ color: "var(--gg-text-dim,#9ca3af)" }}>—</span>;
                   return (
                     <tr key={rec.id} style={{ background: isKeep ? "rgba(59,130,246,0.08)" : undefined }}>
                       <td style={tdStyle}>
@@ -213,10 +223,14 @@ function PeopleTab() {
                         />
                       </td>
                       <td style={tdStyle}>{rec.first_name} {rec.last_name}</td>
-                      <td style={tdStyle}>{rec.email || <span style={{ color: "var(--gg-text-dim,#9ca3af)" }}>—</span>}</td>
-                      <td style={tdStyle}>{rec.phone || <span style={{ color: "var(--gg-text-dim,#9ca3af)" }}>—</span>}</td>
-                      <td style={tdStyle}>{rec.contact_type || <span style={{ color: "var(--gg-text-dim,#9ca3af)" }}>—</span>}</td>
-                      <td style={tdStyle}>{rec.address || <span style={{ color: "var(--gg-text-dim,#9ca3af)" }}>—</span>}</td>
+                      <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 12 }}>{rec.lalvoteid || dim}</td>
+                      <td style={tdStyle}>{rec.gender || dim}</td>
+                      <td style={tdStyle}>{rec.birth_date || dim}</td>
+                      <td style={tdStyle}>{rec.phone_cell || dim}</td>
+                      <td style={tdStyle}>{rec.phone_landline || dim}</td>
+                      <td style={tdStyle}>{rec.email || dim}</td>
+                      <td style={tdStyle}>{rec.contact_type || dim}</td>
+                      <td style={tdStyle}>{rec.address || dim}</td>
                     </tr>
                   );
                 })}

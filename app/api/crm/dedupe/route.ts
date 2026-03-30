@@ -14,7 +14,10 @@ function makeSb(tenantId: string) {
 
 function scoreRecord(r: Record<string, any>): number {
   // Higher score = more data filled in → preferred as "keep" candidate
-  return [r.email, r.phone, r.contact_type, r.household_id].filter(Boolean).length;
+  // lalvoteid is worth 3 points — canonical voter file identifier
+  let score = [r.email, r.phone, r.phone_cell, r.phone_landline, r.contact_type, r.household_id].filter(Boolean).length;
+  if (r.lalvoteid) score += 3;
+  return score;
 }
 
 export async function GET(request: Request) {
@@ -29,25 +32,47 @@ export async function GET(request: Request) {
   if (type === "people") {
     const { data: people, error } = await sb
       .from("people")
-      .select("id, first_name, last_name, email, phone, contact_type, household_id, tenant_people!inner(tenant_id)")
+      .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, lalvoteid, birth_date, gender, tenant_people!inner(tenant_id)")
       .eq("tenant_people.tenant_id", tenant.id)
       .order("last_name")
       .order("first_name");
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Group by normalized name
-    const groups = new Map<string, typeof people>();
+    // Pass 1 — records WITH a lalvoteid: bucket by voter ID (definite identity match)
+    // Records with DIFFERENT lalvoteids are different people even if name is identical
+    const lalvoteidGroups = new Map<string, any[]>();
+    const noLalvoteid: any[] = [];
     for (const p of people ?? []) {
-      const key = `${(p.first_name ?? "").trim().toLowerCase()}|${(p.last_name ?? "").trim().toLowerCase()}`;
-      if (!key || key === "|") continue;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(p);
+      const lid = (p.lalvoteid ?? "").trim();
+      if (lid) {
+        if (!lalvoteidGroups.has(lid)) lalvoteidGroups.set(lid, []);
+        lalvoteidGroups.get(lid)!.push(p);
+      } else {
+        noLalvoteid.push(p);
+      }
     }
 
-    // Collect household_ids to resolve addresses
+    // Pass 2 — records WITHOUT lalvoteid: group by normalized name
+    const nameGroups = new Map<string, any[]>();
+    for (const p of noLalvoteid) {
+      const key = `${(p.first_name ?? "").trim().toLowerCase()}|${(p.last_name ?? "").trim().toLowerCase()}`;
+      if (!key || key === "|") continue;
+      if (!nameGroups.has(key)) nameGroups.set(key, []);
+      nameGroups.get(key)!.push(p);
+    }
+
+    // Combine — only groups with 2+ records are actual duplicates
+    const allCandidateGroups: [string, any[]][] = [
+      ...[...lalvoteidGroups.entries()].map(([k, v]) => [`lid:${k}`, v] as [string, any[]]),
+      ...[...nameGroups.entries()].map(([k, v]) => [`name:${k}`, v] as [string, any[]]),
+    ];
+    const dupCandidates = allCandidateGroups.filter(([, recs]) => recs.length > 1);
+
+    // Collect household_ids from all candidate records for address lookup
+    const allCandidatePeople = dupCandidates.flatMap(([, recs]) => recs);
     const hhIds = [...new Set(
-      [...groups.values()].flat().map((p) => p.household_id).filter(Boolean) as string[]
+      allCandidatePeople.map((p) => p.household_id).filter(Boolean) as string[]
     )];
 
     const addrByHhId = new Map<string, string>();
@@ -75,8 +100,52 @@ export async function GET(request: Request) {
       }
     }
 
-    const dupGroups = [...groups.entries()]
-      .filter(([, recs]) => recs.length > 1)
+    // Junction-table address fallback for people without a direct household_id
+    const personIdsNeedingHH = allCandidatePeople
+      .filter((p) => !p.household_id)
+      .map((p) => p.id as string);
+
+    const addrByPersonId = new Map<string, string>();
+    if (personIdsNeedingHH.length > 0) {
+      const phRows: any[] = [];
+      for (let i = 0; i < personIdsNeedingHH.length; i += 200) {
+        const { data } = await sb
+          .from("person_households")
+          .select("person_id, household_id")
+          .in("person_id", personIdsNeedingHH.slice(i, i + 200));
+        if (data) phRows.push(...data);
+      }
+      // Fetch any households not already resolved
+      const newHhIds = [...new Set(phRows.map((r) => r.household_id).filter(Boolean) as string[])]
+        .filter((id) => !addrByHhId.has(id));
+      if (newHhIds.length > 0) {
+        const { data: newHhs } = await sb
+          .from("households")
+          .select("id, location_id")
+          .in("id", newHhIds);
+        const newLocIds = [...new Set((newHhs ?? []).map((h: any) => h.location_id).filter(Boolean) as string[])];
+        if (newLocIds.length > 0) {
+          const { data: newLocs } = await sb
+            .from("locations")
+            .select("id, address_line1, city, state")
+            .in("id", newLocIds);
+          const newAddrByLocId = new Map<string, string>();
+          for (const loc of newLocs ?? []) {
+            newAddrByLocId.set(loc.id, [loc.address_line1, loc.city, loc.state].filter(Boolean).join(", "));
+          }
+          for (const hh of newHhs ?? []) {
+            if (hh.location_id) addrByHhId.set(hh.id, newAddrByLocId.get(hh.location_id) ?? "");
+          }
+        }
+      }
+      for (const row of phRows) {
+        if (row.household_id) {
+          addrByPersonId.set(row.person_id, addrByHhId.get(row.household_id) ?? "");
+        }
+      }
+    }
+
+    const dupGroups = dupCandidates
       .sort((a, b) => b[1].length - a[1].length)
       .map(([key, recs]) => {
         const sorted = [...recs].sort((a, b) => scoreRecord(b) - scoreRecord(a));
@@ -92,9 +161,16 @@ export async function GET(request: Request) {
             last_name: p.last_name ?? "",
             email: p.email ?? "",
             phone: p.phone ?? "",
+            phone_cell: p.phone_cell ?? "",
+            phone_landline: p.phone_landline ?? "",
             contact_type: p.contact_type ?? "",
+            lalvoteid: p.lalvoteid ?? "",
+            birth_date: p.birth_date ?? "",
+            gender: p.gender ?? "",
             household_id: p.household_id ?? null,
-            address: p.household_id ? (addrByHhId.get(p.household_id) ?? "") : "",
+            address: p.household_id
+              ? (addrByHhId.get(p.household_id) ?? addrByPersonId.get(p.id) ?? "")
+              : (addrByPersonId.get(p.id) ?? ""),
           })),
         };
       });
