@@ -24,6 +24,9 @@ export default async function LocationDetail({ params }: Params) {
   const { data: loc, error: locErr } = await sb
     .from("locations")
     .select(`id, address_line1, unit, city, state, postal_code, normalized_key, notes,
+      house_number, pre_dir, street_name, street_suffix, post_dir, zip4, street_parity,
+      parcel_id, land_use, is_residential, council_district,
+      subdivision, type, common_place_name, place_name, lat, lon,
       congressional_district, state_senate_district, state_house_district,
       state_legislative_district, county_name, fips_code, precinct,
       municipality, municipal_subdistrict, county_commission_district,
@@ -161,6 +164,47 @@ export default async function LocationDetail({ params }: Params) {
           {[loc.city, loc.state, loc.postal_code].filter(Boolean).join(", ")}
         </p>}
       </div>
+
+      {/* Address Details */}
+      {(() => {
+        const addrFields = [
+          { label: "House Number",   val: loc.house_number },
+          { label: "Pre-Direction",  val: loc.pre_dir },
+          { label: "Street Name",    val: loc.street_name },
+          { label: "Street Suffix",  val: loc.street_suffix },
+          { label: "Post-Direction", val: loc.post_dir },
+          { label: "Unit / Apt",     val: loc.unit },
+          { label: "Zip+4",          val: (loc as any).zip4 },
+          { label: "Street Parity",  val: (loc as any).street_parity },
+          { label: "Parcel ID",      val: (loc as any).parcel_id },
+          { label: "Land Use",       val: (loc as any).land_use },
+          { label: "Residential",    val: (loc as any).is_residential === true ? "Yes" : (loc as any).is_residential === false ? "No" : null },
+          { label: "Type",           val: (loc as any).type },
+          { label: "Common Name",    val: (loc as any).common_place_name },
+          { label: "Place Name",     val: (loc as any).place_name },
+          { label: "Subdivision",    val: (loc as any).subdivision },
+          { label: "Council District", val: (loc as any).council_district },
+        ];
+        const present = addrFields.filter(f => f.val != null && f.val !== "");
+        const hasCoords = (loc as any).lat != null && (loc as any).lon != null;
+        if (present.length === 0 && !hasCoords) return null;
+        return (
+          <div style={cardStyle}>
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gg-text-dim, #6b7280)", marginBottom: 12 }}>
+              Address Details
+            </p>
+            <FieldGrid fields={present} />
+            {hasCoords && (
+              <div style={{ marginTop: present.length > 0 ? 12 : 0 }}>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>Coordinates</p>
+                <p style={{ ...valueStyle, fontFamily: "monospace", fontSize: 13 }}>
+                  {Number((loc as any).lat).toFixed(6)}, {Number((loc as any).lon).toFixed(6)}
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Districts */}
       {hasDistricts && (

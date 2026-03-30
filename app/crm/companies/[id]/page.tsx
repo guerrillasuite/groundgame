@@ -90,12 +90,15 @@ export default async function CompanyDetail({ params }: Params) {
     margin: 0,
   };
 
-  function Field({ label, val }: { label: string; val: string | null | undefined }) {
+  function Field({ label, val, href }: { label: string; val: string | null | undefined; href?: string }) {
     if (!val) return null;
     return (
       <div>
         <p style={labelStyle}>{label}</p>
-        <p style={valueStyle}>{val}</p>
+        {href
+          ? <a href={href} style={{ ...valueStyle, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>{val} →</a>
+          : <p style={valueStyle}>{val}</p>
+        }
       </div>
     );
   }
@@ -107,7 +110,7 @@ export default async function CompanyDetail({ params }: Params) {
     { label: "Email",      val: company.email },
     { label: "Status",     val: company.status },
     { label: "Presence",   val: company.presence },
-    { label: "Address",    val: address || null },
+    { label: "Address",    val: address || null, href: company.location_id ? `/crm/locations/${company.location_id}` : undefined },
   ].filter((f) => f.val);
 
   return (
@@ -131,7 +134,7 @@ export default async function CompanyDetail({ params }: Params) {
         <div style={cardStyle}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
             {coreFields.map((f) => (
-              <Field key={f.label} label={f.label} val={f.val} />
+              <Field key={f.label} label={f.label} val={f.val} href={(f as any).href} />
             ))}
           </div>
         </div>

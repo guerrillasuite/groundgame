@@ -126,7 +126,16 @@ export default async function HouseholdDetail({ params }: Params) {
       <div>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{household.name ?? "(Unnamed Household)"}</h1>
         {address && (
-          <p style={{ marginTop: 4, fontSize: 14, color: "var(--gg-text-dim, #6b7280)" }}>{address}</p>
+          household.location_id ? (
+            <Link
+              href={`/crm/locations/${household.location_id}`}
+              style={{ marginTop: 4, fontSize: 14, color: "var(--gg-primary, #2563eb)", textDecoration: "none", display: "block" }}
+            >
+              {address} →
+            </Link>
+          ) : (
+            <p style={{ marginTop: 4, fontSize: 14, color: "var(--gg-text-dim, #6b7280)" }}>{address}</p>
+          )
         )}
       </div>
 
