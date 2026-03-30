@@ -97,7 +97,7 @@ const sectionLabel: React.CSSProperties = {
 
 // ── ADMIN DASHBOARD ───────────────────────────────────────────────────────────
 
-async function AdminDashboard({ tenantId, tenantName, settings }: { tenantId: string; tenantName: string; settings: any }) {
+async function AdminDashboard({ tenantId, tenantName, userName, settings }: { tenantId: string; tenantName: string; userName: string; settings: any }) {
   const sb = makeSb(tenantId);
   const colorMap = buildColorMap(resolveDispoConfig(settings ?? {}));
   const now = new Date().toISOString();
@@ -208,7 +208,7 @@ async function AdminDashboard({ tenantId, tenantName, settings }: { tenantId: st
 
       {/* Header */}
       <div>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{greeting} 👋</h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{greeting}{userName ? `, ${userName}` : ""} 👋</h1>
         <p style={{ margin: "4px 0 0", color: "var(--gg-text-dim, #6b7280)", fontSize: 14 }}>
           {tenantName} · {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
         </p>
@@ -450,7 +450,7 @@ async function AdminDashboard({ tenantId, tenantName, settings }: { tenantId: st
 
 // ── FIELD DASHBOARD ───────────────────────────────────────────────────────────
 
-async function FieldDashboard({ tenantId, userId, settings }: { tenantId: string; userId: string; settings: any }) {
+async function FieldDashboard({ tenantId, userId, userName, settings }: { tenantId: string; userId: string; userName: string; settings: any }) {
   const sb = makeSb(tenantId);
   const colorMap = buildColorMap(resolveDispoConfig(settings ?? {}));
   const now = new Date();
@@ -526,7 +526,7 @@ async function FieldDashboard({ tenantId, userId, settings }: { tenantId: string
 
       {/* Header */}
       <div>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{greeting}! 👋</h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>{greeting}{userName ? `, ${userName.split(" ")[0]}` : ""}! 👋</h1>
         <p style={{ margin: "4px 0 0", color: "var(--gg-text-dim, #6b7280)", fontSize: 14 }}>
           {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · {motiveLine}
         </p>
@@ -661,10 +661,9 @@ async function FieldDashboard({ tenantId, userId, settings }: { tenantId: string
 
 export default async function CrmHome() {
   const [tenant, crmUser] = await Promise.all([getTenant(), getCrmUser()]);
-  const tenantName = (tenant as any).name ?? (tenant as any).slug ?? "GroundGame";
+  const tenantName = (tenant.branding as any)?.appName ?? tenant.slug ?? "GroundGame";
 
   if (!crmUser) {
-    // Unauthenticated — show basic nav (fallback)
     return (
       <section className="stack">
         <h1>Welcome to GroundGame</h1>
@@ -673,9 +672,17 @@ export default async function CrmHome() {
     );
   }
 
+  // Fetch the user's display name from auth metadata
+  const adminSb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  const { data: { user: authUser } } = await adminSb.auth.admin.getUserById(crmUser.userId);
+  const userName = authUser?.user_metadata?.name ?? authUser?.user_metadata?.full_name ?? authUser?.email?.split("@")[0] ?? "";
+
   if (crmUser.isAdmin) {
-    return <AdminDashboard tenantId={tenant.id} tenantName={tenantName} settings={(tenant as any).settings} />;
+    return <AdminDashboard tenantId={tenant.id} tenantName={tenantName} userName={userName} settings={(tenant as any).settings} />;
   }
 
-  return <FieldDashboard tenantId={tenant.id} userId={crmUser.userId} settings={(tenant as any).settings} />;
+  return <FieldDashboard tenantId={tenant.id} userId={crmUser.userId} userName={userName} settings={(tenant as any).settings} />;
 }
