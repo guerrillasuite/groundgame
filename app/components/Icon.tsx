@@ -2,7 +2,7 @@
 import React from "react";
 
 type Props = { name: IconName; size?: number; className?: string; "aria-hidden"?: boolean };
-type IconName = "phone" | "door" | "list" | "kanban" | "users" | "home" | "map" | "chev" | "flag";
+type IconName = "phone" | "door" | "list" | "kanban" | "users" | "home" | "map" | "chev" | "flag" | "message";
 
 const stroke = { stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" as const };
 
@@ -43,6 +43,10 @@ export function Icon({ name, size = 20, className, ...rest }: Props) {
     case "flag":
       return <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...rest}>
         <path {...stroke} d="M4 4v16M4 4h12l-2 4 2 4H4"/>
+      </svg>;
+    case "message":
+      return <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...rest}>
+        <path {...stroke} d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
       </svg>;
     default:
       return null;

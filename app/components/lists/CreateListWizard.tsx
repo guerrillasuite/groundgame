@@ -7,7 +7,7 @@ import type { ColumnDef } from "@/app/api/crm/schema/route";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type AppMode = "call" | "knock" | "both";
+type AppMode = "call" | "knock" | "both" | "text";
 type Target = "people" | "households" | "locations";
 type FilterOp =
   | "contains" | "equals" | "starts_with" | "not_contains"
@@ -246,6 +246,7 @@ const MODE_LABELS: Record<AppMode, string> = {
   call: "Dials (Call List)",
   knock: "Doors (Walk List)",
   both: "Dials + Doors (Both)",
+  text: "Text Outreach",
 };
 
 const TARGET_LABELS: Record<Target, string> = {
@@ -261,6 +262,7 @@ export default function CreateListWizard() {
 
   // Step 1
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [appMode, setAppMode] = useState<AppMode>("call");
   const [target, setTarget] = useState<Target>("people");
 
@@ -433,6 +435,7 @@ export default function CreateListWizard() {
           user_ids: assignAll ? [] : [...assignedUserIds],
           call_capture_mode: captureMode === "none" ? null : captureMode,
           survey_id: captureMode === "survey" ? captureSurveyId || null : null,
+          description: description.trim() || null,
         }),
       });
       const data = await res.json();
@@ -529,9 +532,9 @@ export default function CreateListWizard() {
           <div>
             <label style={labelStyle}>Shows up as</label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              {(["call", "knock", "both"] as AppMode[]).map((m) => (
+              {(["call", "knock", "both", "text"] as AppMode[]).map((m) => (
                 <button key={m} type="button" onClick={() => setAppMode(m)} style={toggleBtn(appMode === m)}>
-                  {m === "call" ? "📞 Dials" : m === "knock" ? "🚪 Doors" : "📞🚪 Both"}
+                  {m === "call" ? "📞 Dials" : m === "knock" ? "🚪 Doors" : m === "both" ? "📞🚪 Both" : "💬 Texts"}
                 </button>
               ))}
             </div>
@@ -540,9 +543,26 @@ export default function CreateListWizard() {
                 ? "Appears in the phone banking dialer."
                 : appMode === "knock"
                 ? "Appears in the door-knocking map."
+                : appMode === "text"
+                ? "Appears in the text banking tool. Field workers text each person using a shared script."
                 : 'Creates two lists: "[Name] — Calls" and "[Name] — Doors".'}
             </p>
           </div>
+
+          {appMode === "text" && (
+            <div>
+              <label style={labelStyle}>Text Script <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span></label>
+              <textarea
+                style={{ ...inputStyle, minHeight: 100, resize: "vertical", fontFamily: "inherit" }}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Hi {name}, this is [Your Name] with [Org]. We're reaching out about..."
+              />
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+                Shown to field workers in the texting interface — they can copy and paste it into the SMS app.
+              </p>
+            </div>
+          )}
 
           <div>
             <label style={labelStyle}>Search by</label>
@@ -562,38 +582,40 @@ export default function CreateListWizard() {
             </p>
           </div>
 
-          <div>
-            <label style={labelStyle}>Capture Mode</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              {(["none", "survey", "opportunity"] as CaptureMode[]).map((m) => (
-                <button key={m} type="button" onClick={() => setCaptureMode(m)} style={toggleBtn(captureMode === m)}>
-                  {m === "none" ? "None" : m === "survey" ? "Survey" : "Possible Opportunity"}
-                </button>
-              ))}
-            </div>
-            {captureMode === "survey" && (
-              <select
-                value={captureSurveyId}
-                onChange={(e) => setCaptureSurveyId(e.target.value)}
-                style={selectStyle}
-              >
-                <option value="">(Select a survey)</option>
-                {surveys.map((s) => (
-                  <option key={s.id} value={s.id}>{s.title}</option>
+          {appMode !== "text" && (
+            <div>
+              <label style={labelStyle}>Capture Mode</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                {(["none", "survey", "opportunity"] as CaptureMode[]).map((m) => (
+                  <button key={m} type="button" onClick={() => setCaptureMode(m)} style={toggleBtn(captureMode === m)}>
+                    {m === "none" ? "None" : m === "survey" ? "Survey" : "Possible Opportunity"}
+                  </button>
                 ))}
-              </select>
-            )}
-            {captureMode === "opportunity" && (
-              <p style={{ margin: 0, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
-                Field workers will be prompted to log a potential opportunity after each contact.
-              </p>
-            )}
-            {captureMode === "none" && (
-              <p style={{ margin: 0, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
-                No data capture after contact — call/knock result only.
-              </p>
-            )}
-          </div>
+              </div>
+              {captureMode === "survey" && (
+                <select
+                  value={captureSurveyId}
+                  onChange={(e) => setCaptureSurveyId(e.target.value)}
+                  style={selectStyle}
+                >
+                  <option value="">(Select a survey)</option>
+                  {surveys.map((s) => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+              )}
+              {captureMode === "opportunity" && (
+                <p style={{ margin: 0, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+                  Field workers will be prompted to log a potential opportunity after each contact.
+                </p>
+              )}
+              {captureMode === "none" && (
+                <p style={{ margin: 0, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+                  No data capture after contact — call/knock result only.
+                </p>
+              )}
+            </div>
+          )}
 
           <button disabled={!name.trim()} onClick={() => setStep(2)} style={primaryBtn(!name.trim())}>
             Build Filters →

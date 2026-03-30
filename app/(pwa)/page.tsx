@@ -20,6 +20,15 @@ export default async function PwaHome() {
           </Link>
         )}
 
+        {hasFeature(features, "pwa_texts") && (
+          <Link href="/texts" className="gg-app">
+            <span className="gg-app-ico">
+              <Icon name="message" size={40} aria-hidden />
+            </span>
+            <h3>Texts</h3>
+          </Link>
+        )}
+
         {hasFeature(features, "pwa_doors") && (
           <Link href="/doors" className="gg-app">
             <span className="gg-app-ico">

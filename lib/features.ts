@@ -14,6 +14,7 @@ export const ALL_FEATURE_KEYS = [
   "crm_enrichment",    // GS community enrichment data (meta_json)
   "pwa_doors",         // door canvassing app
   "pwa_dials",         // phone banking app
+  "pwa_texts",         // text banking app
   "pwa_storefront",    // storefront / ordering
 ] as const;
 
@@ -22,7 +23,7 @@ export type FeatureKey = (typeof ALL_FEATURE_KEYS)[number];
 export type Plan = "basic" | "pro" | "custom";
 
 export const PLAN_FEATURES: Record<Exclude<Plan, "custom">, readonly FeatureKey[]> = {
-  basic: ["crm", "crm_lists", "pwa_doors", "pwa_dials"],
+  basic: ["crm", "crm_lists", "pwa_doors", "pwa_dials", "pwa_texts"],
   pro: ALL_FEATURE_KEYS,
 };
 
@@ -39,6 +40,7 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   crm_enrichment:    { label: "Community Enrichment (GS Data)",          group: "CRM Data" },
   pwa_doors:         { label: "Doors (Door Canvassing)",                  group: "PWA" },
   pwa_dials:         { label: "Dials (Phone Banking)",                    group: "PWA" },
+  pwa_texts:         { label: "Texts (Text Banking)",                     group: "PWA" },
   pwa_storefront:    { label: "Storefront / Ordering",                    group: "PWA" },
 };
 

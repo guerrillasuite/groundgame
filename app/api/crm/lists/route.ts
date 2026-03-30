@@ -10,7 +10,7 @@ function makeSb(tenantId: string) {
   );
 }
 
-type AppMode = "call" | "knock" | "both";
+type AppMode = "call" | "knock" | "both" | "text";
 type Target = "people" | "households" | "locations";
 
 async function resolvePersonIds(sb: any, tenantId: string, target: Target, selectedIds: string[]): Promise<string[]> {
@@ -116,13 +116,14 @@ async function createWalklist(
   sb: any,
   tenantId: string,
   name: string,
-  mode: "call" | "knock",
+  mode: "call" | "knock" | "text",
   personIds: string[],
   locationIds: string[],
   userIds: string[],
   knockPairs?: Array<{ person_id: string; location_id: string }>,
   callCaptureMode?: string | null,
-  surveyId?: string | null
+  surveyId?: string | null,
+  description?: string | null
 ): Promise<{ id: string; name: string; mode: string; warning?: string }> {
   const { data: wl, error: wlErr } = await sb
     .from("walklists")
@@ -132,6 +133,7 @@ async function createWalklist(
       tenant_id: tenantId,
       call_capture_mode: callCaptureMode ?? null,
       survey_id: callCaptureMode === "survey" ? (surveyId ?? null) : null,
+      ...(description ? { description } : {}),
     })
     .select("id, name, mode")
     .single();
@@ -145,7 +147,7 @@ async function createWalklist(
   // For knock lists from other targets, one item per location.
   // For call lists, one item per person.
   const rawItems =
-    mode === "call"
+    mode === "call" || mode === "text"
       ? personIds.map((id) => ({ person_id: id }))
       : knockPairs
       ? knockPairs.map((p) => ({ person_id: p.person_id, location_id: p.location_id }))
@@ -171,7 +173,7 @@ async function createWalklist(
       }
     }
   } else {
-    warning = `No items to insert (${mode === "call" ? "no person IDs" : "no location IDs"} resolved)`;
+    warning = `No items to insert (${mode === "call" || mode === "text" ? "no person IDs" : "no location IDs"} resolved)`;
   }
 
   // Insert walklist_assignments
@@ -192,7 +194,7 @@ export async function POST(request: NextRequest) {
   const sb = makeSb(tenant.id);
 
   const body = await request.json();
-  const { name, app_mode, target, selected_ids, user_ids, call_capture_mode, survey_id } = body as {
+  const { name, app_mode, target, selected_ids, user_ids, call_capture_mode, survey_id, description } = body as {
     name: string;
     app_mode: AppMode;
     target: Target;
@@ -200,6 +202,7 @@ export async function POST(request: NextRequest) {
     user_ids?: string[];
     call_capture_mode?: string | null;
     survey_id?: string | null;
+    description?: string | null;
   };
 
   if (!name?.trim()) {
@@ -235,6 +238,11 @@ export async function POST(request: NextRequest) {
     if (app_mode === "call" || app_mode === "both") {
       const listName = app_mode === "both" ? `${name.trim()} — Calls` : name.trim();
       const wl = await createWalklist(sb, tenant.id, listName, "call", personIds, [], assignees, undefined, call_capture_mode, survey_id);
+      walklists.push(wl);
+    }
+
+    if (app_mode === "text") {
+      const wl = await createWalklist(sb, tenant.id, name.trim(), "text", personIds, [], assignees, undefined, null, null, description ?? null);
       walklists.push(wl);
     }
 

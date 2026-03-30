@@ -103,9 +103,10 @@ export default async function ListDetail({
     allItems = await fetchAll(() =>
       sb
         .from("walklist_items")
-        .select("id, person_id, location_id")
+        .select("id, person_id, location_id, order_index")
         .eq("walklist_id", params.id)
         .eq("tenant_id", tenant.id)
+        .order("order_index", { ascending: true })
     );
   } catch (e: any) {
     throw new Error(e.message);
@@ -113,6 +114,13 @@ export default async function ListDetail({
 
   const personIds = Array.from(new Set(allItems.map(r => r.person_id).filter(Boolean) as string[]));
   const locationIds = Array.from(new Set(allItems.map(r => r.location_id).filter(Boolean) as string[]));
+
+  // For text lists: map person_id → order_index so we can link to /texts/[id]/[index]
+  const personOrderMap = new Map<string, number>(
+    allItems
+      .filter(r => r.person_id != null)
+      .map(r => [r.person_id as string, r.order_index as number])
+  );
 
   // Fetch last stop result per item to drive color coding
   const allItemIds = allItems.map(r => r.id).filter(Boolean) as string[];
@@ -143,7 +151,7 @@ export default async function ListDetail({
   let peopleRows: Array<{ id: string; name: string; phone: string; email: string }> = [];
   let peopleResolved = 0;
 
-  if (personIds.length || modeLower === "call") {
+  if (personIds.length || modeLower === "call" || modeLower === "text") {
     // Fetch all people by ID using chunked queries (bypasses PostgREST 1000-row cap)
     const ppl = await queryInChunks(
       sb, "people", "id,first_name,last_name,phone,email", "id", personIds,
@@ -151,8 +159,12 @@ export default async function ListDetail({
     );
     peopleRows = ppl.map((p: any) => {
       const result = lastResultByPersonId.get(p.id);
+      // For text lists: use order_index as row id so clicking links to /texts/[id]/[index]
+      const rowId = modeLower === "text"
+        ? String(personOrderMap.get(p.id) ?? 0)
+        : p.id;
       return {
-        id: p.id,
+        id: rowId,
         name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
         phone: p.phone ?? "",
         email: p.email ?? "",
@@ -297,18 +309,21 @@ export default async function ListDetail({
   // Decide what to render:
   // - If any people IDs exist (call list), render People.
   // - Else render Locations.
-  if (hasPeopleIds || modeLower === "call") {
-    const subtitle =
-      hasPeopleVisible
+  if (hasPeopleIds || modeLower === "call" || modeLower === "text") {
+    const isText = modeLower === "text";
+    const subtitle = isText
+      ? "Text List"
+      : hasPeopleVisible
         ? "People"
         : hasPeopleIds
         ? "People (some items hidden by access policy)"
         : "People";
+    const rowHrefPrefix = isText ? `/texts/${params.id}/` : "/crm/people/";
     return (
       <section className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <h1 style={{ margin: 0 }}>{titleBase} — {subtitle}</h1>
-          <PeopleSearch placeholder="Search people in this list…" />
+          <PeopleSearch placeholder={isText ? "Search text list…" : "Search people in this list…"} />
         </div>
         <SurveyAssignmentPanel
           listId={params.id}
@@ -318,7 +333,7 @@ export default async function ListDetail({
         />
         <ListPage
           title=""
-          rowHrefPrefix="/crm/people/"
+          rowHrefPrefix={rowHrefPrefix}
           columns={[
             { key: "name", label: "Name", width: 280 },
             { key: "phone", label: "Phone", width: 160 },

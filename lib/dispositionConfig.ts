@@ -12,6 +12,7 @@ export type DispoItem = {
 export type DispositionConfig = {
   doors: DispoItem[];
   calls: DispoItem[];
+  texts: DispoItem[];
 };
 
 export const UNCONTACTED_COLOR = "#9CA3AF";
@@ -35,6 +36,15 @@ export const DEFAULT_DISPO_CONFIG: DispositionConfig = {
     { key: "not_interested", label: "Not Interested", color: "#DC2626", enabled: true },
     { key: "moved",          label: "Moved",          color: "#F97316", enabled: true },
     { key: "other",          label: "Other",          color: "#6B7280", enabled: true },
+  ],
+  texts: [
+    { key: "text_sent",      label: "Text Sent",      color: "#3B82F6", enabled: true },
+    { key: "replied",        label: "Replied",         color: "#22c55e", enabled: true },
+    { key: "not_interested", label: "Not Interested",  color: "#DC2626", enabled: true },
+    { key: "wrong_number",   label: "Wrong Number",    color: "#F97316", enabled: true },
+    { key: "do_not_text",    label: "Do Not Text",     color: "#DC2626", enabled: true },
+    { key: "opted_out",      label: "Opted Out",       color: "#DC2626", enabled: true },
+    { key: "no_response",    label: "No Response",     color: "#9CA3AF", enabled: true },
   ],
 };
 
@@ -66,6 +76,7 @@ export function resolveDispoConfig(
   return {
     doors: mergeChannel(DEFAULT_DISPO_CONFIG.doors, saved.doors),
     calls: mergeChannel(DEFAULT_DISPO_CONFIG.calls, saved.calls),
+    texts: mergeChannel(DEFAULT_DISPO_CONFIG.texts, (saved as any).texts),
   };
 }
 
@@ -75,7 +86,7 @@ export function resolveDispoConfig(
  */
 export function buildColorMap(config: DispositionConfig): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const item of [...config.doors, ...config.calls]) {
+  for (const item of [...config.doors, ...config.calls, ...(config.texts ?? [])]) {
     map[item.key] = item.color;
   }
   return map;
