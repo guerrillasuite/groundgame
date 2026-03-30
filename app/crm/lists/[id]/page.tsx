@@ -149,13 +149,16 @@ export default async function ListDetail({
       sb, "people", "id,first_name,last_name,phone,email", "id", personIds,
       (q) => q.eq("tenant_id", tenant.id)
     );
-    peopleRows = ppl.map((p: any) => ({
-      id: p.id,
-      name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
-      phone: p.phone ?? "",
-      email: p.email ?? "",
-      _lastResult: lastResultByPersonId.get(p.id),
-    }));
+    peopleRows = ppl.map((p: any) => {
+      const result = lastResultByPersonId.get(p.id);
+      return {
+        id: p.id,
+        name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
+        phone: p.phone ?? "",
+        email: p.email ?? "",
+        _color: result ? colorMap[result] : undefined,
+      };
+    });
     peopleResolved = peopleRows.length;
 
     // Fallback: placeholders if RLS is blocking
@@ -270,12 +273,13 @@ export default async function ListDetail({
 
       locationRows = baseLocs.map((r: any) => {
         const people = peopleByLocId.get(r.id) ?? [];
+        const result = lastResultByLocationId.get(r.id);
         return {
           id: locToHhId.get(r.id) ?? r.id,
           address: r.address,
-          name: people.map(p => p.name).filter(Boolean).join(", "),
-          phone: people.map(p => p.phone).filter(Boolean).join(", "),
-          _lastResult: lastResultByLocationId.get(r.id),
+          name: people.map((p: any) => p.name).filter(Boolean).join(", "),
+          phone: people.map((p: any) => p.phone).filter(Boolean).join(", "),
+          _color: result ? colorMap[result] : undefined,
         };
       });
     }
@@ -321,7 +325,7 @@ export default async function ListDetail({
             { key: "email", label: "Email", width: 240 },
           ]}
           rows={peopleRows}
-          rowColor={(r) => r._lastResult ? colorMap[r._lastResult] : undefined}
+          rowColorKey="_color"
         />
       </section>
     );
@@ -349,7 +353,7 @@ export default async function ListDetail({
           { key: "phone", label: "Phone", width: 160 },
         ]}
         rows={locationRows}
-        rowColor={(r) => r._lastResult ? colorMap[r._lastResult] : undefined}
+        rowColorKey="_color"
       />
     </section>
   );

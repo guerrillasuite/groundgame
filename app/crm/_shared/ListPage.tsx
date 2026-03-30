@@ -34,13 +34,13 @@ export default function ListPage({
   columns,
   rows,
   rowHrefPrefix,
-  rowColor,
+  rowColorKey,
 }: {
   title: string;
   columns: Column[];
   rows: Row[];
   rowHrefPrefix?: string;
-  rowColor?: (row: Row) => string | undefined;
+  rowColorKey?: string;
 }) {
   const router = useRouter();
   const [sortKey, setSortKey] = useState(columns[0]?.key);
@@ -138,7 +138,7 @@ export default function ListPage({
           </thead>
           <tbody>
             {pageRows.map((r, rowIdx) => {
-              const color = rowColor?.(r);
+              const color = rowColorKey ? r[rowColorKey] : undefined;
               return (
                 <tr
                   key={r.id}
