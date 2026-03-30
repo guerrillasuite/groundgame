@@ -48,34 +48,20 @@ export async function GET(request: Request) {
   // ── People duplicates ─────────────────────────────────────────────────────
   if (type === "people") {
     // ── Phase 1: scan ALL people with minimal columns ──────────────────────
-    // Fetching only 4 small columns instead of 13, and using parallel batches
-    // of 10 concurrent requests so 200K rows = ~20 round trips instead of 200.
-
-    const { count: totalCount } = await sb
-      .from("people")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_people.tenant_id", tenant.id);
-
-    const slim: any[] = [];
-    const numChunks = Math.ceil((totalCount ?? 0) / 1000);
-    const BATCH = 10;
-    for (let b = 0; b < numChunks; b += BATCH) {
-      const results = await Promise.all(
-        Array.from({ length: Math.min(BATCH, numChunks - b) }, (_, i) => {
-          const from = (b + i) * 1000;
-          return sb
-            .from("people")
-            .select("id, first_name, last_name, lalvoteid, tenant_people!inner(tenant_id)")
-            .eq("tenant_people.tenant_id", tenant.id)
-            .order("last_name")
-            .order("first_name")
-            .range(from, from + 999);
-        })
+    // Fetch only 4 small columns (vs 13) to find dup group IDs cheaply.
+    // fetchAll paginates in 1000-row chunks — must match PostgREST's max_rows cap.
+    let slim: any[];
+    try {
+      slim = await fetchAll(() =>
+        sb
+          .from("people")
+          .select("id, first_name, last_name, lalvoteid, tenant_people!inner(tenant_id)")
+          .eq("tenant_people.tenant_id", tenant.id)
+          .order("last_name")
+          .order("first_name")
       );
-      for (const { data, error } of results) {
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-        if (data) slim.push(...data);
-      }
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
     }
 
     // ── Find dup groups from slim data ────────────────────────────────────
