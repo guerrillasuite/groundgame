@@ -49,9 +49,16 @@ export async function GET(request: Request) {
   if (type === "people") {
     // ── Phase 1: find dup group IDs via a single server-side SQL query ──────
     // The RPC does GROUP BY in Postgres — no need to stream 200K rows over HTTP.
-    const { data: groupRows, error: rpcError } = await sb.rpc("find_dup_people", { p_tenant_id: tenant.id });
+    // Run the data fetch and the total-group count in parallel.
+    const [
+      { data: groupRows, error: rpcError },
+      { count: totalGroups },
+    ] = await Promise.all([
+      sb.rpc("find_dup_people", { p_tenant_id: tenant.id }),
+      sb.rpc("find_dup_people", { p_tenant_id: tenant.id }, { count: "exact", head: true }),
+    ]);
     if (rpcError) return NextResponse.json({ error: rpcError.message }, { status: 500 });
-    if (!groupRows?.length) return NextResponse.json({ groups: [], total: 0 });
+    if (!groupRows?.length) return NextResponse.json({ groups: [], total: 0, totalGroups: 0 });
 
     // Each row: { group_key: string, person_ids: string[] }
     const allDupIds = [...new Set((groupRows as any[]).flatMap((r) => r.person_ids as string[]))];
@@ -179,7 +186,7 @@ export async function GET(request: Request) {
       });
 
     const total = dupGroups.reduce((s, g) => s + g.records.length - 1, 0);
-    return NextResponse.json({ groups: dupGroups, total });
+    return NextResponse.json({ groups: dupGroups, total, totalGroups: totalGroups ?? dupGroups.length });
   }
 
   // ── Household duplicates ──────────────────────────────────────────────────

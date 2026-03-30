@@ -37,6 +37,7 @@ type Group<T> = {
 type DedupeData<T> = {
   groups: Group<T>[];
   total: number;
+  totalGroups: number;
 };
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -175,7 +176,12 @@ function PeopleTab() {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 12 }}>
         <p style={{ margin: 0, color: "var(--gg-text-dim,#9ca3af)", fontSize: 14 }}>
-          {data.groups.length} groups &middot; {data.total} duplicate records
+          Showing {data.groups.length.toLocaleString()} of {data.totalGroups.toLocaleString()} groups
+          {data.totalGroups > data.groups.length && (
+            <span style={{ marginLeft: 8, color: "#f59e0b", fontWeight: 600 }}>
+              · Merge this batch, then reload for more
+            </span>
+          )}
         </p>
         <button onClick={mergeAll} style={btn()}>Merge All</button>
       </div>
