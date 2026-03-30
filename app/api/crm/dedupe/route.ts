@@ -12,8 +12,10 @@ function makeSb(tenantId: string) {
   );
 }
 
-// Paginate through all rows to bypass PostgREST's max_rows cap
-async function fetchAll(buildQuery: () => any, chunkSize = 2000): Promise<any[]> {
+// Paginate through all rows to bypass PostgREST's max_rows cap (default 1000).
+// chunkSize MUST match or be below PostgREST's cap — if the server returns fewer
+// rows than requested, the loop assumes it has reached the end and stops.
+async function fetchAll(buildQuery: () => any, chunkSize = 1000): Promise<any[]> {
   const all: any[] = [];
   let from = 0;
   while (true) {
@@ -45,51 +47,85 @@ export async function GET(request: Request) {
 
   // ── People duplicates ─────────────────────────────────────────────────────
   if (type === "people") {
-    let people: any[];
-    try {
-      people = await fetchAll(() =>
-        sb
-          .from("people")
-          .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, lalvoteid, birth_date, gender, tenant_people!inner(tenant_id)")
-          .eq("tenant_people.tenant_id", tenant.id)
-          .order("last_name")
-          .order("first_name")
+    // ── Phase 1: scan ALL people with minimal columns ──────────────────────
+    // Fetching only 4 small columns instead of 13, and using parallel batches
+    // of 10 concurrent requests so 200K rows = ~20 round trips instead of 200.
+
+    const { count: totalCount } = await sb
+      .from("people")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_people.tenant_id", tenant.id);
+
+    const slim: any[] = [];
+    const numChunks = Math.ceil((totalCount ?? 0) / 1000);
+    const BATCH = 10;
+    for (let b = 0; b < numChunks; b += BATCH) {
+      const results = await Promise.all(
+        Array.from({ length: Math.min(BATCH, numChunks - b) }, (_, i) => {
+          const from = (b + i) * 1000;
+          return sb
+            .from("people")
+            .select("id, first_name, last_name, lalvoteid, tenant_people!inner(tenant_id)")
+            .eq("tenant_people.tenant_id", tenant.id)
+            .order("last_name")
+            .order("first_name")
+            .range(from, from + 999);
+        })
       );
-    } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 500 });
+      for (const { data, error } of results) {
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        if (data) slim.push(...data);
+      }
     }
 
-    // Pass 1 — records WITH a lalvoteid: bucket by voter ID (definite identity match)
-    // Records with DIFFERENT lalvoteids are different people even if name is identical
-    const lalvoteidGroups = new Map<string, any[]>();
+    // ── Find dup groups from slim data ────────────────────────────────────
+    // Pass 1: lalvoteid buckets (definite identity — different IDs = different people)
+    const lalvoteidGroupIds = new Map<string, string[]>();
     const noLalvoteid: any[] = [];
-    for (const p of people ?? []) {
+    for (const p of slim) {
       const lid = (p.lalvoteid ?? "").trim();
       if (lid) {
-        if (!lalvoteidGroups.has(lid)) lalvoteidGroups.set(lid, []);
-        lalvoteidGroups.get(lid)!.push(p);
+        if (!lalvoteidGroupIds.has(lid)) lalvoteidGroupIds.set(lid, []);
+        lalvoteidGroupIds.get(lid)!.push(p.id);
       } else {
         noLalvoteid.push(p);
       }
     }
-
-    // Pass 2 — records WITHOUT lalvoteid: group by normalized name
-    const nameGroups = new Map<string, any[]>();
+    // Pass 2: name buckets for records without lalvoteid
+    const nameGroupIds = new Map<string, string[]>();
     for (const p of noLalvoteid) {
       const key = `${(p.first_name ?? "").trim().toLowerCase()}|${(p.last_name ?? "").trim().toLowerCase()}`;
       if (!key || key === "|") continue;
-      if (!nameGroups.has(key)) nameGroups.set(key, []);
-      nameGroups.get(key)!.push(p);
+      if (!nameGroupIds.has(key)) nameGroupIds.set(key, []);
+      nameGroupIds.get(key)!.push(p.id);
     }
 
-    // Combine — only groups with 2+ records are actual duplicates
+    const dupLalvoteids = [...lalvoteidGroupIds.entries()].filter(([, ids]) => ids.length > 1);
+    const dupNames = [...nameGroupIds.entries()].filter(([, ids]) => ids.length > 1);
+    const allDupIds = [...new Set([
+      ...dupLalvoteids.flatMap(([, ids]) => ids),
+      ...dupNames.flatMap(([, ids]) => ids),
+    ])];
+
+    if (allDupIds.length === 0) return NextResponse.json({ groups: [], total: 0 });
+
+    // ── Phase 2: fetch full details only for the dup IDs ──────────────────
+    const fullPeopleMap = new Map<string, any>();
+    for (let i = 0; i < allDupIds.length; i += 200) {
+      const { data } = await sb
+        .from("people")
+        .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, lalvoteid, birth_date, gender")
+        .in("id", allDupIds.slice(i, i + 200));
+      for (const p of data ?? []) fullPeopleMap.set(p.id, p);
+    }
+
+    // Rebuild groups with full-detail records
     const allCandidateGroups: [string, any[]][] = [
-      ...[...lalvoteidGroups.entries()].map(([k, v]) => [`lid:${k}`, v] as [string, any[]]),
-      ...[...nameGroups.entries()].map(([k, v]) => [`name:${k}`, v] as [string, any[]]),
+      ...dupLalvoteids.map(([k, ids]) => [`lid:${k}`, ids.map(id => fullPeopleMap.get(id)).filter(Boolean)] as [string, any[]]),
+      ...dupNames.map(([k, ids]) => [`name:${k}`, ids.map(id => fullPeopleMap.get(id)).filter(Boolean)] as [string, any[]]),
     ];
     const dupCandidates = allCandidateGroups.filter(([, recs]) => recs.length > 1);
 
-    // Collect household_ids from all candidate records for address lookup
     const allCandidatePeople = dupCandidates.flatMap(([, recs]) => recs);
     const hhIds = [...new Set(
       allCandidatePeople.map((p) => p.household_id).filter(Boolean) as string[]
