@@ -38,7 +38,8 @@ export type FilterOp =
   | "less_than"
   | "lte"
   | "is_true"
-  | "is_false";
+  | "is_false"
+  | "in_list";
 
 export type SearchFilter = { field: string; op: FilterOp; value: string; data_type?: string };
 export type SearchTarget = "people" | "households" | "locations";
@@ -97,6 +98,8 @@ function applyFilter(query: any, col: string, op: FilterOp, value: string, data_
       return query.gte(col, value);
     case "lte":
       return query.lte(col, value);
+    case "in_list":
+      return query.in(col, value.split(",").map((v: string) => v.trim()).filter(Boolean));
     case "is_true":
       return query.eq(col, true);
     case "is_false":
@@ -104,6 +107,34 @@ function applyFilter(query: any, col: string, op: FilterOp, value: string, data_
     default:
       return query;
   }
+}
+
+// Resolve household IDs → person IDs via BOTH link paths:
+//   Path A: people.household_id (direct FK, often null on imported data)
+//   Path B: person_households junction table (canonical link)
+async function resolvePersonIdsByHouseholds(
+  sb: any, tenantId: string, hhIds: string[]
+): Promise<string[]> {
+  if (hhIds.length === 0) return [];
+  const personIds = new Set<string>();
+  for (let i = 0; i < hhIds.length; i += 200) {
+    const chunk = hhIds.slice(i, i + 200);
+    // Path B — junction table
+    const { data: jRows } = await sb
+      .from("person_households")
+      .select("person_id")
+      .eq("tenant_id", tenantId)
+      .in("household_id", chunk);
+    for (const r of (jRows ?? []) as any[]) if (r.person_id) personIds.add(r.person_id);
+    // Path A — direct FK
+    const { data: dRows } = await sb
+      .from("people")
+      .select("id, tenant_people!inner(tenant_id)")
+      .eq("tenant_people.tenant_id", tenantId)
+      .in("household_id", chunk);
+    for (const r of (dRows ?? []) as any[]) personIds.add(r.id);
+  }
+  return [...personIds];
 }
 
 // Fields that live on the households table (joined via people.household_id)
@@ -135,8 +166,8 @@ export async function POST(request: NextRequest) {
     const locationFilters  = filters.filter((f) => LOCATION_JOIN_FIELDS.has(f.field));
     const householdFilters = filters.filter((f) => HOUSEHOLD_JOIN_FIELDS.has(f.field));
 
-    // Resolve location filters → household_ids
-    let householdIdFilter: string[] | null = null;
+    // Resolve location filters → person IDs (via location → household → person, both link paths)
+    let personIdFilterFromLocation: string[] | null = null;
     if (locationFilters.length > 0) {
       let locData: any[];
       try {
@@ -156,12 +187,15 @@ export async function POST(request: NextRequest) {
         .select("id")
         .eq("tenant_id", tenant.id)
         .in("location_id", locIds);
-      householdIdFilter = (hhs ?? []).map((h: any) => h.id);
-      if (householdIdFilter.length === 0) return NextResponse.json([]);
+      const hhIds = (hhs ?? []).map((h: any) => h.id);
+      if (hhIds.length === 0) return NextResponse.json([]);
+
+      personIdFilterFromLocation = await resolvePersonIdsByHouseholds(sb, tenant.id, hhIds);
+      if (personIdFilterFromLocation.length === 0) return NextResponse.json([]);
     }
 
-    // Resolve household filters → household_ids
-    let householdIdFilterFromHH: string[] | null = null;
+    // Resolve household filters → person IDs (via household → person, both link paths)
+    let personIdFilterFromHH: string[] | null = null;
     if (householdFilters.length > 0) {
       let hhData: any[];
       try {
@@ -175,7 +209,19 @@ export async function POST(request: NextRequest) {
       }
       const hhIds = hhData.map((h: any) => h.id);
       if (hhIds.length === 0) return NextResponse.json([]);
-      householdIdFilterFromHH = hhIds;
+
+      personIdFilterFromHH = await resolvePersonIdsByHouseholds(sb, tenant.id, hhIds);
+      if (personIdFilterFromHH.length === 0) return NextResponse.json([]);
+    }
+
+    // Intersect person ID sets when multiple join filters are active
+    let finalPersonIdFilter: string[] | null = null;
+    if (personIdFilterFromLocation && personIdFilterFromHH) {
+      const setHH = new Set(personIdFilterFromHH);
+      finalPersonIdFilter = personIdFilterFromLocation.filter((id) => setHH.has(id));
+      if (finalPersonIdFilter.length === 0) return NextResponse.json([]);
+    } else {
+      finalPersonIdFilter = personIdFilterFromLocation ?? personIdFilterFromHH ?? null;
     }
 
     let people: any[];
@@ -186,8 +232,7 @@ export async function POST(request: NextRequest) {
           .select("id, first_name, last_name, email, phone, contact_type, household_id, tenant_people!inner(tenant_id)")
           .eq("tenant_people.tenant_id", tenant.id);
         for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
-        if (householdIdFilter) q = q.in("household_id", householdIdFilter);
-        if (householdIdFilterFromHH) q = q.in("household_id", householdIdFilterFromHH);
+        if (finalPersonIdFilter) q = q.in("id", finalPersonIdFilter);
         return q;
       });
     } catch (err: any) {
