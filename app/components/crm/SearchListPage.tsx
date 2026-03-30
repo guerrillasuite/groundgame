@@ -23,7 +23,7 @@ type FilterOp =
   | "is_empty" | "not_empty" | "greater_than" | "gte" | "less_than" | "lte"
   | "is_true" | "is_false";
 
-type FilterRow = { id: number; field: string; op: FilterOp; value: string };
+type FilterRow = { id: number; field: string; op: FilterOp; value: string; data_type: string };
 
 type SchemaCol = {
   column: string;
@@ -76,15 +76,23 @@ const BOOL_OPS: { value: FilterOp; label: string }[] = [
   { value: "is_false", label: "is false" },
 ];
 
+const NUMERIC_TYPES = new Set([
+  "integer", "int", "int2", "int4", "int8",
+  "bigint", "smallint", "numeric", "decimal",
+  "real", "float4", "float8", "double precision",
+]);
+
+function isNumericType(type: string) { return NUMERIC_TYPES.has(type); }
+
 function opsForType(type: string) {
   if (type === "boolean") return BOOL_OPS;
-  if (["integer", "numeric", "bigint", "real", "double precision"].includes(type)) return NUM_OPS;
+  if (isNumericType(type)) return NUM_OPS;
   return TEXT_OPS;
 }
 
 function defaultOp(type: string): FilterOp {
   if (type === "boolean") return "is_true";
-  if (["integer", "numeric", "bigint", "real", "double precision"].includes(type)) return "equals";
+  if (isNumericType(type)) return "equals";
   return "contains";
 }
 
@@ -125,7 +133,7 @@ export default function SearchListPage({
 
   const [schema, setSchema] = useState<SchemaCol[]>([]);
   const [filterRows, setFilterRows] = useState<FilterRow[]>([
-    { id: ++_rowId, field: "", op: "contains", value: "" },
+    { id: ++_rowId, field: "", op: "contains", value: "", data_type: "text" },
   ]);
   const [filterLoading, setFilterLoading] = useState(false);
   const [filterSearched, setFilterSearched] = useState(false);
@@ -160,6 +168,7 @@ export default function SearchListPage({
             field: cols[0].column,
             op: defaultOp(cols[0].data_type),
             value: "",
+            data_type: cols[0].data_type,
           }]);
         }
       })
@@ -213,6 +222,7 @@ export default function SearchListPage({
       field: first?.column ?? "",
       op: defaultOp(first?.data_type ?? "text"),
       value: "",
+      data_type: first?.data_type ?? "text",
     }]);
   }
 
@@ -228,6 +238,7 @@ export default function SearchListPage({
         const col = getSchemaCol(patch.field);
         next.op = defaultOp(col?.data_type ?? "text");
         next.value = "";
+        next.data_type = col?.data_type ?? "text";
       }
       return next;
     }));
@@ -240,7 +251,7 @@ export default function SearchListPage({
     try {
       const validFilters = filterRows
         .filter((r) => r.field)
-        .map((r) => ({ field: r.field, op: r.op, value: r.value }));
+        .map((r) => ({ field: r.field, op: r.op, value: r.value, data_type: r.data_type }));
       const res = await fetch("/api/crm/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -563,7 +574,7 @@ export default function SearchListPage({
                   </select>
                   {!hideValue && (() => {
                     const enumOpts = ENUM_OPTIONS[row.field];
-                    const isNumeric = ["integer", "numeric", "bigint", "real", "double precision", "smallint", "float8"].includes(col?.data_type ?? "");
+                    const isNumeric = isNumericType(col?.data_type ?? "");
                     if (enumOpts) {
                       return (
                         <select

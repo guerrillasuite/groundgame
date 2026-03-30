@@ -40,7 +40,7 @@ export type FilterOp =
   | "is_true"
   | "is_false";
 
-export type SearchFilter = { field: string; op: FilterOp; value: string };
+export type SearchFilter = { field: string; op: FilterOp; value: string; data_type?: string };
 export type SearchTarget = "people" | "households" | "locations";
 
 // Fields that live on the locations table, resolved via join for people/households searches.
@@ -68,20 +68,27 @@ function resolveCol(field: string): string {
   return field === "address" ? "address_line1" : field;
 }
 
-function applyFilter(query: any, col: string, op: FilterOp, value: string) {
+const NUMERIC_TYPES = new Set([
+  "integer", "int", "int2", "int4", "int8",
+  "bigint", "smallint", "numeric", "decimal",
+  "real", "float4", "float8", "double precision",
+]);
+
+function applyFilter(query: any, col: string, op: FilterOp, value: string, data_type?: string) {
+  const numeric = data_type ? NUMERIC_TYPES.has(data_type) : false;
   switch (op) {
     case "contains":
       return query.ilike(col, `%${value}%`);
     case "equals":
-      return query.ilike(col, value);
+      return numeric ? query.eq(col, value) : query.ilike(col, value);
     case "starts_with":
       return query.ilike(col, `${value}%`);
     case "not_contains":
       return query.not(col, "ilike", `%${value}%`);
     case "is_empty":
-      return query.or(`${col}.is.null,${col}.eq.`);
+      return numeric ? query.is(col, null) : query.or(`${col}.is.null,${col}.eq.`);
     case "not_empty":
-      return query.not(col, "is", null).neq(col, "");
+      return numeric ? query.not(col, "is", null) : query.not(col, "is", null).neq(col, "");
     case "greater_than":
       return query.gt(col, value);
     case "less_than":
@@ -135,7 +142,7 @@ export async function POST(request: NextRequest) {
       try {
         locData = await fetchAll(() => {
           let q = sb.from("locations").select("id").eq("tenant_id", tenant.id);
-          for (const f of locationFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value);
+          for (const f of locationFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
           return q;
         });
       } catch (err: any) {
@@ -160,7 +167,7 @@ export async function POST(request: NextRequest) {
       try {
         hhData = await fetchAll(() => {
           let q = sb.from("households").select("id").eq("tenant_id", tenant.id);
-          for (const f of householdFilters) q = applyFilter(q, f.field, f.op, f.value);
+          for (const f of householdFilters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
           return q;
         });
       } catch (err: any) {
@@ -178,7 +185,7 @@ export async function POST(request: NextRequest) {
           .from("people")
           .select("id, first_name, last_name, email, phone, contact_type, household_id, tenant_people!inner(tenant_id)")
           .eq("tenant_people.tenant_id", tenant.id);
-        for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value);
+        for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
         if (householdIdFilter) q = q.in("household_id", householdIdFilter);
         if (householdIdFilterFromHH) q = q.in("household_id", householdIdFilterFromHH);
         return q;
@@ -210,7 +217,7 @@ export async function POST(request: NextRequest) {
       try {
         locData = await fetchAll(() => {
           let q = sb.from("locations").select("id").eq("tenant_id", tenant.id);
-          for (const f of locationFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value);
+          for (const f of locationFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
           return q;
         });
       } catch (err: any) {
@@ -227,7 +234,7 @@ export async function POST(request: NextRequest) {
           .from("households")
           .select("id, name, notes, location_id")
           .eq("tenant_id", tenant.id);
-        for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value);
+        for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
         if (locationIdFilter) q = q.in("location_id", locationIdFilter);
         return q;
       });
@@ -286,7 +293,7 @@ export async function POST(request: NextRequest) {
           .from("locations")
           .select("id, address_line1, city, state, postal_code")
           .eq("tenant_id", tenant.id);
-        for (const f of filters) q = applyFilter(q, resolveCol(f.field), f.op, f.value);
+        for (const f of filters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
         return q;
       });
     } catch (err: any) {
