@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import KnockSurvey from "@/app/components/KnockSurvey";
+import ScheduleReminderSheet from "@/app/components/ScheduleReminderSheet";
 import { supabase } from "@/lib/supabase/client";
+import { buildColorMap, DEFAULT_DISPO_CONFIG, type DispositionConfig } from "@/lib/dispositionConfig";
 
 /* ------------------------------------------------
    Types & constants
@@ -29,14 +31,6 @@ type Row = {
 };
 
 type PersonLite = { id: string; name: string };
-
-const DISPO = [
-  { key: "not_home", label: "Not Home" },
-  { key: "contact_made", label: "Contacted" },
-  { key: "refused", label: "Refused" },
-  { key: "wrong_address", label: "Wrong Address" },
-  { key: "follow_up", label: "Follow Up" },
-] as const;
 
 /* ------------------------------------------------
    Helpers
@@ -84,6 +78,9 @@ export default function KnockStep() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Disposition config (loaded from survey endpoint)
+  const [dispoConfig, setDispoConfig] = useState<DispositionConfig>(DEFAULT_DISPO_CONFIG);
+
   // Survey / capture mode state
   const [callCaptureMode, setCallCaptureMode] = useState<string | null>(null);
   const [surveyId, setSurveyId] = useState<string | null>(null);
@@ -102,6 +99,10 @@ export default function KnockStep() {
   const [saving, setSaving] = useState(false);
   const [queued, setQueued] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  // Post-save reminder sheet
+  const [showReminderSheet, setShowReminderSheet] = useState(false);
+  const pendingNavRef = useRef<() => void>(() => {});
 
   // Correct Pin
   const [pinStatus, setPinStatus] = useState<null | "updating" | "done" | "error">(null);
@@ -135,13 +136,14 @@ export default function KnockStep() {
     return () => { cancelled = true; };
   }, [params.id]);
 
-  // Fetch survey_id + call_capture_mode for this walklist (once)
+  // Fetch survey_id, call_capture_mode, and dispositionConfig for this walklist (once)
   useEffect(() => {
     fetch(`/api/doors/${params.id}/survey`)
       .then((r) => r.json())
       .then((d) => {
         setSurveyId(d.survey_id ?? null);
         setCallCaptureMode(d.call_capture_mode ?? null);
+        if (d.dispositionConfig) setDispoConfig(d.dispositionConfig);
       })
       .catch(() => {});
   }, [params.id]);
@@ -351,13 +353,17 @@ export default function KnockStep() {
       const data = await res.json();
       if (data.queued) setQueued(true);
 
-      // Navigate to next
+      // Offer reminder sheet before navigating
       const next = safeIndex + 1;
-      if (rows && next < rows.length) {
-        router.replace(`/doors/${params.id}/${next}`);
-      } else {
-        router.push(`/doors/${params.id}?view=${sp.get("view") ?? "list"}`);
-      }
+      const doNav = () => {
+        if (rows && next < rows.length) {
+          router.replace(`/doors/${params.id}/${next}`);
+        } else {
+          router.push(`/doors/${params.id}?view=${sp.get("view") ?? "list"}`);
+        }
+      };
+      pendingNavRef.current = doNav;
+      setShowReminderSheet(true);
     } catch (e: any) {
       setSaveErr(e?.message || "Save failed");
     } finally {
@@ -409,6 +415,9 @@ export default function KnockStep() {
   const addr2 = [target.city, target.state, target.postal_code]
     .filter(Boolean)
     .join(", ");
+
+  const dispoItems = dispoConfig.doors.filter((d) => d.enabled);
+  const colorMap = buildColorMap(dispoConfig);
 
   return (
     <main className="doors center-wrap px-4 py-6">
@@ -564,27 +573,35 @@ export default function KnockStep() {
         <div className="mt-6">
           <div className="block text-sm mb-2 opacity-80">Result</div>
           <div className="dispo-grid">
-            {DISPO.map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setResult(key);
-                  if (key === "contact_made" && surveyId && callCaptureMode === 'survey') {
-                    setShowSurvey(true);
-                    setSurveyDone(false);
-                  } else {
-                    setShowSurvey(false);
-                    setSurveyDone(false);
-                  }
-                }}
-                className="press-card plain"
-                data-selected={result === key}
-                aria-pressed={result === key}
-              >
-                {label}
-              </button>
-            ))}
+            {dispoItems.map(({ key, label }) => {
+              const color = colorMap[key];
+              const selected = result === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setResult(key);
+                    if (key === "contact_made" && surveyId && callCaptureMode === 'survey') {
+                      setShowSurvey(true);
+                      setSurveyDone(false);
+                    } else {
+                      setShowSurvey(false);
+                      setSurveyDone(false);
+                    }
+                  }}
+                  className="press-card plain"
+                  data-selected={selected}
+                  aria-pressed={selected}
+                  style={color ? {
+                    borderColor: selected ? color : `${color}66`,
+                    backgroundColor: selected ? `${color}33` : undefined,
+                  } : undefined}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -773,6 +790,24 @@ export default function KnockStep() {
           </button>
         </div>
       </section>
+
+      {showReminderSheet && (
+        <ScheduleReminderSheet
+          defaultType="return_visit"
+          defaultTitle={`Return visit: ${target.address_line1 ?? "location"}`}
+          personId={selectedPersonId ?? target.primary_person_id}
+          householdId={target.household_id}
+          walklistItemId={target.item_id}
+          onDismiss={() => {
+            setShowReminderSheet(false);
+            pendingNavRef.current();
+          }}
+          onSaved={() => {
+            setShowReminderSheet(false);
+            pendingNavRef.current();
+          }}
+        />
+      )}
     </main>
   );
 }

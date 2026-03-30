@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from "@/lib/supabase/client";
 import KnockSurvey from "@/app/components/KnockSurvey";
+import { buildColorMap, DEFAULT_DISPO_CONFIG, type DispositionConfig } from "@/lib/dispositionConfig";
+// Callback reminder state is inline (date/time inputs revealed on call_back result)
 
 type Person = {
   person_id: string;
@@ -19,12 +21,6 @@ type Person = {
   address?: string | null;
   notes?: string | null;
 };
-
-const RESULTS = [
-  'connected','no_answer','left_voicemail','bad_number','wrong_person',
-  'call_back','do_not_call','not_interested','moved','other'
-] as const;
-type ResultKey = typeof RESULTS[number];
 
 // 🔒 TEMP: hard-code tenant for all writes in test env.
 // Set NEXT_PUBLIC_TEST_TENANT_ID in your env, or replace the default literal here.
@@ -142,6 +138,9 @@ export default function CallScreen({ params }: { params: { id: string; index: st
   const [people, setPeople] = useState<Person[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // Disposition config (loaded from survey endpoint)
+  const [dispoConfig, setDispoConfig] = useState<DispositionConfig>(DEFAULT_DISPO_CONFIG);
+
   // Capture mode (fetched once per list)
   const [callCaptureMode, setCallCaptureMode] = useState<string | null>(null);
   const [surveyId, setSurveyId] = useState<string | null>(null);
@@ -162,6 +161,11 @@ export default function CallScreen({ params }: { params: { id: string; index: st
   const [oppPriority, setOppPriority] =
     useState<'low'|'normal'|'high'|''>('');
   const [oppNotes, setOppNotes] = useState('');
+
+  // Callback reminder (shown inline when result = call_back)
+  const [callbackDate, setCallbackDate] = useState('');
+  const [callbackTime, setCallbackTime] = useState('09:00');
+  const [callbackNote, setCallbackNote] = useState('');
 
   const [showProfile, setShowProfile] = useState(false);
   const [dialProfile, setDialProfile] = useState<{
@@ -188,6 +192,9 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     setOppDue('');
     setOppPriority('');
     setOppNotes('');
+    setCallbackDate('');
+    setCallbackTime('09:00');
+    setCallbackNote('');
   }, [idx]);
 
   // Load people — RPC first, then tables. Always attach walklist_item_id.
@@ -302,13 +309,14 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
-  // Fetch capture mode for this list (once)
+  // Fetch capture mode + dispositionConfig for this list (once)
   useEffect(() => {
     fetch(`/api/doors/${params.id}/survey`)
       .then((r) => r.json())
       .then((d) => {
         setCallCaptureMode(d.call_capture_mode ?? null);
         setSurveyId(d.survey_id ?? null);
+        if (d.dispositionConfig) setDispoConfig(d.dispositionConfig);
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -395,6 +403,9 @@ export default function CallScreen({ params }: { params: { id: string; index: st
 
   const fullName = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || 'Unknown';
   const onStartInteraction = () => { if (!startedAt) setStartedAt(Date.now()); };
+  const dispoItems = dispoConfig.calls.filter((d) => d.enabled);
+  const colorMap = buildColorMap(dispoConfig);
+  const resultColor = result ? colorMap[result] : undefined;
 
   async function saveAndNext() {
     if (!p) return;
@@ -483,6 +494,28 @@ export default function CallScreen({ params }: { params: { id: string; index: st
           },
         });
         if (oppErr) throw oppErr;
+      }
+
+      // Auto-create callback reminder if date was provided
+      if (result === 'call_back' && callbackDate) {
+        try {
+          const due = new Date(`${callbackDate}T${callbackTime || '09:00'}:00`).toISOString();
+          await fetch('/api/crm/reminders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'callback',
+              title: `Call Back: ${fullName}`,
+              notes: callbackNote.trim() || null,
+              due_at: due,
+              person_id: p.person_id,
+              walklist_item_id: p.walklist_item_id ?? null,
+              stop_id: stopId,
+            }),
+          });
+        } catch {
+          // Non-fatal — stop was already saved
+        }
       }
 
       router.replace(`/dials/${params.id}/${idx + 1}`);
@@ -590,7 +623,15 @@ export default function CallScreen({ params }: { params: { id: string; index: st
 
         {/* Form tab */}
         {!showProfile && (<>
-        <label htmlFor="callResult" className="muted">Call result</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0 }}>
+          <label htmlFor="callResult" className="muted">Call result</label>
+          {resultColor && (
+            <span style={{
+              width: 10, height: 10, borderRadius: '50%',
+              background: resultColor, display: 'inline-block', flexShrink: 0,
+            }} />
+          )}
+        </div>
         <select
           id="callResult"
           className="gg-field gg-select"
@@ -606,11 +647,12 @@ export default function CallScreen({ params }: { params: { id: string; index: st
               setShowSurvey(false);
             }
           }}
+          style={resultColor ? { borderLeft: `4px solid ${resultColor}` } : undefined}
         >
           <option value="" disabled>Select…</option>
-          {RESULTS.map((r) => (
-            <option key={r} value={r}>
-              {r.replaceAll('_', ' ')}
+          {dispoItems.map((d) => (
+            <option key={d.key} value={d.key}>
+              {d.label}
             </option>
           ))}
         </select>
@@ -622,6 +664,45 @@ export default function CallScreen({ params }: { params: { id: string; index: st
             contactId={p.person_id}
             onDone={() => { setShowSurvey(false); setSurveyDone(true); }}
           />
+        )}
+
+        {/* Inline callback scheduling — shown when call_back is selected */}
+        {result === 'call_back' && (
+          <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(96,165,250,.25)', background: 'rgba(96,165,250,.06)' }}>
+            <div className="muted" style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+              Schedule Call Back
+            </div>
+            <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <label htmlFor="cbDate" className="muted">Date</label>
+                <input
+                  id="cbDate"
+                  type="date"
+                  className="gg-field"
+                  value={callbackDate}
+                  onChange={(e) => setCallbackDate(e.target.value)}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label htmlFor="cbTime" className="muted">Time</label>
+                <input
+                  id="cbTime"
+                  type="time"
+                  className="gg-field"
+                  value={callbackTime}
+                  onChange={(e) => setCallbackTime(e.target.value)}
+                />
+              </div>
+            </div>
+            <label htmlFor="cbNote" className="muted">Note (optional)</label>
+            <input
+              id="cbNote"
+              className="gg-field"
+              value={callbackNote}
+              onChange={(e) => setCallbackNote(e.target.value)}
+              placeholder="Best time to call, callback reason…"
+            />
+          </div>
         )}
 
         <label htmlFor="callNotes" className="muted" style={{ marginTop: 12 }}>Notes</label>

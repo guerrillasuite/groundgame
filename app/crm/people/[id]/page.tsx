@@ -5,6 +5,7 @@ import { getTenant } from "@/lib/tenant";
 import { hasFeature } from "@/lib/features";
 import EditButton from "@/app/crm/_shared/EditButton";
 import { updateRowAction } from "@/app/crm/_shared/mutations";
+import RemindersSection from "@/app/components/crm/RemindersSection";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -425,6 +426,16 @@ export default async function PersonDetail({ params }: Params) {
           </div>
         </details>
       ) : null}
+
+      {/* Reminders */}
+      <div style={{
+        background: "rgba(255,255,255,.03)",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 10,
+        padding: "16px 18px",
+      }}>
+        <RemindersSection personId={personId} />
+      </div>
 
       {/* System */}
       {addedDate && (

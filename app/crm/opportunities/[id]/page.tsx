@@ -10,6 +10,7 @@ import {
   OppUsersSection,
   OppItemsSection,
 } from "./ui/OppDetailClient";
+import RemindersSection from "@/app/components/crm/RemindersSection";
 import type {
   OppData,
   PersonEntry,
@@ -339,6 +340,16 @@ export default async function OpportunityDetail({ params }: Params) {
           items={items}
           products={products}
         />
+
+        {/* Reminders */}
+        <div style={{
+          background: "rgba(255,255,255,.03)",
+          border: "1px solid rgba(255,255,255,.08)",
+          borderRadius: 10,
+          padding: "16px 18px",
+        }}>
+          <RemindersSection opportunityId={oppId} />
+        </div>
 
         {/* Stops history */}
         {stop && (

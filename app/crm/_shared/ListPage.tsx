@@ -34,11 +34,13 @@ export default function ListPage({
   columns,
   rows,
   rowHrefPrefix,
+  rowColor,
 }: {
   title: string;
   columns: Column[];
   rows: Row[];
   rowHrefPrefix?: string;
+  rowColor?: (row: Row) => string | undefined;
 }) {
   const router = useRouter();
   const [sortKey, setSortKey] = useState(columns[0]?.key);
@@ -135,23 +137,34 @@ export default function ListPage({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((r) => (
-              <tr
-                key={r.id}
-                className={rowHrefPrefix ? "list-row" : undefined}
-                onClick={rowHrefPrefix ? () => router.push(rowHrefPrefix + r.id) : undefined}
-                style={{
-                  borderTop: "1px solid rgba(255,255,255,.06)",
-                  cursor: rowHrefPrefix ? "pointer" : undefined,
-                }}
-              >
-                {columns.map((c) => (
-                  <td key={c.key} style={{ padding: "10px 12px", fontSize: 14 }}>
-                    {String(r[c.key] ?? "")}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {pageRows.map((r, rowIdx) => {
+              const color = rowColor?.(r);
+              return (
+                <tr
+                  key={r.id}
+                  className={rowHrefPrefix ? "list-row" : undefined}
+                  onClick={rowHrefPrefix ? () => router.push(rowHrefPrefix + r.id) : undefined}
+                  style={{
+                    borderTop: "1px solid rgba(255,255,255,.06)",
+                    cursor: rowHrefPrefix ? "pointer" : undefined,
+                    backgroundColor: color ? `${color}1f` : undefined,
+                  }}
+                >
+                  {columns.map((c, colIdx) => (
+                    <td
+                      key={c.key}
+                      style={{
+                        padding: "10px 12px",
+                        fontSize: 14,
+                        borderLeft: colIdx === 0 && color ? `3px solid ${color}` : undefined,
+                      }}
+                    >
+                      {String(r[c.key] ?? "")}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

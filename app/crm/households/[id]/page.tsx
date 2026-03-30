@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import RemindersSection from "@/app/components/crm/RemindersSection";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -248,6 +249,16 @@ export default async function HouseholdDetail({ params }: Params) {
           </div>
         </div>
       ) : null}
+
+      {/* Reminders */}
+      <div style={{
+        background: "rgba(255,255,255,.03)",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 10,
+        padding: "16px 18px",
+      }}>
+        <RemindersSection householdId={hhId} />
+      </div>
 
     </section>
   );

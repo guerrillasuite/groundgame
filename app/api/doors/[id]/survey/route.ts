@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { resolveDispoConfig } from "@/lib/dispositionConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { id: tenantId } = await getTenant();
+  const tenant = await getTenant();
+  const { id: tenantId } = tenant;
 
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,8 +26,11 @@ export async function GET(
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
+  const dispositionConfig = resolveDispoConfig((tenant as any).settings ?? {});
+
   return NextResponse.json({
     survey_id: data?.survey_id ?? null,
     call_capture_mode: data?.call_capture_mode ?? null,
+    dispositionConfig,
   });
 }

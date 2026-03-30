@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import dynamic from "next/dynamic";
 import StopModal from "@/app/components/StopModal";
+import { buildColorMap, DEFAULT_DISPO_CONFIG } from "@/lib/dispositionConfig";
 const KnockMap = dynamic(() => import("@/app/components/KnockMap"), {
   ssr: false,
   loading: () => <div style={{ height: "60vh", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}>Loading map…</div>,
@@ -46,6 +47,7 @@ export default function WalklistKnockView() {
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(50);
   const [showStopModal, setShowStopModal] = useState(false);
+  const [colorMap, setColorMap] = useState<Record<string, string>>({});
 
   const resumeKey = `doors:cursor:${params.id}`;
 
@@ -106,6 +108,20 @@ export default function WalklistKnockView() {
     })();
     return () => { cancelled = true; };
   }, [params.id, resumeKey]);
+
+  // Fetch disposition config from survey endpoint
+  useEffect(() => {
+    fetch(`/api/doors/${params.id}/survey`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.dispositionConfig) {
+          setColorMap(buildColorMap(d.dispositionConfig));
+        } else {
+          setColorMap(buildColorMap(DEFAULT_DISPO_CONFIG));
+        }
+      })
+      .catch(() => setColorMap(buildColorMap(DEFAULT_DISPO_CONFIG)));
+  }, [params.id]);
 
   const filtered = useMemo(() => {
     setPage(0);
@@ -253,6 +269,7 @@ export default function WalklistKnockView() {
             const r = (rows ?? []).find((x) => x.item_id === id);
             if (r) router.push(`/doors/${params.id}/${r.idx}`);
           }}
+          colorMap={colorMap}
         />
       ) : (
         <>
@@ -262,6 +279,7 @@ export default function WalklistKnockView() {
                 key={r.item_id}
                 href={`/doors/${params.id}/${r.idx}`}
                 className="gg-item gg-item--button"
+                style={{ borderLeft: `4px solid ${r.last_result ? (colorMap[r.last_result] ?? "#6B7280") : "transparent"}` }}
               >
                 <div className="gg-text" style={{ flex: 1 }}>
                   {r.primary_person_name && (

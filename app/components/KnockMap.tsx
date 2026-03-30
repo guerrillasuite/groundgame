@@ -6,16 +6,21 @@ import "maplibre-gl/dist/maplibre-gl.css";
 type Pin = { idx?: number; id?: string; lat: number; lng: number; label?: string; visited?: boolean; result?: string };
 
 /** Map a knock result string → fill color for the house icon */
-function markerColor(result: string | null | undefined, visited: boolean): string {
-  if (!visited) return "#2563EB";           // blue  = not yet contacted
-  if (!result)  return "#6B7280";           // gray  = visited, no result logged
+function resolveMarkerColor(
+  result: string | null | undefined,
+  visited: boolean,
+  colorMap?: Record<string, string>
+): string {
+  if (!visited) return "#2563EB";           // blue = not yet visited
+  if (!result)  return colorMap?.["__uncontacted__"] ?? "#9CA3AF"; // visited, no result
+  if (colorMap && colorMap[result]) return colorMap[result];
+  // fallback heuristic for non-disposition results (survey scale 1-5 etc.)
   const r = result.toLowerCase();
-  if (r.includes("strong support") || r === "1") return "#16A34A";   // deep green
-  if (r.includes("support") || r === "2" || r.includes("warm"))      return "#22c55e";   // green
-  if (r.includes("undecided") || r === "3")                           return "#F59E0B";   // gold
-  if (r.includes("lean oppose") || r === "4")                         return "#F97316";   // orange
-  if (r.includes("oppose") || r === "5" || r.includes("cold"))        return "#DC2626";   // red
-  if (r.includes("not home") || r.includes("no answer"))              return "#9CA3AF";   // light gray
+  if (r.includes("strong support") || r === "1") return "#16A34A";
+  if (r.includes("support") || r === "2" || r.includes("warm"))      return "#22c55e";
+  if (r.includes("undecided") || r === "3")                           return "#F59E0B";
+  if (r.includes("lean oppose") || r === "4")                         return "#F97316";
+  if (r.includes("oppose") || r === "5" || r.includes("cold"))        return "#DC2626";
   return "#6B7280";
 }
 
@@ -67,8 +72,9 @@ export default function KnockMap(props: {
 
   points?: Array<{ id: string; lat: number; lng: number; label?: string; visited?: boolean; result?: string }>;
   onMarkerClick?: (id: string) => void;
+  colorMap?: Record<string, string>;
 }) {
-  const { pins, onGo, points, onMarkerClick } = props;
+  const { pins, onGo, points, onMarkerClick, colorMap } = props;
   const ref = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -132,7 +138,7 @@ export default function KnockMap(props: {
       }
 
       valid.forEach((p) => {
-        const color = markerColor(p.result, p.visited ?? false);
+        const color = resolveMarkerColor(p.result, p.visited ?? false, colorMap);
         const tooltip =
           typeof p.label === "string" ? p.label
           : Number.isFinite(p.idx!) ? String((p.idx as number) + 1)
@@ -210,7 +216,7 @@ export default function KnockMap(props: {
       map.remove();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pins, points, onGo, onMarkerClick]);
+  }, [pins, points, onGo, onMarkerClick, colorMap]);
 
   return (
     <div style={{ position: "relative", height: "60vh", width: "100%", minHeight: 300 }}>

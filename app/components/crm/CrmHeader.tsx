@@ -36,6 +36,11 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
   if (f("crm_stops"))   fieldItems.push({ href: "/crm/stops",   label: "Stops" });
   if (fieldItems.length > 0) nav.push({ label: "Field", items: fieldItems });
 
+  // Reminders: flat link
+  if (f("crm")) {
+    nav.push({ href: "/crm/reminders", label: "Reminders" });
+  }
+
   // Data: show dropdown if any child is enabled
   const dataItems: NavItem[] = [];
   if (f("crm_import"))  dataItems.push({ href: "/crm/import",   label: "Import" });
@@ -49,6 +54,9 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
   ];
   if (f("crm_opportunities")) {
     settingsItems.push({ href: "/crm/settings/stages", label: "Pipeline Stages" });
+  }
+  if (f("crm")) {
+    settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
   }
   if (isSuperAdmin) {
     settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });

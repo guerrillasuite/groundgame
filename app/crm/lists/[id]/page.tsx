@@ -6,6 +6,7 @@ import { getTenant } from "@/lib/tenant";
 import { getSurveys } from "@/lib/db/supabase-surveys";
 import { getCrmUser } from "@/lib/crm-auth";
 import { notFound } from "next/navigation";
+import { resolveDispoConfig, buildColorMap } from "@/lib/dispositionConfig";
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -102,7 +103,7 @@ export default async function ListDetail({
     allItems = await fetchAll(() =>
       sb
         .from("walklist_items")
-        .select("person_id, location_id")
+        .select("id, person_id, location_id")
         .eq("walklist_id", params.id)
         .eq("tenant_id", tenant.id)
     );
@@ -112,6 +113,31 @@ export default async function ListDetail({
 
   const personIds = Array.from(new Set(allItems.map(r => r.person_id).filter(Boolean) as string[]));
   const locationIds = Array.from(new Set(allItems.map(r => r.location_id).filter(Boolean) as string[]));
+
+  // Fetch last stop result per item to drive color coding
+  const allItemIds = allItems.map(r => r.id).filter(Boolean) as string[];
+  const allStops = allItemIds.length
+    ? await queryInChunks(
+        sb, "stops", "walklist_item_id, result",
+        "walklist_item_id", allItemIds,
+        (q) => q.eq("tenant_id", tenant.id).order("created_at", { ascending: false })
+      )
+    : [];
+  const lastResultByItemId = new Map<string, string>();
+  for (const stop of allStops as any[]) {
+    if (!lastResultByItemId.has(stop.walklist_item_id) && stop.result) {
+      lastResultByItemId.set(stop.walklist_item_id, stop.result);
+    }
+  }
+  const lastResultByPersonId = new Map<string, string>();
+  const lastResultByLocationId = new Map<string, string>();
+  for (const item of allItems as any[]) {
+    const result = lastResultByItemId.get(item.id);
+    if (!result) continue;
+    if (item.person_id) lastResultByPersonId.set(item.person_id, result);
+    if (item.location_id) lastResultByLocationId.set(item.location_id, result);
+  }
+  const colorMap = buildColorMap(resolveDispoConfig((tenant as any).settings ?? {}));
 
   // -------- PEOPLE PATH (for call lists or if personIds exist) --------
   let peopleRows: Array<{ id: string; name: string; phone: string; email: string }> = [];
@@ -128,6 +154,7 @@ export default async function ListDetail({
       name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
       phone: p.phone ?? "",
       email: p.email ?? "",
+      _lastResult: lastResultByPersonId.get(p.id),
     }));
     peopleResolved = peopleRows.length;
 
@@ -248,6 +275,7 @@ export default async function ListDetail({
           address: r.address,
           name: people.map(p => p.name).filter(Boolean).join(", "),
           phone: people.map(p => p.phone).filter(Boolean).join(", "),
+          _lastResult: lastResultByLocationId.get(r.id),
         };
       });
     }
@@ -293,6 +321,7 @@ export default async function ListDetail({
             { key: "email", label: "Email", width: 240 },
           ]}
           rows={peopleRows}
+          rowColor={(r) => r._lastResult ? colorMap[r._lastResult] : undefined}
         />
       </section>
     );
@@ -320,6 +349,7 @@ export default async function ListDetail({
           { key: "phone", label: "Phone", width: 160 },
         ]}
         rows={locationRows}
+        rowColor={(r) => r._lastResult ? colorMap[r._lastResult] : undefined}
       />
     </section>
   );
