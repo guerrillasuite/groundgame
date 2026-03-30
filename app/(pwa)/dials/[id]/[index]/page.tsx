@@ -10,13 +10,17 @@ import { buildColorMap, DEFAULT_DISPO_CONFIG, type DispositionConfig } from "@/l
 // Callback reminder state is inline (date/time inputs revealed on call_back result)
 
 type Person = {
-  person_id: string;
+  person_id: string | null;
+  company_id?: string | null;
   walklist_item_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
+  company_name?: string | null;
   occupation?: string | null;
   employer?: string | null;
   phone?: string | null;
+  phone_cell?: string | null;
+  phone_landline?: string | null;
   email?: string | null;
   address?: string | null;
   notes?: string | null;
@@ -218,7 +222,6 @@ export default function CallScreen({ params }: { params: { id: string; index: st
         if (!rpc.error) {
           const raw = Array.isArray(rpc.data) ? rpc.data : (rpc.data as any)?.people ?? [];
           if (raw && raw.length) {
-            // Map to Person
             const mapped: Person[] = raw.map((r: any) => ({
               person_id: r.person_id ?? r.id,
               first_name: r.first_name ?? null,
@@ -226,6 +229,8 @@ export default function CallScreen({ params }: { params: { id: string; index: st
               occupation: r.occupation ?? null,
               employer: r.employer ?? null,
               phone: r.phone ?? null,
+              phone_cell: r.phone_cell ?? null,
+              phone_landline: r.phone_landline ?? null,
               email: r.email ?? null,
               address: r.address ?? null,
               notes: r.notes ?? null,
@@ -234,7 +239,7 @@ export default function CallScreen({ params }: { params: { id: string; index: st
             // Attach walklist_item_id mapping for this list
             const joinMapRes = await supabase
               .from('walklist_items')
-              .select('id, person_id')
+              .select('id, person_id, company_id')
               .eq('walklist_id', effectiveWalklistId);
             if (joinMapRes.error) throw joinMapRes.error;
 
@@ -243,52 +248,93 @@ export default function CallScreen({ params }: { params: { id: string; index: st
             );
             const mappedWithJoin: Person[] = mapped.map((r) => ({
               ...r,
-              walklist_item_id: wlItemByPerson.get(r.person_id) ?? null,
+              walklist_item_id: wlItemByPerson.get(r.person_id as string) ?? null,
             }));
+
+            // Enrich with phone_cell/phone_landline if RPC didn't return them
+            const needsEnrich = mappedWithJoin.filter(p => p.phone_cell == null && p.phone_landline == null && p.person_id);
+            if (needsEnrich.length) {
+              const { data: enrichData } = await supabase
+                .from('people')
+                .select('id, phone_cell, phone_landline')
+                .in('id', needsEnrich.map(p => p.person_id as string));
+              const enrichMap = new Map((enrichData ?? []).map((r: any) => [r.id, r]));
+              mappedWithJoin.forEach(p => {
+                if (p.person_id && p.phone_cell == null && p.phone_landline == null) {
+                  const e = enrichMap.get(p.person_id);
+                  if (e) { p.phone_cell = e.phone_cell ?? null; p.phone_landline = e.phone_landline ?? null; }
+                }
+              });
+            }
 
             if (!cancelled) {
               setPeople(mappedWithJoin);
               const clamped = Math.max(0, Math.min(idx, Math.max(0, mappedWithJoin.length - 1)));
               if (clamped !== idx) setIdx(clamped);
             }
-            return; // Use RPC result
+            return;
           }
         }
 
-        // 2) Fallback: tables (ordered by position) — already includes walklist_item_id
+        // 2) Fallback: tables ordered by order_index (handles people and companies)
         const join = await supabase
           .from("walklist_items")
-          .select("id, person_id, position")
+          .select("id, person_id, company_id, order_index")
           .eq("walklist_id", effectiveWalklistId)
-          .order("position", { ascending: true, nullsFirst: true });
+          .order("order_index", { ascending: true, nullsFirst: true });
 
         if (join.error) throw join.error;
 
-        const ids = (join.data ?? []).map(j => j.person_id).filter(Boolean) as string[];
-        if (ids.length === 0) { if (!cancelled) setPeople([]); return; }
+        const personItemIds = (join.data ?? []).filter(j => j.person_id).map(j => j.person_id) as string[];
+        const companyItemIds = (join.data ?? []).filter(j => j.company_id && !j.person_id).map(j => j.company_id) as string[];
 
-        const ppl = await supabase
-          .from("people")
-          .select("id, first_name, last_name, occupation, phone, email, address")
-          .in("id", ids);
+        if (personItemIds.length === 0 && companyItemIds.length === 0) { if (!cancelled) setPeople([]); return; }
 
-        if (ppl.error) throw ppl.error;
+        const [pplData, coData] = await Promise.all([
+          personItemIds.length
+            ? supabase.from("people").select("id, first_name, last_name, occupation, phone, phone_cell, phone_landline, email, address").in("id", personItemIds)
+            : { data: [] as any[], error: null },
+          companyItemIds.length
+            ? supabase.from("companies").select("id, name, phone, email").in("id", companyItemIds)
+            : { data: [] as any[], error: null },
+        ]);
 
-        const byId = new Map<string, any>((ppl.data ?? []).map(r => [r.id, r]));
+        if (pplData.error) throw pplData.error;
+
+        const byPersonId = new Map<string, any>((pplData.data ?? []).map(r => [r.id, r]));
+        const byCompanyId = new Map<string, any>((coData.data ?? []).map(r => [r.id, r]));
+
         const ordered: Person[] = (join.data ?? [])
           .map(j => {
-            const r = byId.get(j.person_id);
-            return r ? ({
-              person_id: r.id,
-              walklist_item_id: j.id,
-              first_name: r.first_name ?? null,
-              last_name: r.last_name ?? null,
-              occupation: r.occupation ?? null,
-              employer: null,
-              phone: r.phone ?? null,
-              email: r.email ?? null,
-              address: r.address ?? null,
-            } as Person) : null;
+            if (j.person_id) {
+              const r = byPersonId.get(j.person_id);
+              return r ? ({
+                person_id: r.id,
+                walklist_item_id: j.id,
+                first_name: r.first_name ?? null,
+                last_name: r.last_name ?? null,
+                occupation: r.occupation ?? null,
+                employer: null,
+                phone: r.phone ?? null,
+                phone_cell: r.phone_cell ?? null,
+                phone_landline: r.phone_landline ?? null,
+                email: r.email ?? null,
+                address: r.address ?? null,
+              } as Person) : null;
+            } else if (j.company_id) {
+              const c = byCompanyId.get(j.company_id);
+              return c ? ({
+                person_id: null,
+                company_id: c.id,
+                walklist_item_id: j.id,
+                company_name: c.name ?? null,
+                phone: c.phone ?? null,
+                phone_cell: null,
+                phone_landline: null,
+                email: c.email ?? null,
+              } as Person) : null;
+            }
+            return null;
           })
           .filter(Boolean) as Person[];
 
@@ -401,7 +447,9 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     );
   }
 
-  const fullName = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || 'Unknown';
+  const fullName = p.company_name
+    ? p.company_name
+    : `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || 'Unknown';
   const onStartInteraction = () => { if (!startedAt) setStartedAt(Date.now()); };
   const dispoItems = dispoConfig.calls.filter((d) => d.enabled);
   const colorMap = buildColorMap(dispoConfig);
@@ -419,20 +467,22 @@ export default function CallScreen({ params }: { params: { id: string; index: st
       const userId = auth?.user?.id ?? '00000000-0000-0000-0000-000000000000';
       const duration = startedAt ? Math.round((Date.now() - startedAt) / 1000) : null;
 
-      // 1) Update person (safe no-op if unchanged)
-      const { error: updErr } = await supabase.rpc('gs_update_person_v1', {
-        _tenant_id: tenantId,
-        _person: {
-          id: p.person_id,
-          first_name: p.first_name,
-          last_name: p.last_name,
-          occupation: p.occupation,
-          employer: p.employer,
-          phone: p.phone,
-          email: p.email,
-        },
-      });
-      if (updErr) throw updErr;
+      // 1) Update person (skip for company items)
+      if (p.person_id) {
+        const { error: updErr } = await supabase.rpc('gs_update_person_v1', {
+          _tenant_id: tenantId,
+          _person: {
+            id: p.person_id,
+            first_name: p.first_name,
+            last_name: p.last_name,
+            occupation: p.occupation,
+            employer: p.employer,
+            phone: p.phone,
+            email: p.email,
+          },
+        });
+        if (updErr) throw updErr;
+      }
 
       // 2) Create stop — include forced tenant and effective ids
       const { data: stopData, error: stopErr } = await supabase.rpc('gs_create_stop_v1', {
@@ -441,11 +491,11 @@ export default function CallScreen({ params }: { params: { id: string; index: st
           tenant_id: tenantId,
           walklist_id: effectiveWalklistId,
           walklist_item_id: p.walklist_item_id ?? null,
-          person_id: p.person_id,
+          person_id: p.person_id ?? null,
           user_id: userId,
           channel: 'call',
           result,
-          notes,
+          notes: notes || (p.company_name ? `Company: ${p.company_name}` : ''),
           duration_sec: duration,
         },
       });
@@ -544,12 +594,28 @@ export default function CallScreen({ params }: { params: { id: string; index: st
         </p>
 
         <div className="row" style={{ marginBottom: 12 }}>
-          {p.phone && (
+          {/* Show cell (C) and landline (L) separately if both exist; otherwise fall back to phone */}
+          {(p.phone_cell || p.phone_landline) ? (
+            <>
+              {p.phone_cell && (
+                <a className="press-card" style={{ gridTemplateColumns: '1fr' }}
+                  href={`tel:${encodeURIComponent(p.phone_cell)}`} onClick={onStartInteraction}>
+                  📱 C: {p.phone_cell}
+                </a>
+              )}
+              {p.phone_landline && (
+                <a className="press-card" style={{ gridTemplateColumns: '1fr' }}
+                  href={`tel:${encodeURIComponent(p.phone_landline)}`} onClick={onStartInteraction}>
+                  ☎️ L: {p.phone_landline}
+                </a>
+              )}
+            </>
+          ) : p.phone ? (
             <a className="press-card" style={{ gridTemplateColumns: '1fr' }}
               href={`tel:${encodeURIComponent(p.phone)}`} onClick={onStartInteraction}>
               Call
             </a>
-          )}
+          ) : null}
           {p.email && (
             <a className="press-card" style={{ gridTemplateColumns: '1fr' }}
               href={`mailto:${encodeURIComponent(p.email)}`} onClick={onStartInteraction}>

@@ -103,7 +103,7 @@ export default async function ListDetail({
     allItems = await fetchAll(() =>
       sb
         .from("walklist_items")
-        .select("id, person_id, location_id, order_index")
+        .select("id, person_id, location_id, company_id, order_index")
         .eq("walklist_id", params.id)
         .eq("tenant_id", tenant.id)
         .order("order_index", { ascending: true })
@@ -114,13 +114,7 @@ export default async function ListDetail({
 
   const personIds = Array.from(new Set(allItems.map(r => r.person_id).filter(Boolean) as string[]));
   const locationIds = Array.from(new Set(allItems.map(r => r.location_id).filter(Boolean) as string[]));
-
-  // For text lists: map person_id → order_index so we can link to /texts/[id]/[index]
-  const personOrderMap = new Map<string, number>(
-    allItems
-      .filter(r => r.person_id != null)
-      .map(r => [r.person_id as string, r.order_index as number])
-  );
+  const companyIds = Array.from(new Set(allItems.map(r => r.company_id).filter(Boolean) as string[]));
 
   // Fetch last stop result per item to drive color coding
   const allItemIds = allItems.map(r => r.id).filter(Boolean) as string[];
@@ -139,13 +133,38 @@ export default async function ListDetail({
   }
   const lastResultByPersonId = new Map<string, string>();
   const lastResultByLocationId = new Map<string, string>();
+  const lastResultByCompanyId = new Map<string, string>();
   for (const item of allItems as any[]) {
     const result = lastResultByItemId.get(item.id);
     if (!result) continue;
     if (item.person_id) lastResultByPersonId.set(item.person_id, result);
     if (item.location_id) lastResultByLocationId.set(item.location_id, result);
+    if (item.company_id) lastResultByCompanyId.set(item.company_id, result);
   }
   const colorMap = buildColorMap(resolveDispoConfig((tenant as any).settings ?? {}));
+
+  // -------- COMPANIES PATH --------
+  let companyRows: Array<{ id: string; name: string; phone: string; email: string }> = [];
+  if (companyIds.length) {
+    const cos = await queryInChunks(
+      sb, "companies", "id,name,phone,email", "id", companyIds
+    );
+    companyRows = cos.map((c: any) => {
+      const result = lastResultByCompanyId.get(c.id);
+      return {
+        id: c.id,
+        name: c.name ?? "",
+        phone: c.phone ?? "",
+        email: c.email ?? "",
+        _color: result ? colorMap[result] : undefined,
+      };
+    });
+    if (q) {
+      companyRows = companyRows.filter(r =>
+        r.name.toLowerCase().includes(q) || r.phone.toLowerCase().includes(q) || r.email.toLowerCase().includes(q)
+      );
+    }
+  }
 
   // -------- PEOPLE PATH (for call lists or if personIds exist) --------
   let peopleRows: Array<{ id: string; name: string; phone: string; email: string }> = [];
@@ -159,12 +178,8 @@ export default async function ListDetail({
     );
     peopleRows = ppl.map((p: any) => {
       const result = lastResultByPersonId.get(p.id);
-      // For text lists: use order_index as row id so clicking links to /texts/[id]/[index]
-      const rowId = modeLower === "text"
-        ? String(personOrderMap.get(p.id) ?? 0)
-        : p.id;
       return {
-        id: rowId,
+        id: p.id,
         name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
         phone: p.phone ?? "",
         email: p.email ?? "",
@@ -305,11 +320,43 @@ export default async function ListDetail({
   const hasPeopleIds = personIds.length > 0;
   const hasPeopleVisible = peopleResolved > 0;
   const hasLocationIds = locationIds.length > 0;
+  const hasCompanyIds = companyIds.length > 0;
 
-  // Decide what to render:
-  // - If any people IDs exist (call list), render People.
-  // - Else render Locations.
-  if (hasPeopleIds || modeLower === "call" || modeLower === "text") {
+  const surveyPanel = (
+    <SurveyAssignmentPanel
+      listId={params.id}
+      currentSurveyId={(meta as ListMeta).survey_id ?? null}
+      currentCaptureMode={(meta as ListMeta).call_capture_mode ?? null}
+      surveys={allSurveys.map((s) => ({ id: s.id, title: s.title }))}
+    />
+  );
+
+  // Companies-only list
+  if (hasCompanyIds && !hasPeopleIds && !hasLocationIds) {
+    return (
+      <section className="stack">
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <h1 style={{ margin: 0 }}>{titleBase} — Companies</h1>
+          <PeopleSearch placeholder="Search companies in this list…" />
+        </div>
+        {surveyPanel}
+        <ListPage
+          title=""
+          rowHrefPrefix="/crm/companies/"
+          columns={[
+            { key: "name", label: "Company", width: 280 },
+            { key: "phone", label: "Phone", width: 160 },
+            { key: "email", label: "Email", width: 240 },
+          ]}
+          rows={companyRows}
+          rowColorKey="_color"
+        />
+      </section>
+    );
+  }
+
+  // People list (call / text / mixed)
+  if (hasPeopleIds || hasCompanyIds || modeLower === "call" || modeLower === "text") {
     const isText = modeLower === "text";
     const subtitle = isText
       ? "Text List"
@@ -318,47 +365,51 @@ export default async function ListDetail({
         : hasPeopleIds
         ? "People (some items hidden by access policy)"
         : "People";
-    const rowHrefPrefix = isText ? `/texts/${params.id}/` : "/crm/people/";
     return (
       <section className="stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <h1 style={{ margin: 0 }}>{titleBase} — {subtitle}</h1>
           <PeopleSearch placeholder={isText ? "Search text list…" : "Search people in this list…"} />
         </div>
-        <SurveyAssignmentPanel
-          listId={params.id}
-          currentSurveyId={(meta as ListMeta).survey_id ?? null}
-          currentCaptureMode={(meta as ListMeta).call_capture_mode ?? null}
-          surveys={allSurveys.map((s) => ({ id: s.id, title: s.title }))}
-        />
-        <ListPage
-          title=""
-          rowHrefPrefix={rowHrefPrefix}
-          columns={[
-            { key: "name", label: "Name", width: 280 },
-            { key: "phone", label: "Phone", width: 160 },
-            { key: "email", label: "Email", width: 240 },
-          ]}
-          rows={peopleRows}
-          rowColorKey="_color"
-        />
+        {surveyPanel}
+        {peopleRows.length > 0 && (
+          <ListPage
+            title={hasCompanyIds ? "People" : ""}
+            rowHrefPrefix="/crm/people/"
+            columns={[
+              { key: "name", label: "Name", width: 280 },
+              { key: "phone", label: "Phone", width: 160 },
+              { key: "email", label: "Email", width: 240 },
+            ]}
+            rows={peopleRows}
+            rowColorKey="_color"
+          />
+        )}
+        {companyRows.length > 0 && (
+          <ListPage
+            title="Companies"
+            rowHrefPrefix="/crm/companies/"
+            columns={[
+              { key: "name", label: "Company", width: 280 },
+              { key: "phone", label: "Phone", width: 160 },
+              { key: "email", label: "Email", width: 240 },
+            ]}
+            rows={companyRows}
+            rowColorKey="_color"
+          />
+        )}
       </section>
     );
   }
 
-  // Otherwise, show locations
+  // Locations list
   return (
     <section className="stack">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h1 style={{ margin: 0 }}>{titleBase} — Locations</h1>
         <PeopleSearch placeholder="Search locations in this list…" />
       </div>
-      <SurveyAssignmentPanel
-        listId={params.id}
-        currentSurveyId={(meta as ListMeta).survey_id ?? null}
-        currentCaptureMode={(meta as ListMeta).call_capture_mode ?? null}
-        surveys={allSurveys.map((s) => ({ id: s.id, title: s.title }))}
-      />
+      {surveyPanel}
       <ListPage
         title=""
         rowHrefPrefix="/crm/households/"

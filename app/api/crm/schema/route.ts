@@ -213,7 +213,7 @@ export async function GET(request: NextRequest) {
   const table = request.nextUrl.searchParams.get("table") as AllowedTable | null;
 
   if (!table || !ALLOWED_TABLES.includes(table)) {
-    return NextResponse.json({ error: "Invalid table. Must be one of: people, households, locations" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid table. Must be one of: people, households, locations, companies" }, { status: 400 });
   }
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

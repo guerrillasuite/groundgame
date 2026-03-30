@@ -11,10 +11,16 @@ function makeSb(tenantId: string) {
 }
 
 type AppMode = "call" | "knock" | "both" | "text";
-type Target = "people" | "households" | "locations";
+type Target = "people" | "households" | "locations" | "companies";
+
+async function resolveCompanyIds(target: Target, selectedIds: string[]): Promise<string[]> {
+  if (target === "companies") return selectedIds;
+  return [];
+}
 
 async function resolvePersonIds(sb: any, tenantId: string, target: Target, selectedIds: string[]): Promise<string[]> {
   if (target === "people") return selectedIds;
+  if (target === "companies") return [];
 
   if (target === "households") {
     const rows = await queryInChunks(sb, "person_households", "person_id", "household_id", selectedIds, (q) => q.eq("tenant_id", tenantId));
@@ -123,7 +129,8 @@ async function createWalklist(
   knockPairs?: Array<{ person_id: string; location_id: string }>,
   callCaptureMode?: string | null,
   surveyId?: string | null,
-  description?: string | null
+  description?: string | null,
+  companyIds?: string[]
 ): Promise<{ id: string; name: string; mode: string; warning?: string }> {
   const { data: wl, error: wlErr } = await sb
     .from("walklists")
@@ -143,11 +150,11 @@ async function createWalklist(
   }
 
   // Insert walklist_items
-  // For knock lists from people target, use pairs (both person_id + location_id per item).
-  // For knock lists from other targets, one item per location.
-  // For call lists, one item per person.
+  const resolvedCompanyIds = companyIds ?? [];
   const rawItems =
-    mode === "call" || mode === "text"
+    resolvedCompanyIds.length
+      ? resolvedCompanyIds.map((id) => ({ company_id: id }))
+      : mode === "call" || mode === "text"
       ? personIds.map((id) => ({ person_id: id }))
       : knockPairs
       ? knockPairs.map((p) => ({ person_id: p.person_id, location_id: p.location_id }))
@@ -216,8 +223,10 @@ export async function POST(request: NextRequest) {
   const assignees = user_ids ?? [];
 
   // Resolve IDs once (reuse for both if needed)
+  const resolvedCompanyIds = await resolveCompanyIds(target, ids);
+
   const personIds =
-    app_mode === "knock"
+    app_mode === "knock" || target === "companies"
       ? []
       : await resolvePersonIds(sb, tenant.id, target, ids);
 
@@ -228,7 +237,7 @@ export async function POST(request: NextRequest) {
       : undefined;
 
   const locationIds =
-    app_mode === "call" || target === "people"
+    app_mode === "call" || app_mode === "text" || target === "people" || target === "companies"
       ? []
       : await resolveLocationIds(sb, tenant.id, target, ids);
 
@@ -237,12 +246,12 @@ export async function POST(request: NextRequest) {
   try {
     if (app_mode === "call" || app_mode === "both") {
       const listName = app_mode === "both" ? `${name.trim()} — Calls` : name.trim();
-      const wl = await createWalklist(sb, tenant.id, listName, "call", personIds, [], assignees, undefined, call_capture_mode, survey_id);
+      const wl = await createWalklist(sb, tenant.id, listName, "call", personIds, [], assignees, undefined, call_capture_mode, survey_id, null, resolvedCompanyIds.length ? resolvedCompanyIds : undefined);
       walklists.push(wl);
     }
 
     if (app_mode === "text") {
-      const wl = await createWalklist(sb, tenant.id, name.trim(), "text", personIds, [], assignees, undefined, null, null, description ?? null);
+      const wl = await createWalklist(sb, tenant.id, name.trim(), "text", personIds, [], assignees, undefined, null, null, description ?? null, resolvedCompanyIds.length ? resolvedCompanyIds : undefined);
       walklists.push(wl);
     }
 

@@ -8,11 +8,14 @@ import { supabase } from "@/lib/supabase/client";
 import { buildColorMap, DEFAULT_DISPO_CONFIG, type DispositionConfig } from "@/lib/dispositionConfig";
 
 type Person = {
-  person_id: string;
+  person_id: string | null;
+  company_id?: string | null;
   walklist_item_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
+  company_name?: string | null;
   phone?: string | null;
+  phone_cell?: string | null;
   email?: string | null;
 };
 
@@ -90,7 +93,7 @@ export default function TextScreen({ params }: { params: { id: string; index: st
           if (raw?.length) {
             const joinMapRes = await supabase
               .from('walklist_items')
-              .select('id, person_id')
+              .select('id, person_id, company_id')
               .eq('walklist_id', effectiveId)
               .order('order_index', { ascending: true });
 
@@ -98,55 +101,88 @@ export default function TextScreen({ params }: { params: { id: string; index: st
               (joinMapRes.data ?? []).map((j) => [j.person_id, j.id])
             );
 
-            const mapped: Person[] = raw.map((r: any) => ({
+            const baseMap: Person[] = raw.map((r: any) => ({
               person_id: r.person_id ?? r.id,
               walklist_item_id: wlItemByPerson.get(r.person_id ?? r.id) ?? null,
               first_name: r.first_name ?? null,
               last_name: r.last_name ?? null,
               phone: r.phone ?? null,
+              phone_cell: r.phone_cell ?? null,
               email: r.email ?? null,
             }));
 
+            // Enrich with phone_cell if RPC didn't return it
+            const needsEnrich = baseMap.filter(p => p.phone_cell == null && p.person_id);
+            if (needsEnrich.length) {
+              const { data: enrichData } = await supabase
+                .from('people')
+                .select('id, phone_cell')
+                .in('id', needsEnrich.map(p => p.person_id as string));
+              const enrichMap = new Map((enrichData ?? []).map((r: any) => [r.id, r.phone_cell]));
+              baseMap.forEach(p => { if (p.person_id && p.phone_cell == null) p.phone_cell = enrichMap.get(p.person_id) ?? null; });
+            }
+
             if (!cancelled) {
-              setPeople(mapped);
-              const clamped = Math.max(0, Math.min(idx, Math.max(0, mapped.length - 1)));
+              setPeople(baseMap);
+              const clamped = Math.max(0, Math.min(idx, Math.max(0, baseMap.length - 1)));
               if (clamped !== idx) setIdx(clamped);
             }
             return;
           }
         }
 
-        // Fallback: tables ordered by order_index
+        // Fallback: tables ordered by order_index (handles both people and companies)
         const join = await supabase
           .from("walklist_items")
-          .select("id, person_id, order_index")
+          .select("id, person_id, company_id, order_index")
           .eq("walklist_id", effectiveId)
           .order("order_index", { ascending: true });
 
         if (join.error) throw join.error;
 
-        const ids = (join.data ?? []).map(j => j.person_id).filter(Boolean) as string[];
-        if (ids.length === 0) { if (!cancelled) setPeople([]); return; }
+        const personItemIds = (join.data ?? []).filter(j => j.person_id).map(j => j.person_id) as string[];
+        const companyItemIds = (join.data ?? []).filter(j => j.company_id && !j.person_id).map(j => j.company_id) as string[];
 
-        const ppl = await supabase
-          .from("people")
-          .select("id, first_name, last_name, phone, email")
-          .in("id", ids);
+        const [pplData, coData] = await Promise.all([
+          personItemIds.length
+            ? supabase.from("people").select("id, first_name, last_name, phone, phone_cell, email").in("id", personItemIds)
+            : { data: [] as any[], error: null },
+          companyItemIds.length
+            ? supabase.from("companies").select("id, name, phone, email").in("id", companyItemIds)
+            : { data: [] as any[], error: null },
+        ]);
 
-        if (ppl.error) throw ppl.error;
+        if (pplData.error) throw pplData.error;
 
-        const byId = new Map<string, any>((ppl.data ?? []).map(r => [r.id, r]));
+        const byPersonId = new Map<string, any>((pplData.data ?? []).map(r => [r.id, r]));
+        const byCompanyId = new Map<string, any>((coData.data ?? []).map(r => [r.id, r]));
+
         const ordered: Person[] = (join.data ?? [])
           .map(j => {
-            const r = byId.get(j.person_id);
-            return r ? ({
-              person_id: r.id,
-              walklist_item_id: j.id,
-              first_name: r.first_name ?? null,
-              last_name: r.last_name ?? null,
-              phone: r.phone ?? null,
-              email: r.email ?? null,
-            } as Person) : null;
+            if (j.person_id) {
+              const r = byPersonId.get(j.person_id);
+              return r ? ({
+                person_id: r.id,
+                walklist_item_id: j.id,
+                first_name: r.first_name ?? null,
+                last_name: r.last_name ?? null,
+                phone: r.phone ?? null,
+                phone_cell: r.phone_cell ?? null,
+                email: r.email ?? null,
+              } as Person) : null;
+            } else if (j.company_id) {
+              const c = byCompanyId.get(j.company_id);
+              return c ? ({
+                person_id: null,
+                company_id: c.id,
+                walklist_item_id: j.id,
+                company_name: c.name ?? null,
+                phone: c.phone ?? null,
+                phone_cell: null,
+                email: c.email ?? null,
+              } as Person) : null;
+            }
+            return null;
           })
           .filter(Boolean) as Person[];
 
@@ -219,11 +255,11 @@ export default function TextScreen({ params }: { params: { id: string; index: st
           tenant_id: tenantId,
           walklist_id: effectiveId,
           walklist_item_id: p.walklist_item_id ?? null,
-          person_id: p.person_id,
+          person_id: p.person_id ?? null,
           user_id: userId,
           channel: 'text',
           result,
-          notes: notes.trim() || null,
+          notes: notes.trim() || (p.company_name ? `Company: ${p.company_name}` : null),
           duration_sec: null,
         },
       });
@@ -271,14 +307,17 @@ export default function TextScreen({ params }: { params: { id: string; index: st
     );
   }
 
-  const fullName = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || 'Unknown';
-  const firstName = p.first_name?.trim() || fullName;
+  const fullName = p.company_name
+    ? p.company_name
+    : `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || 'Unknown';
+  const firstName = p.company_name ?? p.first_name?.trim() ?? fullName;
+  const displayPhone = p.phone_cell ?? p.phone ?? null;
   const dispoItems = dispoConfig.texts.filter(d => d.enabled);
   const colorMap = buildColorMap(dispoConfig);
   const resultColor = result ? colorMap[result] : undefined;
 
-  const smsHref = p.phone
-    ? `sms:${encodeURIComponent(p.phone)}${script ? `?body=${encodeURIComponent(script)}` : ''}`
+  const smsHref = displayPhone
+    ? `sms:${encodeURIComponent(displayPhone)}${script ? `?body=${encodeURIComponent(script)}` : ''}`
     : null;
 
   return (
@@ -296,9 +335,9 @@ export default function TextScreen({ params }: { params: { id: string; index: st
       {/* Person card */}
       <div className="list-item" style={{ gap: 2 }}>
         <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>{fullName}</h3>
-        {p.phone && (
+        {displayPhone && (
           <p style={{ margin: "4px 0 0", fontSize: 15, color: "var(--gg-text-dim, #6b7280)" }}>
-            {p.phone}
+            {displayPhone}{p.phone_cell && p.phone && p.phone_cell !== p.phone ? ' (Cell)' : ''}
           </p>
         )}
         {p.email && (

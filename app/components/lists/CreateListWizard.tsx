@@ -8,7 +8,7 @@ import type { ColumnDef } from "@/app/api/crm/schema/route";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type AppMode = "call" | "knock" | "both" | "text";
-type Target = "people" | "households" | "locations";
+type Target = "people" | "households" | "locations" | "companies";
 type FilterOp =
   | "contains" | "equals" | "starts_with" | "not_contains"
   | "is_empty" | "not_empty"
@@ -44,6 +44,14 @@ type LocationResult = {
   state: string;
   postal_code: string;
   people_count: number;
+};
+
+type CompanyResult = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  industry: string | null;
 };
 
 type TenantUser = { id: string; email: string; name: string };
@@ -115,6 +123,13 @@ function defaultOp(dt: string): FilterOp {
 
 // Hardcoded fallback schema if API unavailable
 const FALLBACK_SCHEMA: Record<Target, ColumnDef[]> = {
+  companies: [
+    { column: "name",     label: "Company Name", data_type: "text", is_join: false },
+    { column: "phone",    label: "Phone",        data_type: "text", is_join: false },
+    { column: "email",    label: "Email",        data_type: "text", is_join: false },
+    { column: "industry", label: "Industry",     data_type: "text", is_join: false },
+    { column: "status",   label: "Status",       data_type: "text", is_join: false },
+  ],
   people: [
     { column: "first_name", label: "First Name", data_type: "text", is_join: false },
     { column: "last_name", label: "Last Name", data_type: "text", is_join: false },
@@ -253,6 +268,7 @@ const TARGET_LABELS: Record<Target, string> = {
   people: "People",
   households: "Households",
   locations: "Locations",
+  companies: "Companies",
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -272,7 +288,7 @@ export default function CreateListWizard() {
 
   // Step 2
   const [filters, setFilters] = useState<FilterRow[]>(() => [{ id: makeFilterId(), field: "first_name", op: "contains", value: "", data_type: "text" }]);
-  const [results, setResults] = useState<(PersonResult | HouseholdResult | LocationResult)[]>([]);
+  const [results, setResults] = useState<(PersonResult | HouseholdResult | LocationResult | CompanyResult)[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
   const [searchErr, setSearchErr] = useState<string | null>(null);
@@ -567,9 +583,12 @@ export default function CreateListWizard() {
           <div>
             <label style={labelStyle}>Search by</label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              {(["people", "households", "locations"] as Target[]).map((t) => (
+              {(appMode === "knock" || appMode === "both"
+                ? (["people", "households", "locations"] as Target[])
+                : (["people", "households", "locations", "companies"] as Target[])
+              ).map((t) => (
                 <button key={t} type="button" onClick={() => changeTarget(t)} style={toggleBtn(target === t)}>
-                  {t === "people" ? "👤 People" : t === "households" ? "🏠 Households" : "📍 Locations"}
+                  {t === "people" ? "👤 People" : t === "households" ? "🏠 Households" : t === "locations" ? "📍 Locations" : "🏢 Companies"}
                 </button>
               ))}
             </div>
@@ -578,6 +597,8 @@ export default function CreateListWizard() {
                 ? "Filter by name, contact type, notes, location, and more."
                 : target === "households"
                 ? "Filter households by address — adds all members to the list."
+                : target === "companies"
+                ? "Filter by company name, phone, email, or industry."
                 : "Filter by street address, city, state, or zip code."}
             </p>
           </div>
@@ -836,6 +857,22 @@ export default function CreateListWizard() {
                     </div>
                     <span style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", whiteSpace: "nowrap" }}>{l.people_count} {l.people_count === 1 ? "person" : "people"}</span>
                     {selectedIds.has(l.id) && <Check size={14} color="var(--gg-primary, #2563eb)" />}
+                  </label>
+                ))}
+
+                {target === "companies" && (results as CompanyResult[]).map((c) => (
+                  <label key={c.id} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 12, alignItems: "center", padding: "9px 16px", cursor: "pointer", borderBottom: "1px solid var(--gg-border, #f3f4f6)", background: selectedIds.has(c.id) ? "rgba(37,99,235,0.04)" : "transparent" }}>
+                    <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleId(c.id)} style={{ accentColor: "var(--gg-primary, #2563eb)", width: 15, height: 15 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{c.name || "(Unnamed company)"}</div>
+                      <div style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", marginTop: 1 }}>{[c.phone, c.email].filter(Boolean).join(" · ")}</div>
+                    </div>
+                    {c.industry && (
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 10, background: "rgba(37,99,235,0.08)", color: "var(--gg-primary, #2563eb)", whiteSpace: "nowrap" }}>
+                        {c.industry}
+                      </span>
+                    )}
+                    {selectedIds.has(c.id) && <Check size={14} color="var(--gg-primary, #2563eb)" />}
                   </label>
                 ))}
               </div>

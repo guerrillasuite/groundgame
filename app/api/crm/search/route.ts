@@ -43,7 +43,7 @@ export type FilterOp =
   | "not_in_list";
 
 export type SearchFilter = { field: string; op: FilterOp; value: string; data_type?: string };
-export type SearchTarget = "people" | "households" | "locations";
+export type SearchTarget = "people" | "households" | "locations" | "companies";
 
 // Fields that live on the locations table, resolved via join for people/households searches.
 // Any field NOT in this set is treated as a direct column on the people/households table.
@@ -393,6 +393,43 @@ export async function POST(request: NextRequest) {
         state: l.state ?? "",
         postal_code: l.postal_code ?? "",
         people_count: peopleCounts.get(l.id) ?? 0,
+      }))
+    );
+  }
+
+  // ── COMPANIES ────────────────────────────────────────────────────────────
+  if (target === "companies") {
+    let companies: any[];
+    try {
+      companies = await fetchAll(() => {
+        let q = sb
+          .from("companies")
+          .select("id, name, phone, email, industry")
+          .in("id",
+            sb.from("tenant_companies").select("company_id").eq("tenant_id", tenant.id)
+          );
+        for (const f of filters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
+        return q;
+      });
+    } catch {
+      // Fallback without tenant join in case tenant_companies doesn't exist
+      try {
+        companies = await fetchAll(() => {
+          let q = sb.from("companies").select("id, name, phone, email, industry");
+          for (const f of filters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
+          return q;
+        });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
+    return NextResponse.json(
+      companies.map((c: any) => ({
+        id: c.id,
+        name: c.name ?? null,
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+        industry: c.industry ?? null,
       }))
     );
   }
