@@ -12,6 +12,21 @@ function makeSb(tenantId: string) {
   );
 }
 
+// Paginate through all rows to bypass PostgREST's max_rows cap
+async function fetchAll(buildQuery: () => any, chunkSize = 2000): Promise<any[]> {
+  const all: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + chunkSize - 1);
+    if (error) throw new Error(error.message);
+    if (!data?.length) break;
+    all.push(...data);
+    if (data.length < chunkSize) break;
+    from += chunkSize;
+  }
+  return all;
+}
+
 function scoreRecord(r: Record<string, any>): number {
   // Higher score = more data filled in → preferred as "keep" candidate
   // lalvoteid is worth 3 points — canonical voter file identifier
@@ -30,14 +45,19 @@ export async function GET(request: Request) {
 
   // ── People duplicates ─────────────────────────────────────────────────────
   if (type === "people") {
-    const { data: people, error } = await sb
-      .from("people")
-      .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, lalvoteid, birth_date, gender, tenant_people!inner(tenant_id)")
-      .eq("tenant_people.tenant_id", tenant.id)
-      .order("last_name")
-      .order("first_name");
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    let people: any[];
+    try {
+      people = await fetchAll(() =>
+        sb
+          .from("people")
+          .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, lalvoteid, birth_date, gender, tenant_people!inner(tenant_id)")
+          .eq("tenant_people.tenant_id", tenant.id)
+          .order("last_name")
+          .order("first_name")
+      );
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
+    }
 
     // Pass 1 — records WITH a lalvoteid: bucket by voter ID (definite identity match)
     // Records with DIFFERENT lalvoteids are different people even if name is identical
