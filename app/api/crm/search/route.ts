@@ -34,7 +34,9 @@ export type FilterOp =
   | "is_empty"
   | "not_empty"
   | "greater_than"
+  | "gte"
   | "less_than"
+  | "lte"
   | "is_true"
   | "is_false";
 
@@ -84,6 +86,10 @@ function applyFilter(query: any, col: string, op: FilterOp, value: string) {
       return query.gt(col, value);
     case "less_than":
       return query.lt(col, value);
+    case "gte":
+      return query.gte(col, value);
+    case "lte":
+      return query.lte(col, value);
     case "is_true":
       return query.eq(col, true);
     case "is_false":
@@ -92,6 +98,15 @@ function applyFilter(query: any, col: string, op: FilterOp, value: string) {
       return query;
   }
 }
+
+// Fields that live on the households table (joined via people.household_id)
+const HOUSEHOLD_JOIN_FIELDS = new Set([
+  "total_persons", "adults_count", "children_count", "generations_count",
+  "household_voter_count", "household_parties", "head_of_household",
+  "household_gender", "has_senior", "has_young_adult", "has_children",
+  "is_single_parent", "has_disabled", "home_owner", "home_estimated_value",
+  "home_purchase_year", "home_dwelling_type", "home_sqft", "home_bedrooms",
+]);
 
 export async function POST(request: NextRequest) {
   const tenant = await getTenant();
@@ -109,10 +124,11 @@ export async function POST(request: NextRequest) {
 
   // ── PEOPLE ───────────────────────────────────────────────────────────────
   if (target === "people") {
-    const directFilters = filters.filter((f) => !LOCATION_JOIN_FIELDS.has(f.field));
-    const locationFilters = filters.filter((f) => LOCATION_JOIN_FIELDS.has(f.field));
+    const directFilters    = filters.filter((f) => !LOCATION_JOIN_FIELDS.has(f.field) && !HOUSEHOLD_JOIN_FIELDS.has(f.field));
+    const locationFilters  = filters.filter((f) => LOCATION_JOIN_FIELDS.has(f.field));
+    const householdFilters = filters.filter((f) => HOUSEHOLD_JOIN_FIELDS.has(f.field));
 
-    // If location filters exist, resolve to household_ids first
+    // Resolve location filters → household_ids
     let householdIdFilter: string[] | null = null;
     if (locationFilters.length > 0) {
       let locData: any[];
@@ -137,6 +153,24 @@ export async function POST(request: NextRequest) {
       if (householdIdFilter.length === 0) return NextResponse.json([]);
     }
 
+    // Resolve household filters → household_ids
+    let householdIdFilterFromHH: string[] | null = null;
+    if (householdFilters.length > 0) {
+      let hhData: any[];
+      try {
+        hhData = await fetchAll(() => {
+          let q = sb.from("households").select("id").eq("tenant_id", tenant.id);
+          for (const f of householdFilters) q = applyFilter(q, f.field, f.op, f.value);
+          return q;
+        });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+      const hhIds = hhData.map((h: any) => h.id);
+      if (hhIds.length === 0) return NextResponse.json([]);
+      householdIdFilterFromHH = hhIds;
+    }
+
     let people: any[];
     try {
       people = await fetchAll(() => {
@@ -146,6 +180,7 @@ export async function POST(request: NextRequest) {
           .eq("tenant_people.tenant_id", tenant.id);
         for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value);
         if (householdIdFilter) q = q.in("household_id", householdIdFilter);
+        if (householdIdFilterFromHH) q = q.in("household_id", householdIdFilterFromHH);
         return q;
       });
     } catch (err: any) {

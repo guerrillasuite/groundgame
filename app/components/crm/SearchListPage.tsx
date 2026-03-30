@@ -20,7 +20,7 @@ type Props = {
 
 type FilterOp =
   | "contains" | "equals" | "starts_with" | "not_contains"
-  | "is_empty" | "not_empty" | "greater_than" | "less_than"
+  | "is_empty" | "not_empty" | "greater_than" | "gte" | "less_than" | "lte"
   | "is_true" | "is_false";
 
 type FilterRow = { id: number; field: string; op: FilterOp; value: string };
@@ -30,6 +30,7 @@ type SchemaCol = {
   label: string;
   data_type: string;
   is_join: boolean;
+  table?: string;
 };
 
 // ── Operator config ────────────────────────────────────────────────────────
@@ -46,8 +47,29 @@ const TEXT_OPS: { value: FilterOp; label: string }[] = [
 const NUM_OPS: { value: FilterOp; label: string }[] = [
   { value: "equals",       label: "=" },
   { value: "greater_than", label: ">" },
+  { value: "gte",          label: "≥" },
   { value: "less_than",    label: "<" },
+  { value: "lte",          label: "≤" },
+  { value: "is_empty",     label: "is empty" },
+  { value: "not_empty",    label: "is not empty" },
 ];
+
+const ENUM_OPTIONS: Record<string, string[]> = {
+  party:            ["DEM", "REP", "IND", "NPA", "LIB", "GRN", "OTH"],
+  gender:           ["M", "F", "U"],
+  voter_status:     ["Active", "Inactive"],
+  contact_type:     ["voter", "volunteer", "donor", "staff", "other"],
+  voting_frequency: ["frequent", "occasional", "infrequent", "rare"],
+  ethnicity:        ["White", "Black", "Hispanic", "Asian", "Native American", "Other", "Unknown"],
+  marital_status:   ["Single", "Married", "Divorced", "Widowed", "Unknown"],
+  education_level:  ["Less than High School", "High School", "Some College", "College", "Graduate"],
+  income_range:     ["<25k", "25-50k", "50-75k", "75-100k", "100-150k", "150k+"],
+  absentee_type:    ["mail", "early", "in-person"],
+  home_dwelling_type: ["Single Family", "Multi Family", "Condo", "Apartment", "Mobile Home"],
+  urbanicity:       ["urban", "suburban", "rural"],
+  street_parity:    ["odd", "even"],
+  state:            ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"],
+};
 
 const BOOL_OPS: { value: FilterOp; label: string }[] = [
   { value: "is_true",  label: "is true" },
@@ -514,9 +536,23 @@ export default function SearchListPage({
                         ))}
                       </optgroup>
                     )}
-                    {schema.filter((c) => c.is_join).length > 0 && (
-                      <optgroup label="Location (joined)">
-                        {schema.filter((c) => c.is_join).map((c) => (
+                    {schema.filter((c) => c.is_join && c.table === "locations").length > 0 && (
+                      <optgroup label="Location Fields">
+                        {schema.filter((c) => c.is_join && c.table === "locations").map((c) => (
+                          <option key={c.column} value={c.column}>{c.label}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {schema.filter((c) => c.is_join && c.table === "households").length > 0 && (
+                      <optgroup label="Household Fields">
+                        {schema.filter((c) => c.is_join && c.table === "households").map((c) => (
+                          <option key={c.column} value={c.column}>{c.label}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {schema.filter((c) => c.is_join && !c.table).length > 0 && (
+                      <optgroup label="Joined Fields">
+                        {schema.filter((c) => c.is_join && !c.table).map((c) => (
                           <option key={c.column} value={c.column}>{c.label}</option>
                         ))}
                       </optgroup>
@@ -525,25 +561,41 @@ export default function SearchListPage({
                   <select value={row.op} onChange={(e) => updateFilterRow(row.id, { op: e.target.value as FilterOp })} style={selectStyle}>
                     {ops.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
-                  {!hideValue && (
-                    <input
-                      type="text"
-                      value={row.value}
-                      onChange={(e) => updateFilterRow(row.id, { value: e.target.value })}
-                      placeholder="value..."
-                      onKeyDown={(e) => { if (e.key === "Enter") runFilter(); }}
-                      style={{
-                        flex: "1 1 160px",
-                        padding: "6px 10px",
-                        border: "1px solid var(--gg-border, #e5e7eb)",
-                        borderRadius: 5,
-                        fontSize: 14,
-                        background: "var(--gg-bg, #fff)",
-                        color: "var(--gg-text, #111)",
-                        outline: "none",
-                      }}
-                    />
-                  )}
+                  {!hideValue && (() => {
+                    const enumOpts = ENUM_OPTIONS[row.field];
+                    const isNumeric = ["integer", "numeric", "bigint", "real", "double precision", "smallint", "float8"].includes(col?.data_type ?? "");
+                    if (enumOpts) {
+                      return (
+                        <select
+                          value={row.value}
+                          onChange={(e) => updateFilterRow(row.id, { value: e.target.value })}
+                          style={{ ...selectStyle, flex: "1 1 160px" }}
+                        >
+                          <option value="">— select —</option>
+                          {enumOpts.map((v) => <option key={v} value={v}>{v}</option>)}
+                        </select>
+                      );
+                    }
+                    return (
+                      <input
+                        type={isNumeric ? "number" : "text"}
+                        value={row.value}
+                        onChange={(e) => updateFilterRow(row.id, { value: e.target.value })}
+                        placeholder="value..."
+                        onKeyDown={(e) => { if (e.key === "Enter") runFilter(); }}
+                        style={{
+                          flex: "1 1 160px",
+                          padding: "6px 10px",
+                          border: "1px solid var(--gg-border, #e5e7eb)",
+                          borderRadius: 5,
+                          fontSize: 14,
+                          background: "var(--gg-bg, #fff)",
+                          color: "var(--gg-text, #111)",
+                          outline: "none",
+                        }}
+                      />
+                    );
+                  })()}
                   {filterRows.length > 1 && (
                     <button onClick={() => removeFilterRow(row.id)} title="Remove filter" style={{
                       padding: "5px 9px",
