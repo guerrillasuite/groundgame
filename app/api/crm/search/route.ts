@@ -39,7 +39,8 @@ export type FilterOp =
   | "lte"
   | "is_true"
   | "is_false"
-  | "in_list";
+  | "in_list"
+  | "not_in_list";
 
 export type SearchFilter = { field: string; op: FilterOp; value: string; data_type?: string };
 export type SearchTarget = "people" | "households" | "locations";
@@ -100,6 +101,10 @@ function applyFilter(query: any, col: string, op: FilterOp, value: string, data_
       return query.lte(col, value);
     case "in_list":
       return query.in(col, value.split(",").map((v: string) => v.trim()).filter(Boolean));
+    case "not_in_list": {
+      const vals = value.split(",").map((v: string) => v.trim()).filter(Boolean);
+      return vals.length > 0 ? query.not(col, "in", `(${vals.join(",")})`) : query;
+    }
     case "is_true":
       return query.eq(col, true);
     case "is_false":

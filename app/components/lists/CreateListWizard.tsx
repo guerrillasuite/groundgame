@@ -9,9 +9,14 @@ import type { ColumnDef } from "@/app/api/crm/schema/route";
 
 type AppMode = "call" | "knock" | "both";
 type Target = "people" | "households" | "locations";
-type FilterOp = "contains" | "equals" | "starts_with" | "not_contains" | "is_empty" | "not_empty" | "greater_than" | "less_than";
+type FilterOp =
+  | "contains" | "equals" | "starts_with" | "not_contains"
+  | "is_empty" | "not_empty"
+  | "greater_than" | "gte" | "less_than" | "lte"
+  | "is_true" | "is_false"
+  | "in_list" | "not_in_list";
 
-type FilterRow = { id: string; field: string; op: FilterOp; value: string };
+type FilterRow = { id: string; field: string; op: FilterOp; value: string; data_type: string };
 
 type PersonResult = {
   id: string;
@@ -46,27 +51,65 @@ type TenantUser = { id: string; email: string; name: string };
 // ─── Field / Op helpers (schema-driven) ──────────────────────────────────────
 
 const TEXT_OPS: { value: FilterOp; label: string }[] = [
-  { value: "contains", label: "Contains" },
-  { value: "equals", label: "Is" },
-  { value: "starts_with", label: "Starts with" },
-  { value: "not_contains", label: "Does not contain" },
-  { value: "is_empty", label: "Is empty" },
-  { value: "not_empty", label: "Is not empty" },
+  { value: "contains",     label: "contains" },
+  { value: "equals",       label: "equals" },
+  { value: "in_list",      label: "is any of" },
+  { value: "not_in_list",  label: "is none of" },
+  { value: "starts_with",  label: "starts with" },
+  { value: "not_contains", label: "does not contain" },
+  { value: "is_empty",     label: "is empty" },
+  { value: "not_empty",    label: "is not empty" },
 ];
 
 const NUM_OPS: { value: FilterOp; label: string }[] = [
-  { value: "equals", label: "Equals" },
-  { value: "greater_than", label: "Greater than" },
-  { value: "less_than", label: "Less than" },
+  { value: "equals",       label: "=" },
+  { value: "greater_than", label: ">" },
+  { value: "gte",          label: "≥" },
+  { value: "less_than",    label: "<" },
+  { value: "lte",          label: "≤" },
+  { value: "is_empty",     label: "is empty" },
+  { value: "not_empty",    label: "is not empty" },
 ];
 
+const BOOL_OPS: { value: FilterOp; label: string }[] = [
+  { value: "is_true",  label: "is true" },
+  { value: "is_false", label: "is false" },
+];
+
+const ENUM_OPTIONS: Record<string, string[]> = {
+  party:            ["DEM", "REP", "IND", "NPA", "LIB", "GRN", "OTH"],
+  gender:           ["M", "F", "U"],
+  voter_status:     ["Active", "Inactive"],
+  contact_type:     ["voter", "volunteer", "donor", "staff", "other"],
+  voting_frequency: ["frequent", "occasional", "infrequent", "rare"],
+  ethnicity:        ["White", "Black", "Hispanic", "Asian", "Native American", "Other", "Unknown"],
+  marital_status:   ["Single", "Married", "Divorced", "Widowed", "Unknown"],
+  education_level:  ["Less than High School", "High School", "Some College", "College", "Graduate"],
+  income_range:     ["<25k", "25-50k", "50-75k", "75-100k", "100-150k", "150k+"],
+  absentee_type:    ["mail", "early", "in-person"],
+  home_dwelling_type: ["Single Family", "Multi Family", "Condo", "Apartment", "Mobile Home"],
+  urbanicity:       ["urban", "suburban", "rural"],
+  street_parity:    ["odd", "even"],
+  state:            ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"],
+};
+
+const NUMERIC_TYPES = new Set([
+  "integer", "int", "int2", "int4", "int8",
+  "bigint", "smallint", "numeric", "decimal",
+  "real", "float4", "float8", "double precision",
+]);
+
+function isNumericType(dt: string) { return NUMERIC_TYPES.has(dt); }
+
 function opsForType(dt: string): { value: FilterOp; label: string }[] {
-  if (dt === "integer" || dt === "numeric" || dt === "bigint") return NUM_OPS;
+  if (dt === "boolean") return BOOL_OPS;
+  if (isNumericType(dt)) return NUM_OPS;
   return TEXT_OPS;
 }
 
 function defaultOp(dt: string): FilterOp {
-  if (dt === "integer" || dt === "numeric" || dt === "bigint") return "equals";
+  if (dt === "boolean") return "is_true";
+  if (isNumericType(dt)) return "equals";
   return "contains";
 }
 
@@ -197,7 +240,7 @@ function initials(name: string) {
     .slice(0, 2);
 }
 
-const NO_VALUE_OPS: FilterOp[] = ["is_empty", "not_empty"];
+const NO_VALUE_OPS: FilterOp[] = ["is_empty", "not_empty", "is_true", "is_false"];
 
 const MODE_LABELS: Record<AppMode, string> = {
   call: "Dials (Call List)",
@@ -226,7 +269,7 @@ export default function CreateListWizard() {
   const [schemaLoading, setSchemaLoading] = useState(false);
 
   // Step 2
-  const [filters, setFilters] = useState<FilterRow[]>(() => [{ id: makeFilterId(), field: "first_name", op: "contains", value: "" }]);
+  const [filters, setFilters] = useState<FilterRow[]>(() => [{ id: makeFilterId(), field: "first_name", op: "contains", value: "", data_type: "text" }]);
   const [results, setResults] = useState<(PersonResult | HouseholdResult | LocationResult)[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
@@ -276,9 +319,11 @@ export default function CreateListWizard() {
     setSearchErr(null);
     const fallback = FALLBACK_SCHEMA[t];
     setSchema(fallback);
-    setFilters([{ id: makeFilterId(), field: fallback[0]?.column ?? "", op: defaultOp(fallback[0]?.data_type ?? "text"), value: "" }]);
+    const fb0dt = fallback[0]?.data_type ?? "text";
+    setFilters([{ id: makeFilterId(), field: fallback[0]?.column ?? "", op: defaultOp(fb0dt), value: "", data_type: fb0dt }]);
     loadSchema(t).then((cols) => {
-      setFilters([{ id: makeFilterId(), field: cols[0]?.column ?? "", op: defaultOp(cols[0]?.data_type ?? "text"), value: "" }]);
+      const c0dt = cols[0]?.data_type ?? "text";
+      setFilters([{ id: makeFilterId(), field: cols[0]?.column ?? "", op: defaultOp(c0dt), value: "", data_type: c0dt }]);
     });
   }
 
@@ -312,7 +357,7 @@ export default function CreateListWizard() {
   function addFilter() {
     const first = schema[0];
     if (!first) return;
-    setFilters((prev) => [...prev, { id: makeFilterId(), field: first.column, op: defaultOp(first.data_type), value: "" }]);
+    setFilters((prev) => [...prev, { id: makeFilterId(), field: first.column, op: defaultOp(first.data_type), value: "", data_type: first.data_type }]);
   }
 
   function removeFilter(id: string) {
@@ -326,7 +371,9 @@ export default function CreateListWizard() {
         const next = { ...f, ...patch };
         if (patch.field && patch.field !== f.field) {
           const def = schema.find((c) => c.column === patch.field);
-          next.op = defaultOp(def?.data_type ?? "text");
+          next.data_type = def?.data_type ?? "text";
+          next.op = defaultOp(next.data_type);
+          next.value = "";
         }
         return next;
       })
@@ -347,7 +394,7 @@ export default function CreateListWizard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           target,
-          filters: filters.filter((f) => f.field).map(({ field, op, value }) => ({ field, op, value })),
+          filters: filters.filter((f) => f.field).map(({ field, op, value, data_type }) => ({ field, op, value, data_type })),
         }),
       });
       const data = await res.json();
@@ -598,14 +645,76 @@ export default function CreateListWizard() {
                         <div style={{ ...inputStyle, background: "var(--gg-bg, #f9fafb)", color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>
                           (no value)
                         </div>
-                      ) : (
-                        <input
-                          style={inputStyle}
-                          value={f.value}
-                          onChange={(e) => updateFilter(f.id, { value: e.target.value })}
-                          placeholder="Filter value…"
-                        />
-                      )}
+                      ) : (() => {
+                        const enumOpts = ENUM_OPTIONS[f.field];
+                        const numeric = isNumericType(f.data_type ?? "text");
+                        if (f.op === "in_list" || f.op === "not_in_list") {
+                          const isExclude = f.op === "not_in_list";
+                          const activeColor = isExclude ? "#dc2626" : "var(--gg-primary, #2563eb)";
+                          if (enumOpts) {
+                            const selected = new Set(f.value.split(",").map((v) => v.trim()).filter(Boolean));
+                            return (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {enumOpts.map((v) => {
+                                  const on = selected.has(v);
+                                  return (
+                                    <button
+                                      key={v}
+                                      type="button"
+                                      onClick={() => {
+                                        const next = new Set(selected);
+                                        if (on) next.delete(v); else next.add(v);
+                                        updateFilter(f.id, { value: [...next].join(",") });
+                                      }}
+                                      style={{
+                                        padding: "4px 10px",
+                                        borderRadius: 5,
+                                        border: `1px solid ${on ? activeColor : "var(--gg-border, #e5e7eb)"}`,
+                                        background: on ? (isExclude ? "rgba(220,38,38,0.08)" : "rgba(37,99,235,0.08)") : "var(--gg-input, white)",
+                                        color: on ? activeColor : "var(--gg-text-dim, #6b7280)",
+                                        fontSize: 13,
+                                        fontWeight: on ? 600 : 400,
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      {v}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            );
+                          }
+                          return (
+                            <input
+                              style={inputStyle}
+                              value={f.value}
+                              onChange={(e) => updateFilter(f.id, { value: e.target.value })}
+                              placeholder="value1, value2, …"
+                            />
+                          );
+                        }
+                        if (enumOpts) {
+                          return (
+                            <select
+                              value={f.value}
+                              onChange={(e) => updateFilter(f.id, { value: e.target.value })}
+                              style={selectStyle}
+                            >
+                              <option value="">— select —</option>
+                              {enumOpts.map((v) => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          );
+                        }
+                        return (
+                          <input
+                            type={numeric ? "number" : "text"}
+                            style={inputStyle}
+                            value={f.value}
+                            onChange={(e) => updateFilter(f.id, { value: e.target.value })}
+                            placeholder="Filter value…"
+                          />
+                        );
+                      })()}
                     </div>
 
                     <button

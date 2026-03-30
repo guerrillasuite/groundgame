@@ -21,7 +21,7 @@ type Props = {
 type FilterOp =
   | "contains" | "equals" | "starts_with" | "not_contains"
   | "is_empty" | "not_empty" | "greater_than" | "gte" | "less_than" | "lte"
-  | "is_true" | "is_false" | "in_list";
+  | "is_true" | "is_false" | "in_list" | "not_in_list";
 
 type FilterRow = { id: number; field: string; op: FilterOp; value: string; data_type: string };
 
@@ -39,6 +39,7 @@ const TEXT_OPS: { value: FilterOp; label: string }[] = [
   { value: "contains",     label: "contains" },
   { value: "equals",       label: "equals" },
   { value: "in_list",      label: "is any of" },
+  { value: "not_in_list",  label: "is none of" },
   { value: "starts_with",  label: "starts with" },
   { value: "not_contains", label: "does not contain" },
   { value: "is_empty",     label: "is empty" },
@@ -577,13 +578,15 @@ export default function SearchListPage({
                     const enumOpts = ENUM_OPTIONS[row.field];
                     const isNumeric = isNumericType(col?.data_type ?? "");
                     // Multi-value "is any of" — chips for enum, comma-text for free fields
-                    if (row.op === "in_list") {
+                    if (row.op === "in_list" || row.op === "not_in_list") {
+                      const isExclude = row.op === "not_in_list";
                       if (enumOpts) {
                         const selected = new Set(row.value.split(",").map((v) => v.trim()).filter(Boolean));
                         return (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flex: "1 1 200px" }}>
                             {enumOpts.map((v) => {
                               const on = selected.has(v);
+                              const activeColor = isExclude ? "#dc2626" : "var(--gg-primary, #2563eb)";
                               return (
                                 <button
                                   key={v}
@@ -596,9 +599,9 @@ export default function SearchListPage({
                                   style={{
                                     padding: "3px 9px",
                                     borderRadius: 4,
-                                    border: `1px solid ${on ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
-                                    background: on ? "rgba(37,99,235,0.1)" : "var(--gg-bg, #fff)",
-                                    color: on ? "var(--gg-primary, #2563eb)" : "var(--gg-text-dim, #6b7280)",
+                                    border: `1px solid ${on ? activeColor : "var(--gg-border, #e5e7eb)"}`,
+                                    background: on ? (isExclude ? "rgba(220,38,38,0.1)" : "rgba(37,99,235,0.1)") : "var(--gg-bg, #fff)",
+                                    color: on ? activeColor : "var(--gg-text-dim, #6b7280)",
                                     fontSize: 12,
                                     fontWeight: on ? 600 : 400,
                                     cursor: "pointer",
