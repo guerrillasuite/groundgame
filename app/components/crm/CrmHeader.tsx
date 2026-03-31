@@ -43,9 +43,10 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
 
   // Data: show dropdown if any child is enabled
   const dataItems: NavItem[] = [];
-  if (f("crm_import"))  dataItems.push({ href: "/crm/import",   label: "Import" });
-  if (f("crm_dedupe"))  dataItems.push({ href: "/crm/dedupe",   label: "Dedupe" });
-  if (f("crm_cleanup")) dataItems.push({ href: "/crm/cleanup",  label: "Cleanup" });
+  if (f("crm_import"))  dataItems.push({ href: "/crm/import",     label: "Import" });
+  if (f("crm_dedupe"))  dataItems.push({ href: "/crm/dedupe",     label: "Dedupe" });
+  if (f("crm_cleanup")) dataItems.push({ href: "/crm/cleanup",    label: "Cleanup" });
+  if (f("crm"))         dataItems.push({ href: "/crm/bulk-edit",  label: "Bulk Edit" });
   if (dataItems.length > 0) nav.push({ label: "Data", items: dataItems });
 
   // Settings: always show; Pipeline Stages only with crm_opportunities; Tenants for superadmin only

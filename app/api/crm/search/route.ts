@@ -414,7 +414,7 @@ export async function POST(request: NextRequest) {
     let companies: any[];
     try {
       companies = await fetchAll(() => {
-        let q = sb.from("companies").select("id, name, phone, email, industry");
+        let q = sb.from("companies").select("id, name, phone, email, industry, domain, status");
         if (tenantCompanyIds && tenantCompanyIds.length > 0) q = q.in("id", tenantCompanyIds);
         for (const f of filters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
         return q;
@@ -429,6 +429,8 @@ export async function POST(request: NextRequest) {
         phone: c.phone ?? null,
         email: c.email ?? null,
         industry: c.industry ?? null,
+        domain: c.domain ?? null,
+        status: c.status ?? null,
       }))
     );
   }
