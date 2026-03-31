@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
       people = await fetchAll(() => {
         let q = sb
           .from("people")
-          .select("id, first_name, last_name, email, phone, contact_type, household_id, tenant_people!inner(tenant_id)")
+          .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, tenant_people!inner(tenant_id)")
           .eq("tenant_people.tenant_id", tenant.id);
         for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
         if (finalPersonIdFilter) q = q.in("id", finalPersonIdFilter);
@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
       first_name: p.first_name,
       last_name: p.last_name,
       email: p.email,
-      phone: p.phone,
+      phone: p.phone_cell ? `C: ${p.phone_cell}` : p.phone_landline ? `L: ${p.phone_landline}` : (p.phone ?? ""),
       contact_type: p.contact_type,
     }));
 
@@ -399,29 +399,28 @@ export async function POST(request: NextRequest) {
 
   // ── COMPANIES ────────────────────────────────────────────────────────────
   if (target === "companies") {
+    // Resolve company IDs scoped to this tenant via tenant_companies
+    let tenantCompanyIds: string[] | null = null;
+    try {
+      const { data: tcRows } = await sb
+        .from("tenant_companies")
+        .select("company_id")
+        .eq("tenant_id", tenant.id);
+      tenantCompanyIds = (tcRows ?? []).map((r: any) => r.company_id).filter(Boolean);
+    } catch {
+      // tenant_companies may not exist — skip scoping
+    }
+
     let companies: any[];
     try {
       companies = await fetchAll(() => {
-        let q = sb
-          .from("companies")
-          .select("id, name, phone, email, industry")
-          .in("id",
-            sb.from("tenant_companies").select("company_id").eq("tenant_id", tenant.id)
-          );
+        let q = sb.from("companies").select("id, name, phone, email, industry");
+        if (tenantCompanyIds && tenantCompanyIds.length > 0) q = q.in("id", tenantCompanyIds);
         for (const f of filters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
         return q;
       });
-    } catch {
-      // Fallback without tenant join in case tenant_companies doesn't exist
-      try {
-        companies = await fetchAll(() => {
-          let q = sb.from("companies").select("id, name, phone, email, industry");
-          for (const f of filters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
-          return q;
-        });
-      } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
-      }
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 500 });
     }
     return NextResponse.json(
       companies.map((c: any) => ({

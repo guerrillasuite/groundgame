@@ -173,7 +173,7 @@ export default async function ListDetail({
   if (personIds.length || modeLower === "call" || modeLower === "text") {
     // Fetch all people by ID using chunked queries (bypasses PostgREST 1000-row cap)
     const ppl = await queryInChunks(
-      sb, "people", "id,first_name,last_name,phone,email", "id", personIds,
+      sb, "people", "id,first_name,last_name,phone,phone_cell,phone_landline,email", "id", personIds,
       (q) => q.eq("tenant_id", tenant.id)
     );
     peopleRows = ppl.map((p: any) => {
@@ -181,7 +181,7 @@ export default async function ListDetail({
       return {
         id: p.id,
         name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
-        phone: p.phone ?? "",
+        phone: p.phone_cell ? `C: ${p.phone_cell}` : p.phone_landline ? `L: ${p.phone_landline}` : (p.phone ?? ""),
         email: p.email ?? "",
         _color: result ? colorMap[result] : undefined,
       };
@@ -252,7 +252,8 @@ export default async function ListDetail({
           if (!name) return;
           const arr = peopleByLocId.get(locId) ?? [];
           if (!arr.some(x => x.name === name)) {
-            arr.push({ name, phone: p.phone ?? "" });
+            const phone = p.phone_cell ? `C: ${p.phone_cell}` : p.phone_landline ? `L: ${p.phone_landline}` : (p.phone ?? "");
+            arr.push({ name, phone });
           }
           peopleByLocId.set(locId, arr);
         };
@@ -261,7 +262,7 @@ export default async function ListDetail({
         const directPeople = await queryInChunks(
           sb,
           "people",
-          "first_name, last_name, phone, household_id",
+          "first_name, last_name, phone, phone_cell, phone_landline, household_id",
           "household_id",
           hhIds2,
           (q) => q.eq("tenant_id", tenant.id)
@@ -286,7 +287,7 @@ export default async function ListDetail({
           const phPeople = await queryInChunks(
             sb,
             "people",
-            "id, first_name, last_name, phone",
+            "id, first_name, last_name, phone, phone_cell, phone_landline",
             "id",
             phPersonIds
           );

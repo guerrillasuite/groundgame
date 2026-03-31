@@ -36,12 +36,12 @@ export async function GET(request: Request) {
   const buildQuery = () => {
     let query = sb
       .from("people")
-      .select("id, first_name, last_name, email, phone, contact_type, tenant_people!inner(tenant_id)")
+      .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, tenant_people!inner(tenant_id)")
       .eq("tenant_people.tenant_id", tenant.id)
       .order("last_name", { ascending: true })
       .order("first_name", { ascending: true });
     if (like) {
-      query = query.or(`first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`);
+      query = query.or(`first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like},phone_cell.ilike.${like},phone_landline.ilike.${like}`);
     }
     return query;
   };
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     id: p.id,
     name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "—",
     email: p.email ?? "",
-    phone: p.phone ?? "",
+    phone: p.phone_cell ? `C: ${p.phone_cell}` : p.phone_landline ? `L: ${p.phone_landline}` : (p.phone ?? ""),
     contact_type: p.contact_type ?? "",
   }));
 
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
   let query = sb
     .from("people")
-    .select("id, first_name, last_name, email, phone, contact_type, tenant_people!inner(tenant_id)")
+    .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, tenant_people!inner(tenant_id)")
     .eq("tenant_people.tenant_id", tenant.id)
     .limit(10000);
 
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
         // Re-query people scoped to matching households
         let personQuery = sb
           .from("people")
-          .select("id, first_name, last_name, email, phone, contact_type, tenant_people!inner(tenant_id)")
+          .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, tenant_people!inner(tenant_id)")
           .eq("tenant_people.tenant_id", tenant.id)
           .in("household_id", [...hhIds])
           .limit(10000);
@@ -146,5 +146,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json(results);
+  return NextResponse.json(results.map((p: any) => ({
+    id: p.id,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    email: p.email,
+    phone: p.phone_cell ? `C: ${p.phone_cell}` : p.phone_landline ? `L: ${p.phone_landline}` : (p.phone ?? ""),
+    contact_type: p.contact_type,
+  })));
 }
