@@ -6,6 +6,7 @@ import KnockSurvey from "@/app/components/KnockSurvey";
 import ScheduleReminderSheet from "@/app/components/ScheduleReminderSheet";
 import { supabase } from "@/lib/supabase/client";
 import { buildColorMap, DEFAULT_DISPO_CONFIG, type DispositionConfig } from "@/lib/dispositionConfig";
+import { ProfilePanel, type PersonProfile } from "@/app/components/pwa/ProfilePanel";
 
 /* ------------------------------------------------
    Types & constants
@@ -66,11 +67,7 @@ export default function KnockStep() {
 
   // Profile panel
   const [showProfile, setShowProfile] = useState(false);
-  const [profileDetails, setProfileDetails] = useState<{
-    phone?: string | null; phone_cell?: string | null; phone_landline?: string | null;
-    email?: string | null; occupation_title?: string | null; company_name?: string | null;
-    notes?: string | null; household_name?: string | null; mailing_address?: string | null;
-  } | null>(null);
+  const [profileDetails, setProfileDetails] = useState<PersonProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
   // Photo
@@ -158,12 +155,25 @@ export default function KnockStep() {
       try {
         const { data: pd } = await supabase
           .from('people')
-          .select('phone, phone_cell, phone_landline, email, occupation_title, company_name, notes, household_id, mailing_address')
+          .select('phone, phone_cell, phone_landline, email, occupation_title, company_name, notes, household_id, mailing_address, birth_date, age, gender, party, voter_status, voting_frequency, likelihood_to_vote, contact_type, do_not_call')
           .eq('id', personId)
           .maybeSingle();
 
-        // Resolve household name (the address is already shown in the location card)
+        // Custom fields (best-effort)
+        let custom_data: Record<string, any> | null = null;
+        try {
+          const { data: tp } = await supabase
+            .from('tenant_people')
+            .select('custom_data')
+            .eq('person_id', personId)
+            .limit(1)
+            .maybeSingle();
+          custom_data = tp?.custom_data ?? null;
+        } catch {}
+
+        // Resolve household name + address
         let household_name: string | null = null;
+        let address: string | null = null;
         let hhId: string | null = pd?.household_id ?? null;
         if (!hhId) {
           const { data: ph } = await supabase
@@ -177,13 +187,24 @@ export default function KnockStep() {
         if (hhId) {
           const { data: hh } = await supabase
             .from('households')
-            .select('name')
+            .select('name, location_id')
             .eq('id', hhId)
             .maybeSingle();
           household_name = hh?.name ?? null;
+          if (hh?.location_id) {
+            const { data: loc } = await supabase
+              .from('locations')
+              .select('normalized_key, address_line1, city, state, postal_code')
+              .eq('id', hh.location_id)
+              .maybeSingle();
+            if (loc) {
+              address = loc.normalized_key ||
+                [loc.address_line1, loc.city, loc.state, loc.postal_code].filter(Boolean).join(', ');
+            }
+          }
         }
 
-        if (!cancelled) setProfileDetails({ ...pd, household_name });
+        if (!cancelled) setProfileDetails({ ...pd, household_name, address, custom_data });
       } catch {
         if (!cancelled) setProfileDetails({});
       } finally {
@@ -535,36 +556,8 @@ export default function KnockStep() {
 
         {/* Profile tab content */}
         {showProfile && (
-          <div style={{ padding: '14px 0', display: 'grid', gap: 12, fontSize: 13 }}>
-            {profileLoading && <p style={{ opacity: 0.5 }}>Loading…</p>}
-            {!profileLoading && profileDetails && (() => {
-              const d = profileDetails;
-              const phones = [d.phone, d.phone_cell, d.phone_landline].filter(Boolean);
-              const hasAny = d.household_name || d.mailing_address || phones.length ||
-                d.email || d.occupation_title || d.company_name || d.notes;
-              const row = (label: string, val: string) => (
-                <div key={label}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>{label}</div>
-                  <div style={{ lineHeight: 1.5 }}>{val}</div>
-                </div>
-              );
-              return (
-                <>
-                  {!hasAny && <p style={{ opacity: 0.5 }}>No additional details on file.</p>}
-                  {d.household_name && row('Household', d.household_name)}
-                  {(d.occupation_title || d.company_name) && row('Role', [d.occupation_title, d.company_name].filter(Boolean).join(' · '))}
-                  {phones.length > 0 && row('Phone', phones.join(' / '))}
-                  {d.email && row('Email', d.email)}
-                  {d.mailing_address && row('Mailing Address', d.mailing_address)}
-                  {d.notes && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.5, marginBottom: 2 }}>Notes</div>
-                      <div style={{ lineHeight: 1.6, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{d.notes}</div>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+          <div style={{ padding: '14px 0' }}>
+            <ProfilePanel profile={profileDetails} loading={profileLoading} />
           </div>
         )}
 

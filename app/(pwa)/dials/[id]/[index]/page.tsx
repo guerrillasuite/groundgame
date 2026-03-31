@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from "@/lib/supabase/client";
 import KnockSurvey from "@/app/components/KnockSurvey";
 import { buildColorMap, DEFAULT_DISPO_CONFIG, type DispositionConfig } from "@/lib/dispositionConfig";
+import { ProfilePanel, type PersonProfile } from "@/app/components/pwa/ProfilePanel";
 // Callback reminder state is inline (date/time inputs revealed on call_back result)
 
 type Person = {
@@ -172,12 +173,7 @@ export default function CallScreen({ params }: { params: { id: string; index: st
   const [callbackNote, setCallbackNote] = useState('');
 
   const [showProfile, setShowProfile] = useState(false);
-  const [dialProfile, setDialProfile] = useState<{
-    phone?: string | null; phone_cell?: string | null; phone_landline?: string | null;
-    email?: string | null; occupation_title?: string | null; company_name?: string | null;
-    notes?: string | null; household_name?: string | null;
-    address?: string | null; mailing_address?: string | null;
-  } | null>(null);
+  const [dialProfile, setDialProfile] = useState<PersonProfile | null>(null);
   const [dialProfileLoading, setDialProfileLoading] = useState(false);
 
   // Reset when moving to a different target
@@ -377,14 +373,47 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     setDialProfileLoading(true);
     (async () => {
       try {
-        // 1) Person detail
+        // Company item: fetch company details
+        if (person.company_id && !person.person_id) {
+          const { data: co } = await supabase
+            .from('companies')
+            .select('name, phone, email, industry, domain, status, presence')
+            .eq('id', person.company_id)
+            .maybeSingle();
+          if (!cancelled) setDialProfile({
+            phone: co?.phone ?? null,
+            email: co?.email ?? null,
+            company_name: co?.name ?? null,
+            industry: co?.industry ?? null,
+            domain: co?.domain ?? null,
+            status: co?.status ?? null,
+            presence: co?.presence ?? null,
+          });
+          return;
+        }
+
+        if (!person.person_id) { if (!cancelled) setDialProfile({}); return; }
+
+        // 1) Person detail (extended fields)
         const { data: pd } = await supabase
           .from('people')
-          .select('phone, phone_cell, phone_landline, email, occupation_title, company_name, notes, household_id, mailing_address')
+          .select('phone, phone_cell, phone_landline, email, occupation_title, company_name, notes, household_id, mailing_address, birth_date, age, gender, party, voter_status, voting_frequency, likelihood_to_vote, contact_type, do_not_call')
           .eq('id', person.person_id)
           .maybeSingle();
 
-        // 2) Household name + address via household_id or person_households fallback
+        // 2) Custom fields (best-effort)
+        let custom_data: Record<string, any> | null = null;
+        try {
+          const { data: tp } = await supabase
+            .from('tenant_people')
+            .select('custom_data')
+            .eq('person_id', person.person_id)
+            .limit(1)
+            .maybeSingle();
+          custom_data = tp?.custom_data ?? null;
+        } catch {}
+
+        // 3) Household name + address via household_id or person_households fallback
         let hhId: string | null = pd?.household_id ?? null;
         if (!hhId) {
           const { data: ph } = await supabase
@@ -418,7 +447,7 @@ export default function CallScreen({ params }: { params: { id: string; index: st
           }
         }
 
-        if (!cancelled) setDialProfile({ ...pd, household_name, address });
+        if (!cancelled) setDialProfile({ ...pd, household_name, address, custom_data });
       } catch {
         if (!cancelled) setDialProfile({});
       } finally {
@@ -654,36 +683,8 @@ export default function CallScreen({ params }: { params: { id: string; index: st
 
         {/* Profile tab */}
         {showProfile && (
-          <div style={{ display: 'grid', gap: 12, fontSize: 13 }}>
-            {dialProfileLoading && <p className="muted">Loading…</p>}
-            {!dialProfileLoading && dialProfile && (() => {
-              const d = dialProfile;
-              const phones = [d.phone, d.phone_cell, d.phone_landline].filter(Boolean);
-              const hasAny = d.address || d.mailing_address || d.household_name ||
-                phones.length || d.email || d.occupation_title || d.company_name || d.notes;
-              const row = (label: string, val: string) => (
-                <div key={label}>
-                  <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{label}</div>
-                  <div style={{ lineHeight: 1.5 }}>{val}</div>
-                </div>
-              );
-              return (
-                <>
-                  {!hasAny && <p className="muted">No additional details on file.</p>}
-                  {d.household_name && row('Household', d.household_name)}
-                  {(d.address || d.mailing_address) && row('Address', (d.address || d.mailing_address)!)}
-                  {(d.occupation_title || d.company_name) && row('Role', [d.occupation_title, d.company_name].filter(Boolean).join(' · '))}
-                  {phones.length > 0 && row('Phone', phones.join(' / '))}
-                  {d.email && row('Email', d.email)}
-                  {d.notes && (
-                    <div>
-                      <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Notes</div>
-                      <div style={{ lineHeight: 1.6, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{d.notes}</div>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+          <div style={{ paddingTop: 4 }}>
+            <ProfilePanel profile={dialProfile} loading={dialProfileLoading} />
           </div>
         )}
 

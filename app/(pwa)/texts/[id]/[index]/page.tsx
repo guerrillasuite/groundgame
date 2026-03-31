@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from "@/lib/supabase/client";
 import { buildColorMap, DEFAULT_DISPO_CONFIG, type DispositionConfig } from "@/lib/dispositionConfig";
+import { ProfilePanel, type PersonProfile } from "@/app/components/pwa/ProfilePanel";
 
 type Person = {
   person_id: string | null;
@@ -64,12 +65,18 @@ export default function TextScreen({ params }: { params: { id: string; index: st
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const [showProfile, setShowProfile] = useState(false);
+  const [textProfile, setTextProfile] = useState<PersonProfile | null>(null);
+  const [textProfileLoading, setTextProfileLoading] = useState(false);
+
   // Reset form state on person change
   useEffect(() => {
     setResult('');
     setNotes('');
     setCopied(false);
     setLastStop(null);
+    setShowProfile(false);
+    setTextProfile(null);
   }, [idx]);
 
   // Load people list
@@ -238,6 +245,99 @@ export default function TextScreen({ params }: { params: { id: string; index: st
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [people, idx, params.id]);
 
+  // Lazy-fetch rich profile when Profile tab is opened
+  useEffect(() => {
+    if (!showProfile || !people) return;
+    const person = people[idx];
+    if (!person || textProfile) return;
+    let cancelled = false;
+    setTextProfileLoading(true);
+    (async () => {
+      try {
+        // Company item
+        if (person.company_id && !person.person_id) {
+          const { data: co } = await supabase
+            .from('companies')
+            .select('name, phone, email, industry, domain, status, presence')
+            .eq('id', person.company_id)
+            .maybeSingle();
+          if (!cancelled) setTextProfile({
+            phone: co?.phone ?? null,
+            email: co?.email ?? null,
+            company_name: co?.name ?? null,
+            industry: co?.industry ?? null,
+            domain: co?.domain ?? null,
+            status: co?.status ?? null,
+            presence: co?.presence ?? null,
+          });
+          return;
+        }
+
+        if (!person.person_id) { if (!cancelled) setTextProfile({}); return; }
+
+        // Extended person detail
+        const { data: pd } = await supabase
+          .from('people')
+          .select('phone, phone_cell, phone_landline, email, occupation_title, company_name, notes, household_id, mailing_address, birth_date, age, gender, party, voter_status, voting_frequency, likelihood_to_vote, contact_type, do_not_call')
+          .eq('id', person.person_id)
+          .maybeSingle();
+
+        // Custom fields (best-effort)
+        let custom_data: Record<string, any> | null = null;
+        try {
+          const { data: tp } = await supabase
+            .from('tenant_people')
+            .select('custom_data')
+            .eq('person_id', person.person_id)
+            .limit(1)
+            .maybeSingle();
+          custom_data = tp?.custom_data ?? null;
+        } catch {}
+
+        // Household + address
+        let hhId: string | null = pd?.household_id ?? null;
+        if (!hhId) {
+          const { data: ph } = await supabase
+            .from('person_households')
+            .select('household_id')
+            .eq('person_id', person.person_id)
+            .limit(1)
+            .maybeSingle();
+          hhId = ph?.household_id ?? null;
+        }
+        let household_name: string | null = null;
+        let address: string | null = null;
+        if (hhId) {
+          const { data: hh } = await supabase
+            .from('households')
+            .select('name, location_id')
+            .eq('id', hhId)
+            .maybeSingle();
+          household_name = hh?.name ?? null;
+          if (hh?.location_id) {
+            const { data: loc } = await supabase
+              .from('locations')
+              .select('normalized_key, address_line1, city, state, postal_code')
+              .eq('id', hh.location_id)
+              .maybeSingle();
+            if (loc) {
+              address = loc.normalized_key ||
+                [loc.address_line1, loc.city, loc.state, loc.postal_code].filter(Boolean).join(', ');
+            }
+          }
+        }
+
+        if (!cancelled) setTextProfile({ ...pd, household_name, address, custom_data });
+      } catch {
+        if (!cancelled) setTextProfile({});
+      } finally {
+        if (!cancelled) setTextProfileLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showProfile, idx]);
+
   const p = useMemo(() => (people && people[idx]) || null, [people, idx]);
 
   async function saveAndNext() {
@@ -332,7 +432,7 @@ export default function TextScreen({ params }: { params: { id: string; index: st
         </span>
       </div>
 
-      {/* Person card */}
+      {/* Person card — always visible */}
       <div className="list-item" style={{ gap: 2 }}>
         <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>{fullName}</h3>
         {displayPhone && (
@@ -345,7 +445,45 @@ export default function TextScreen({ params }: { params: { id: string; index: st
             {p.email}
           </p>
         )}
+
+        {/* Tab strip */}
+        <div style={{ display: 'flex', gap: 6, marginTop: 14, borderBottom: '1px solid rgba(255,255,255,.08)', paddingBottom: 12 }}>
+          <button
+            type="button"
+            onClick={() => setShowProfile(false)}
+            style={{
+              flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: !showProfile ? 'rgba(96,165,250,.18)' : 'transparent',
+              color: !showProfile ? '#60A5FA' : 'rgba(255,255,255,.5)',
+              fontWeight: !showProfile ? 700 : 400, fontSize: 13,
+            }}
+          >
+            💬 Text
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowProfile(true)}
+            style={{
+              flex: 1, padding: '7px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: showProfile ? 'rgba(96,165,250,.18)' : 'transparent',
+              color: showProfile ? '#60A5FA' : 'rgba(255,255,255,.5)',
+              fontWeight: showProfile ? 700 : 400, fontSize: 13,
+            }}
+          >
+            👤 Profile
+          </button>
+        </div>
       </div>
+
+      {/* Profile tab */}
+      {showProfile && (
+        <div style={{ paddingTop: 4 }}>
+          <ProfilePanel profile={textProfile} loading={textProfileLoading} />
+        </div>
+      )}
+
+      {/* Text tab content */}
+      {!showProfile && (<>
 
       {/* Script card */}
       {script && (
@@ -512,6 +650,8 @@ export default function TextScreen({ params }: { params: { id: string; index: st
           {saving ? "Saving…" : "Save & Next"}
         </button>
       </div>
+
+      </>)}
     </div>
   );
 }
