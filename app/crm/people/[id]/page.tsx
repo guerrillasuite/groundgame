@@ -5,6 +5,7 @@ import { getTenant } from "@/lib/tenant";
 import { hasFeature } from "@/lib/features";
 import EditButton from "@/app/crm/_shared/EditButton";
 import { updateRowAction } from "@/app/crm/_shared/mutations";
+import ContactTypesSelector from "@/app/crm/_shared/ContactTypesSelector";
 import RemindersSection from "@/app/components/crm/RemindersSection";
 
 function makeSb(tenantId: string) {
@@ -51,7 +52,7 @@ export default async function PersonDetail({ params }: Params) {
       education_level, marital_status, religion,
       occupation, occupation_title, company_name, income_range, net_worth_range,
       length_of_residence, moved_from_state, meta_json,
-      tenant_people!inner(tenant_id, notes, contact_type, custom_data)`)
+      tenant_people!inner(tenant_id, notes, contact_type, custom_data, contact_types)`)
     .eq("id", personId)
     .eq("tenant_people.tenant_id", tenant.id)
     .single();
@@ -60,7 +61,16 @@ export default async function PersonDetail({ params }: Params) {
     return <p style={{ padding: 24 }}>Person not found.</p>;
   }
 
-  // 2) Household — try junction table first, then direct field
+  // 2) Tenant contact type options
+  const { data: availableCTs } = await sb
+    .from("tenant_contact_types")
+    .select("key, label")
+    .eq("tenant_id", tenant.id)
+    .order("order_index");
+  const availableContactTypes: { key: string; label: string }[] = Array.isArray(availableCTs) ? [...availableCTs] : [];
+  const currentContactTypes: string[] = (person as any).tenant_people?.contact_types ?? [];
+
+  // 4) Household — try junction table first, then direct field
   let household: { id: string; name: string | null; location_id: string | null } | null = null;
   const { data: phRows } = await sb
     .from("person_households")
@@ -198,15 +208,29 @@ export default async function PersonDetail({ params }: Params) {
           <div>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{fullName}</h1>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-              {person.contact_type && (
-                <span style={{
-                  fontSize: 12, fontWeight: 600,
-                  padding: "2px 10px", borderRadius: 10,
-                  background: "rgba(99,102,241,0.1)", color: "#4338ca",
-                }}>
-                  {person.contact_type}
-                </span>
-              )}
+              {currentContactTypes.length > 0
+                ? currentContactTypes.map((t) => {
+                    const label = availableContactTypes.find((ct) => ct.key === t)?.label ?? t;
+                    return (
+                      <span key={t} style={{
+                        fontSize: 12, fontWeight: 600,
+                        padding: "2px 10px", borderRadius: 10,
+                        background: "rgba(99,102,241,0.1)", color: "#4338ca",
+                      }}>
+                        {label}
+                      </span>
+                    );
+                  })
+                : person.contact_type && (
+                    <span style={{
+                      fontSize: 12, fontWeight: 600,
+                      padding: "2px 10px", borderRadius: 10,
+                      background: "rgba(99,102,241,0.1)", color: "#4338ca",
+                    }}>
+                      {person.contact_type}
+                    </span>
+                  )
+              }
               {(person as any).active === false && (
                 <span style={{
                   fontSize: 12, fontWeight: 600,
@@ -232,7 +256,6 @@ export default async function PersonDetail({ params }: Params) {
             { name: "suffix", label: "Suffix (Jr./Sr./III)" },
             { name: "email", label: "Email", type: "email" },
             { name: "phone", label: "Phone", type: "tel" },
-            { name: "contact_type", label: "Contact Type" },
             { name: "notes", label: "Notes", type: "textarea" },
           ]}
           initial={person as Record<string, any>}
@@ -297,6 +320,19 @@ export default async function PersonDetail({ params }: Params) {
               </Link>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Contact Types */}
+      <div style={cardStyle}>
+        <p style={labelStyle}>Contact Types</p>
+        <div style={{ marginTop: 10 }}>
+          <ContactTypesSelector
+            personId={personId}
+            currentTypes={currentContactTypes}
+            availableTypes={availableContactTypes}
+            revalidate={`/crm/people/${personId}`}
+          />
         </div>
       </div>
 

@@ -3,7 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-type Stage = { key: string; label: string };
+type Stage = { key: string; label: string; contact_type_key: string | null };
+type ContactType = { key: string; label: string; stages: { key: string; label: string }[] };
 
 const PRIORITY_OPTIONS = [
   { value: "low",    label: "Low" },
@@ -25,31 +26,56 @@ export default function CreateOpportunityButton() {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const [stages, setStages] = useState<Stage[]>([]);
 
-  const [title, setTitle]     = useState("");
-  const [stage, setStage]     = useState("");
-  const [priority, setPriority] = useState("");
-  const [source, setSource]   = useState("");
-  const [amount, setAmount]   = useState("");
-  const [dueAt, setDueAt]     = useState("");
+  const [contactTypes, setContactTypes] = useState<ContactType[]>([]);
+  const [allStages, setAllStages] = useState<Stage[]>([]);
+
+  const [title, setTitle]         = useState("");
+  const [contactType, setContactType] = useState("");
+  const [stage, setStage]         = useState("");
+  const [priority, setPriority]   = useState("");
+  const [source, setSource]       = useState("");
+  const [amount, setAmount]       = useState("");
+  const [dueAt, setDueAt]         = useState("");
 
   useEffect(() => {
     if (!open) return;
+    // Load contact types (with their stages embedded)
+    fetch("/api/crm/settings/contact-types")
+      .then((r) => r.json())
+      .then((cts: ContactType[]) => {
+        setContactTypes(Array.isArray(cts) ? cts : []);
+      })
+      .catch(() => {});
+
+    // Also load untagged/legacy stages as fallback
     fetch("/api/crm/opportunities/stages")
       .then((r) => r.json())
       .then((d) => {
-        const s = Array.isArray(d) ? d : (d?.stages ?? []);
-        setStages(s);
-        if (s.length > 0 && !stage) setStage(s[0].key);
+        const s: Stage[] = Array.isArray(d) ? d : (d?.stages ?? []);
+        setAllStages(s);
       })
       .catch(() => {});
   }, [open]);
 
+  // Derive current stage options based on selected contact type
+  const currentCtStages = contactType
+    ? (contactTypes.find((ct) => ct.key === contactType)?.stages ?? [])
+    : allStages.filter((s) => !s.contact_type_key);
+
+  // Reset stage when contact type changes
+  useEffect(() => {
+    if (currentCtStages.length > 0) {
+      setStage(currentCtStages[0].key);
+    } else {
+      setStage("");
+    }
+  }, [contactType, contactTypes]);
+
   function handleClose() {
     setOpen(false);
     setErr(null);
-    setTitle(""); setStage(""); setPriority(""); setSource(""); setAmount(""); setDueAt("");
+    setTitle(""); setContactType(""); setStage(""); setPriority(""); setSource(""); setAmount(""); setDueAt("");
   }
 
   function submit() {
@@ -61,6 +87,7 @@ export default function CreateOpportunityButton() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: title.trim(),
+            contact_type: contactType || undefined,
             stage: stage || undefined,
             priority: priority || undefined,
             source: source || undefined,
@@ -108,11 +135,23 @@ export default function CreateOpportunityButton() {
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Follow-up with Jane Smith" autoFocus />
             </label>
 
+            {contactTypes.length > 0 && (
+              <label style={label}>
+                <span style={dim}>Pipeline (Contact Type)</span>
+                <select value={contactType} onChange={(e) => setContactType(e.target.value)}>
+                  <option value="">— General / Uncategorized —</option>
+                  {contactTypes.map((ct) => (
+                    <option key={ct.key} value={ct.key}>{ct.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <label style={label}>
               <span style={dim}>Stage</span>
               <select value={stage} onChange={(e) => setStage(e.target.value)}>
                 <option value="">— select —</option>
-                {stages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                {currentCtStages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </label>
 

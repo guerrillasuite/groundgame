@@ -228,6 +228,27 @@ export async function createLocationAction(
   return {};
 }
 
+/**
+ * Update the contact_types array on tenant_people for a specific person.
+ */
+export async function updateContactTypesAction(
+  personId: string,
+  contactTypes: string[],
+  revalidate: string
+) {
+  const sb = getServerSupabaseWritable();
+  const tenant = await getTenant();
+
+  const { error } = await sb
+    .from("tenant_people")
+    .update({ contact_types: contactTypes })
+    .eq("person_id", personId)
+    .eq("tenant_id", tenant.id);
+
+  if (error) throw error;
+  revalidatePath(revalidate);
+}
+
 export async function deleteRowAction(
   table: keyof typeof EDITABLE_FIELDS,
   revalidate: string,

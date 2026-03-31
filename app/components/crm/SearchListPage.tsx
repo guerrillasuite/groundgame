@@ -16,6 +16,8 @@ type Props = {
   rowHrefPrefix?: string;
   searchPlaceholder?: string;
   headerActions?: React.ReactNode;
+  /** Dynamic contact type options from the tenant's configuration */
+  contactTypeOptions?: string[];
 };
 
 type FilterOp =
@@ -120,7 +122,12 @@ export default function SearchListPage({
   rowHrefPrefix,
   searchPlaceholder = "Search…",
   headerActions,
+  contactTypeOptions,
 }: Props) {
+  // Merge dynamic contact type options into ENUM_OPTIONS at render time
+  const enumOptions = contactTypeOptions?.length
+    ? { ...ENUM_OPTIONS, contact_type: contactTypeOptions }
+    : ENUM_OPTIONS;
   // ── State ──
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Record<string, any>[]>([]);
@@ -575,7 +582,7 @@ export default function SearchListPage({
                     {ops.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                   {!hideValue && (() => {
-                    const enumOpts = ENUM_OPTIONS[row.field];
+                    const enumOpts = enumOptions[row.field];
                     const isNumeric = isNumericType(col?.data_type ?? "");
                     // Multi-value "is any of" — chips for enum, comma-text for free fields
                     if (row.op === "in_list" || row.op === "not_in_list") {

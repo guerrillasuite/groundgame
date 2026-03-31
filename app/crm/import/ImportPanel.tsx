@@ -276,6 +276,8 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
   const [oppsLoading, setOppsLoading] = useState(false);
   const [oppsCreated, setOppsCreated] = useState<number | null>(null);
   const [createOppsOnImport, setCreateOppsOnImport] = useState(false);
+  const [globalContactType, setGlobalContactType] = useState("");
+  const [contactTypeOptions, setContactTypeOptions] = useState<{ key: string; label: string }[]>([]);
   // col → canonical key override for __create_global__ fields
   const [globalKeyOverrides, setGlobalKeyOverrides] = useState<Record<string, string>>({});
   // col → cycle year (4-digit string) for __giving_cycle__ fields
@@ -313,10 +315,12 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
   const handleFile = useCallback(async (file: File) => {
     setParseErr("");
     try {
-      const [data, schemaRes] = await Promise.all([
+      const [data, schemaRes, ctRes] = await Promise.all([
         parseFile(file),
         fetch("/api/crm/schema?table=people").then((r) => r.json()).catch(() => []),
+        fetch("/api/crm/settings/contact-types").then((r) => r.ok ? r.json() : []).catch(() => []),
       ]);
+      if (Array.isArray(ctRes)) setContactTypeOptions(ctRes);
       if (data.rows.length === 0) {
         setParseErr("No rows found in file.");
         return;
@@ -397,6 +401,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
           tenantNamed.notes = val;
         } else if (target === "tp_contact_type") {
           tenantNamed.contact_type = val;
+          tenantNamed._contact_type_explicit = "1";
         } else if (target === "dn_amount") {
           donation.amount = val;
         } else if (target === "dn_date") {
@@ -417,6 +422,12 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
           out[target] = val;
         }
       }
+      // Apply global contact type if no column was explicitly mapped to tp_contact_type
+      if (globalContactType && !tenantNamed._contact_type_explicit) {
+        tenantNamed.contact_type = globalContactType;
+      }
+      delete tenantNamed._contact_type_explicit;
+
       if (Object.keys(globalMeta).length > 0)   out.__meta          = globalMeta;
       if (Object.keys(tenantNamed).length > 0)  out.__tenant_people = tenantNamed;
       if (Object.keys(tenantCustom).length > 0) out.__tenant_custom = tenantCustom;
@@ -994,6 +1005,37 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                 : "⚠ Map at least one of First Name or Last Name to continue."}
             </p>
           )}
+
+          {/* Default Contact Type for all rows */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <label style={{ fontSize: 13, opacity: 0.7, whiteSpace: "nowrap" }}>
+              Default Contact Type:
+            </label>
+            <select
+              value={globalContactType}
+              onChange={(e) => setGlobalContactType(e.target.value)}
+              style={{ fontSize: 13, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", background: "var(--gg-bg, #fff)", color: "var(--gg-text, #111)", minWidth: 160 }}
+            >
+              <option value="">— none / use column mapping —</option>
+              {contactTypeOptions.length > 0
+                ? contactTypeOptions.map((ct) => (
+                    <option key={ct.key} value={ct.key}>{ct.label}</option>
+                  ))
+                : (
+                  <>
+                    <option value="voter">Voter</option>
+                    <option value="donor">Donor</option>
+                    <option value="volunteer">Volunteer</option>
+                    <option value="staff">Staff</option>
+                    <option value="other">Other</option>
+                  </>
+                )
+              }
+            </select>
+            {globalContactType && (
+              <span style={{ fontSize: 12, opacity: 0.5 }}>Applied to all rows without an explicit type column</span>
+            )}
+          </div>
 
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={reset} style={ghostBtn}>← Back</button>

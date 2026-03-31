@@ -52,8 +52,8 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
   const settingsItems: NavItem[] = [
     { href: "/crm/settings/users", label: "Users" },
   ];
-  if (f("crm_opportunities")) {
-    settingsItems.push({ href: "/crm/settings/stages", label: "Pipeline Stages" });
+  if (f("crm")) {
+    settingsItems.push({ href: "/crm/settings/contact-types", label: "Contact Types" });
   }
   if (f("crm")) {
     settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
