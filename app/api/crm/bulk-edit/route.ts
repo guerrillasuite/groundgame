@@ -14,15 +14,19 @@ function makeSb(tenantId: string) {
 
 type Target = "people" | "households" | "locations" | "companies";
 
-// Fields that can be set via standard batch UPDATE on the entity's table
+// All fields that can be batch-updated on each entity's table.
+// Mirrors EDITABLE_FIELDS in mutations.ts.
 const BULK_EDITABLE: Record<Target, readonly string[]> = {
-  people:     ["contact_type", "notes"],
-  households: ["notes"],
-  locations:  ["notes"],
-  companies:  ["status", "industry", "notes"],
+  people: [
+    "title", "first_name", "middle_name", "middle_initial", "last_name", "suffix",
+    "email", "phone", "phone_cell", "phone_landline", "contact_type", "notes",
+  ],
+  households: ["name", "notes"],
+  locations:  ["address_line1", "address_line2", "city", "state", "postal_code", "notes"],
+  companies:  ["name", "domain", "phone", "email", "industry", "status", "presence", "notes"],
 };
 
-// These keys are handled separately (not direct table columns)
+// Keys handled outside the standard table update
 const SPECIAL_KEYS = new Set(["contact_types", "notes_mode"]);
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -44,8 +48,8 @@ export async function POST(req: NextRequest) {
     updates: Record<string, any>;
   };
 
-  const VALID_TARGETS: Target[] = ["people", "households", "locations", "companies"];
-  if (!VALID_TARGETS.includes(target)) {
+  const VALID: Target[] = ["people", "households", "locations", "companies"];
+  if (!VALID.includes(target)) {
     return NextResponse.json({ error: `Invalid target: ${target}` }, { status: 400 });
   }
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
 
   const allowed = BULK_EDITABLE[target];
 
-  // Build standard updates (direct table columns, excludes special keys and notes-in-append-mode)
+  // Build standard updates — direct table columns, skip special keys and notes-in-append-mode
   const standardUpdates: Record<string, any> = {};
   for (const [key, val] of Object.entries(updates)) {
     if (SPECIAL_KEYS.has(key)) continue;
@@ -71,15 +75,14 @@ export async function POST(req: NextRequest) {
   // ── 1. Standard batch updates ─────────────────────────────────────────────
   if (Object.keys(standardUpdates).length > 0) {
     for (const c of chunks) {
-      // People table is tenant-scoped via tenant_people join, not tenant_id column
+      // People are scoped via tenant_people join, not a tenant_id column on the table itself
       const q = target === "people"
         ? sb.from("people").update(standardUpdates).in("id", c)
         : sb.from(target).update(standardUpdates).in("id", c).eq("tenant_id", tenant.id);
       const { error } = await q;
       if (error) errors.push(error.message);
     }
-
-    // For contact_type on people: also sync the tenant_people row
+    // For contact_type on people: also sync the tenant_people record
     if (target === "people" && standardUpdates.contact_type !== undefined) {
       for (const c of chunks) {
         const { error } = await sb
@@ -92,7 +95,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── 2. contact_types array update (people → tenant_people) ────────────────
+  // ── 2. contact_types array update (people only → tenant_people) ───────────
   if (target === "people" && updates.contact_types !== undefined) {
     const contactTypes = Array.isArray(updates.contact_types) ? updates.contact_types : [];
     for (const c of chunks) {
@@ -111,10 +114,8 @@ export async function POST(req: NextRequest) {
       const fetchQ = target === "people"
         ? sb.from("people").select("id, notes").in("id", c)
         : sb.from(target).select("id, notes").in("id", c).eq("tenant_id", tenant.id);
-
       const { data: existing } = await fetchQ;
       if (!Array.isArray(existing)) continue;
-
       for (const row of existing as { id: string; notes: string | null }[]) {
         const prev = row.notes ? String(row.notes) : "";
         const merged = prev ? `${prev}\n\n${updates.notes}` : updates.notes;
