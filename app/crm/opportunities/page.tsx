@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import Link from "next/link";
 import KanbanBoard from "./ui/KanbanBoard";
 import CreateOpportunityButton from "./CreateOpportunityButton";
 
@@ -202,7 +203,16 @@ export default async function OpportunitiesPage() {
         {sections.map((section) => (
           <div key={section.key}>
             <div style={{ marginBottom: 10, display: "flex", alignItems: "baseline", gap: 10 }}>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{section.label}</h2>
+              {section.key !== "__uncategorized__" ? (
+                <Link
+                  href={`/crm/opportunities/pipeline/${section.key}`}
+                  style={{ margin: 0, fontSize: 15, fontWeight: 700, textDecoration: "none", color: "inherit" }}
+                >
+                  {section.label} →
+                </Link>
+              ) : (
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>{section.label}</h2>
+              )}
               <span style={{ fontSize: 12, opacity: 0.4 }}>
                 {Object.values(section.itemsByStage).flat().length} opportunities
               </span>
