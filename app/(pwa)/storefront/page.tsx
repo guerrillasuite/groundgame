@@ -26,6 +26,13 @@ export default function StorefrontHome() {
           </span>
           <h3>View Inventory</h3>
         </Link>
+
+        <Link href="/quiz?kiosk=1" className="gg-app">
+          <span className="gg-app-ico">
+            <Icon name="flag" size={40} aria-hidden />
+          </span>
+          <h3>Political Quiz</h3>
+        </Link>
       </div>
     </>
   );
