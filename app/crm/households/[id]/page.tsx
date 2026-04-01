@@ -119,7 +119,7 @@ export default async function HouseholdDetail({ params }: Params) {
     <section className="stack" style={{ maxWidth: 680 }}>
       <style>{`.hh-member:hover { background: var(--gg-bg, #f9fafb) !important; }`}</style>
       {/* Back link */}
-      <BackButton href="/crm/households" label="Households" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
+      <BackButton href="/crm/households" label="← Households" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
 
       {/* Header */}
       <div>

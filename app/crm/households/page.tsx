@@ -40,7 +40,7 @@ export default async function HouseholdsPage() {
         const m = (wl.mode ?? "").toLowerCase();
         const isCall = m === "call";
         return (
-          <Link key={wl.id} href={`/crm/lists/${wl.id}`} style={{
+          <Link key={wl.id} href={`/crm/lists/${wl.id}?from=households`} style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "10px 14px", borderRadius: 8, textDecoration: "none", color: "inherit",
             border: "1px solid var(--gg-border, #e5e7eb)", background: "var(--gg-card, white)",

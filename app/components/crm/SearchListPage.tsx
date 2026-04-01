@@ -447,7 +447,7 @@ export default function SearchListPage({
                   <tr key={row.id} className="search-list-row">
                     {columns.map((col) => (
                       <td key={col.key} style={{ padding: 0, borderBottom: "1px solid var(--gg-border, #f3f4f6)" }}>
-                        <Link href={`${rowHrefPrefix}${row.id}`} style={{
+                        <Link href={`${rowHrefPrefix}${row.id}?from=search`} style={{
                           display: "block",
                           padding: "9px 12px",
                           textDecoration: "none",

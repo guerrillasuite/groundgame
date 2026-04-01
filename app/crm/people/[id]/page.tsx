@@ -190,7 +190,7 @@ export default async function PersonDetail({ params }: Params) {
   return (
     <section className="stack" style={{ maxWidth: 720 }}>
       {/* Back link */}
-      <BackButton href="/crm/people" label="People" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
+      <BackButton href="/crm/people" label="← People" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "space-between" }}>

@@ -98,7 +98,7 @@ export default function ListPage({
   return (
     <section style={{ padding: 16 }}>
       {rowHrefPrefix && <style>{`tr.list-row:hover td { background: var(--gg-bg, #f9fafb); }`}</style>}
-      <BackButton href="/crm/lists" label="← Back to list" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none", display: "inline-block", marginBottom: 10 }} />
+      <BackButton href="/crm/lists" label="← Back" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none", display: "inline-block", marginBottom: 10 }} />
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>{title}</h1>
 
       <div
@@ -139,13 +139,13 @@ export default function ListPage({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((r, rowIdx) => {
+            {pageRows.map((r) => {
               const color = rowColorKey ? r[rowColorKey] : undefined;
               return (
                 <tr
                   key={r.id}
                   className={rowHrefPrefix ? "list-row" : undefined}
-                  onClick={rowHrefPrefix ? () => router.push(rowHrefPrefix + r.id) : undefined}
+                  onClick={rowHrefPrefix ? () => router.push(rowHrefPrefix + r.id + "?from=list") : undefined}
                   style={{
                     borderTop: "1px solid rgba(255,255,255,.06)",
                     cursor: rowHrefPrefix ? "pointer" : undefined,
