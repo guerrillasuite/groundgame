@@ -244,7 +244,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: err.message }, { status: 500 });
     }
 
-    const results = people.map((p: any) => ({
+    // Deduplicate — tenant_people inner join returns a person once per duplicate
+    // (person_id, tenant_id) row in the junction table, which can happen after
+    // repeated imports. Keep the first occurrence of each ID.
+    const uniquePeople = [...new Map(people.map((p: any) => [p.id, p])).values()];
+
+    const results = uniquePeople.map((p: any) => ({
       id: p.id,
       first_name: p.first_name,
       last_name: p.last_name,
