@@ -31,7 +31,7 @@ export default async function CompanyDetail({ params }: Params) {
   if (cErr || !company) {
     return (
       <section style={{ padding: 24 }}>
-        <BackButton href="/crm/companies" label="← Companies" style={{ fontSize: 13, opacity: 0.6 }} />
+        <BackButton href="/crm/companies" label="← Companies" style={{ marginBottom: 4 }} />
         <p style={{ marginTop: 16, opacity: 0.6 }}>Company not found.</p>
       </section>
     );
@@ -117,7 +117,7 @@ export default async function CompanyDetail({ params }: Params) {
   return (
     <section className="stack" style={{ maxWidth: 720 }}>
       <style>{`.co-member:hover { background: var(--gg-bg, #f9fafb) !important; }`}</style>
-      <BackButton href="/crm/companies" label="← Companies" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
+      <BackButton href="/crm/companies" label="← Companies" style={{ marginBottom: 4 }} />
 
       <div>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{company.name ?? "(Unnamed)"}</h1>

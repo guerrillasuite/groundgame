@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Props = {
@@ -17,14 +18,11 @@ const FROM_LABELS: Record<string, string> = {
   companies:  "← Companies",
 };
 
-/**
- * Navigates back in browser history if available (preserving search/filter state in the URL),
- * otherwise falls back to the provided href.
- * Reads ?from= query param to auto-label the button based on navigation context.
- */
 export default function BackButton({ href, label, style }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [hovered, setHovered] = useState(false);
+
   const from = searchParams.get("from");
   const displayLabel = (from && FROM_LABELS[from]) ?? label;
 
@@ -33,11 +31,30 @@ export default function BackButton({ href, label, style }: Props) {
       e.preventDefault();
       router.back();
     }
-    // else: let the anchor's natural href navigation happen
   }
 
   return (
-    <a href={href} onClick={handleClick} style={style}>
+    <a
+      href={href}
+      onClick={handleClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "6px 14px",
+        fontSize: 14,
+        fontWeight: 500,
+        borderRadius: 6,
+        border: "1px solid var(--gg-border, #d1d5db)",
+        background: hovered ? "var(--gg-bg, #f3f4f6)" : "transparent",
+        color: "var(--gg-text-dim, #374151)",
+        textDecoration: "none",
+        cursor: "pointer",
+        transition: "background 0.12s",
+        ...style,
+      }}
+    >
       {displayLabel}
     </a>
   );

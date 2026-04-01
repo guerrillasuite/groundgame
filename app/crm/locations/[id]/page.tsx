@@ -41,7 +41,7 @@ export default async function LocationDetail({ params }: Params) {
   if (locErr || !loc) {
     return (
       <section style={{ padding: 24 }}>
-        <BackButton href="/crm/locations" label="← Locations" style={{ fontSize: 13, opacity: 0.6 }} />
+        <BackButton href="/crm/locations" label="← Locations" style={{ marginBottom: 4 }} />
         <p style={{ marginTop: 16, opacity: 0.6 }}>Location not found.</p>
       </section>
     );
@@ -155,7 +155,7 @@ export default async function LocationDetail({ params }: Params) {
   return (
     <section className="stack" style={{ maxWidth: 780 }}>
       <style>{`.loc-member:hover { background: var(--gg-bg, #f9fafb) !important; }`}</style>
-      <BackButton href="/crm/locations" label="← Locations" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
+      <BackButton href="/crm/locations" label="← Locations" style={{ marginBottom: 4 }} />
 
       <div>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{address || "(No address)"}</h1>
