@@ -97,10 +97,15 @@ function NolanChart({
   const L  = [cx - r, cy    ] as const;
   const B  = [cx,     cy + r] as const;
   const R  = [cx + r, cy    ] as const;
-  const TL = [cx - r / 2, cy - r / 2] as const;
-  const TR = [cx + r / 2, cy - r / 2] as const;
-  const BL = [cx - r / 2, cy + r / 2] as const;
-  const BR = [cx + r / 2, cy + r / 2] as const;
+  const ro = r / 2, ri = r * 0.35;
+  const TL  = [cx - ro, cy - ro] as const;
+  const TR  = [cx + ro, cy - ro] as const;
+  const BL  = [cx - ro, cy + ro] as const;
+  const BR  = [cx + ro, cy + ro] as const;
+  const TLi = [cx - ri, cy - ri] as const;
+  const TRi = [cx + ri, cy - ri] as const;
+  const BLi = [cx - ri, cy + ri] as const;
+  const BRi = [cx + ri, cy + ri] as const;
   const pts = (...coords: readonly (readonly [number, number])[]) =>
     coords.map(([x, y]) => `${x},${y}`).join(" ");
   const dotX = cx + r * (economicScore - personalScore) / 100;
@@ -127,11 +132,11 @@ function NolanChart({
         </clipPath>
       </defs>
       <g clipPath="url(#nolan-clip-sp)">
-        <polygon points={pts(TL, TR, BR, BL)} fill="rgba(100,116,139,0.5)" />
-        <polygon points={pts(T, TR, TL)}      fill="rgba(234,179,8,0.55)" />
-        <polygon points={pts(L, TL, BL)}      fill="rgba(59,130,246,0.5)" />
-        <polygon points={pts(R, TR, BR)}      fill="rgba(239,68,68,0.5)" />
-        <polygon points={pts(B, BL, BR)}      fill="rgba(20,30,48,0.92)" />
+        <polygon points={pts(T, TR, TRi, TLi, TL)} fill="rgba(234,179,8,0.55)" />
+        <polygon points={pts(L, TL, TLi, BLi, BL)} fill="rgba(59,130,246,0.5)" />
+        <polygon points={pts(R, TR, TRi, BRi, BR)} fill="rgba(239,68,68,0.5)" />
+        <polygon points={pts(B, BL, BLi, BRi, BR)} fill="rgba(20,30,48,0.92)" />
+        <polygon points={pts(TLi, TRi, BRi, BLi)}  fill="rgba(100,116,139,0.5)" />
       </g>
       <g clipPath="url(#nolan-clip-sp)">
         <line x1={TL[0]} y1={TL[1]} x2={BR[0]} y2={BR[1]} stroke="rgba(255,255,255,0.18)" strokeWidth={1} />

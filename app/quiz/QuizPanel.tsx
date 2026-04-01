@@ -105,11 +105,16 @@ function NolanChart({
   const B  = [cx,     cy + r] as const; // bottom — Authoritarian
   const R  = [cx + r, cy    ] as const; // right  — Conservative
 
-  // Zone boundary midpoints (midpoints of outer edges)
-  const TL = [cx - r / 2, cy - r / 2] as const;
-  const TR = [cx + r / 2, cy - r / 2] as const;
-  const BL = [cx - r / 2, cy + r / 2] as const;
-  const BR = [cx + r / 2, cy + r / 2] as const;
+  // Zone boundary: outer corners (r/2) + inner Moderate corners (r*0.35)
+  const ro = r / 2, ri = r * 0.35;
+  const TL  = [cx - ro, cy - ro] as const;
+  const TR  = [cx + ro, cy - ro] as const;
+  const BL  = [cx - ro, cy + ro] as const;
+  const BR  = [cx + ro, cy + ro] as const;
+  const TLi = [cx - ri, cy - ri] as const;
+  const TRi = [cx + ri, cy - ri] as const;
+  const BLi = [cx - ri, cy + ri] as const;
+  const BRi = [cx + ri, cy + ri] as const;
 
   const pts = (...coords: readonly (readonly [number, number])[]) =>
     coords.map(([x, y]) => `${x},${y}`).join(" ");
@@ -146,16 +151,13 @@ function NolanChart({
 
       {/* Zone fills — clipped to outer diamond */}
       <g clipPath="url(#nolan-clip)">
-        {/* Moderate center square (drawn first so outer zones render on top) */}
-        <polygon points={pts(TL, TR, BR, BL)} fill="rgba(100,116,139,0.5)" />
-        {/* Libertarian (top triangle) */}
-        <polygon points={pts(T, TR, TL)}      fill="rgba(234,179,8,0.55)" />
-        {/* Progressive (left triangle) */}
-        <polygon points={pts(L, TL, BL)}      fill="rgba(59,130,246,0.5)" />
-        {/* Conservative (right triangle) */}
-        <polygon points={pts(R, TR, BR)}      fill="rgba(239,68,68,0.5)" />
-        {/* Authoritarian (bottom triangle) */}
-        <polygon points={pts(B, BL, BR)}      fill="rgba(20,30,48,0.92)" />
+        {/* Outer zone pentagons (vertex → outer corner → inner corner → inner corner → outer corner) */}
+        <polygon points={pts(T, TR, TRi, TLi, TL)} fill="rgba(234,179,8,0.55)" />   {/* Libertarian */}
+        <polygon points={pts(L, TL, TLi, BLi, BL)} fill="rgba(59,130,246,0.5)" />   {/* Progressive */}
+        <polygon points={pts(R, TR, TRi, BRi, BR)} fill="rgba(239,68,68,0.5)" />    {/* Conservative */}
+        <polygon points={pts(B, BL, BLi, BRi, BR)} fill="rgba(20,30,48,0.92)" />    {/* Authoritarian */}
+        {/* Moderate — smaller inner square (~12% of diamond area) */}
+        <polygon points={pts(TLi, TRi, BRi, BLi)}  fill="rgba(100,116,139,0.5)" />
       </g>
 
       {/* Zone divider lines */}

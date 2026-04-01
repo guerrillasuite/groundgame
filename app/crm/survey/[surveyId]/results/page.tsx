@@ -1,10 +1,11 @@
 // app/crm/survey/[surveyId]/results/page.tsx
 import { ResultsDashboard } from '@/app/components/survey/ResultsDashboard';
 
-export default function SurveyResultsPage({ 
-  params 
-}: { 
-  params: { surveyId: string } 
+export default async function SurveyResultsPage({
+  params,
+}: {
+  params: Promise<{ surveyId: string }>;
 }) {
-  return <ResultsDashboard surveyId={params.surveyId} />;
+  const { surveyId } = await params;
+  return <ResultsDashboard surveyId={surveyId} />;
 }
