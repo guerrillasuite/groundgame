@@ -55,8 +55,8 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ surveyId: string }> }) {
-  return {
-    title: "Survey | GroundGame",
-    description: "Complete your survey",
-  };
+  const { surveyId } = await params;
+  const sb = makeSb();
+  const { data } = await sb.from("surveys").select("title").eq("id", surveyId).eq("active", true).maybeSingle();
+  return { title: data?.title ?? "Survey | GroundGame" };
 }

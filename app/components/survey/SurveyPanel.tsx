@@ -92,7 +92,7 @@ function NolanChart({
   economicScore: number;
   result: QuizResult;
 }) {
-  const cx = 200, cy = 200, r = 145;
+  const cx = 200, cy = 200, r = 170;
   const T  = [cx,     cy - r] as const;
   const L  = [cx - r, cy    ] as const;
   const B  = [cx,     cy + r] as const;
@@ -120,9 +120,9 @@ function NolanChart({
 
   return (
     <svg
-      viewBox="0 0 400 430"
-      width={340}
-      height={366}
+      viewBox="0 0 420 455"
+      width={370}
+      height={398}
       style={{ display: "block", maxWidth: "100%" }}
       aria-label="Nolan Chart — political quiz results"
     >

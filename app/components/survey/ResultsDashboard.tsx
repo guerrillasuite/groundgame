@@ -35,7 +35,7 @@ const RESULT_COLORS: Record<string, string> = {
 };
 
 function AggregateNolanChart({ dots }: { dots: QuizDot[] }) {
-  const cx = 200, cy = 200, r = 145;
+  const cx = 200, cy = 200, r = 170;
   const T  = [cx,     cy - r] as const;
   const L  = [cx - r, cy    ] as const;
   const B  = [cx,     cy + r] as const;
@@ -53,7 +53,7 @@ function AggregateNolanChart({ dots }: { dots: QuizDot[] }) {
     coords.map(([x, y]) => `${x},${y}`).join(" ");
 
   return (
-    <svg viewBox="0 0 400 400" width={320} height={320} style={{ display: "block", maxWidth: "100%" }}
+    <svg viewBox="0 0 420 420" width={360} height={360} style={{ display: "block", maxWidth: "100%" }}
       aria-label="Aggregate Nolan Chart">
       <defs>
         <clipPath id="agg-clip">
