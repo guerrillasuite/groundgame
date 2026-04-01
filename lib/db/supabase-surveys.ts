@@ -308,8 +308,8 @@ export async function completeSession(params: {
 
 // ── Results ───────────────────────────────────────────────────────────────────
 
-export async function getSurveyResults(surveyId: string) {
-  const sb = getClient();
+export async function getSurveyResults(surveyId: string, tenantId: string) {
+  const sb = getServiceClient(tenantId);
 
   const [
     { data: survey },
@@ -355,6 +355,26 @@ export async function getSurveyResults(surveyId: string) {
     };
   });
 
+  // For WSPQ surveys fetch stops so the dashboard can render the aggregate Nolan Chart
+  let quizData: { dots: { personalScore: number; economicScore: number; result: string }[]; resultCounts: Record<string, number> } | undefined;
+  if (surveyId.startsWith("wspq-")) {
+    const { data: stops } = await sb
+      .from("stops")
+      .select("result, notes")
+      .eq("tenant_id", tenantId)
+      .eq("channel", "quiz");
+
+    const scoreRx = /Personal:\s*(\d+)\/100\s*·\s*Economic:\s*(\d+)\/100/;
+    const dots = (stops ?? []).flatMap((s: { result: string | null; notes: string | null }) => {
+      const m = s.notes?.match(scoreRx);
+      if (!m) return [];
+      return [{ personalScore: parseInt(m[1]), economicScore: parseInt(m[2]), result: s.result ?? "moderate" }];
+    });
+    const resultCounts: Record<string, number> = {};
+    for (const d of dots) resultCounts[d.result] = (resultCounts[d.result] ?? 0) + 1;
+    quizData = { dots, resultCounts };
+  }
+
   return {
     survey_id: survey.id,
     survey_title: survey.title,
@@ -362,6 +382,7 @@ export async function getSurveyResults(surveyId: string) {
     total_completed: totalCompleted,
     completion_rate: totalStarted > 0 ? (totalCompleted / totalStarted) * 100 : 0,
     questions: questionResults,
+    quizData,
   };
 }
 

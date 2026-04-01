@@ -14,6 +14,8 @@ interface QuestionResult {
   }[];
 }
 
+interface QuizDot { personalScore: number; economicScore: number; result: string }
+
 interface SurveyStats {
   survey_id: string;
   survey_title: string;
@@ -21,6 +23,75 @@ interface SurveyStats {
   total_completed: number;
   completion_rate: number;
   questions: QuestionResult[];
+  quizData?: { dots: QuizDot[]; resultCounts: Record<string, number> };
+}
+
+const RESULT_COLORS: Record<string, string> = {
+  libertarian: "#eab308",
+  progressive: "#3b82f6",
+  conservative: "#ef4444",
+  authoritarian: "#1e293b",
+  moderate: "#64748b",
+};
+
+function AggregateNolanChart({ dots }: { dots: QuizDot[] }) {
+  const cx = 200, cy = 200, r = 145;
+  const T  = [cx,     cy - r] as const;
+  const L  = [cx - r, cy    ] as const;
+  const B  = [cx,     cy + r] as const;
+  const R  = [cx + r, cy    ] as const;
+  const ro = r / 2, ri = r * 0.35;
+  const TL  = [cx - ro, cy - ro] as const;
+  const TR  = [cx + ro, cy - ro] as const;
+  const BL  = [cx - ro, cy + ro] as const;
+  const BR  = [cx + ro, cy + ro] as const;
+  const TLi = [cx - ri, cy - ri] as const;
+  const TRi = [cx + ri, cy - ri] as const;
+  const BLi = [cx - ri, cy + ri] as const;
+  const BRi = [cx + ri, cy + ri] as const;
+  const pts = (...coords: readonly (readonly [number, number])[]) =>
+    coords.map(([x, y]) => `${x},${y}`).join(" ");
+
+  return (
+    <svg viewBox="0 0 400 400" width={320} height={320} style={{ display: "block", maxWidth: "100%" }}
+      aria-label="Aggregate Nolan Chart">
+      <defs>
+        <clipPath id="agg-clip">
+          <polygon points={pts(T, R, B, L)} />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#agg-clip)">
+        <polygon points={pts(T, TR, TRi, TLi, TL)} fill="rgba(234,179,8,0.35)" />
+        <polygon points={pts(L, TL, TLi, BLi, BL)} fill="rgba(59,130,246,0.3)" />
+        <polygon points={pts(R, TR, TRi, BRi, BR)} fill="rgba(239,68,68,0.3)" />
+        <polygon points={pts(B, BL, BLi, BRi, BR)} fill="rgba(20,30,48,0.75)" />
+        <polygon points={pts(TLi, TRi, BRi, BLi)}  fill="rgba(100,116,139,0.35)" />
+      </g>
+      <g clipPath="url(#agg-clip)">
+        <line x1={TL[0]} y1={TL[1]} x2={BR[0]} y2={BR[1]} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+        <line x1={TR[0]} y1={TR[1]} x2={BL[0]} y2={BL[1]} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+      </g>
+      <polygon points={pts(T, R, B, L)} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={1.5} />
+      {/* Zone labels */}
+      <text x={cx}          y={cy - r + 30} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={9}  fontWeight={700} letterSpacing={0.8}>LIBERTARIAN</text>
+      <text x={cx - r + 40} y={cy + 4}      textAnchor="middle" fill="rgba(255,255,255,0.8)"  fontSize={8}  fontWeight={700} letterSpacing={0.5} transform={`rotate(-45,${cx - r + 40},${cy})`}>PROGRESSIVE</text>
+      <text x={cx + r - 40} y={cy + 4}      textAnchor="middle" fill="rgba(255,255,255,0.8)"  fontSize={8}  fontWeight={700} letterSpacing={0.5} transform={`rotate(45,${cx + r - 40},${cy})`}>CONSERVATIVE</text>
+      <text x={cx}          y={cy + r - 24} textAnchor="middle" fill="rgba(255,255,255,0.65)" fontSize={9}  fontWeight={700} letterSpacing={0.8}>AUTHORITARIAN</text>
+      <text x={cx}          y={cy + 4}      textAnchor="middle" fill="rgba(255,255,255,0.7)"  fontSize={8}  fontWeight={700} letterSpacing={0.5}>MODERATE</text>
+      {/* Response dots */}
+      <g clipPath="url(#agg-clip)">
+        {dots.map((d, i) => {
+          const dx = cx + r * (d.economicScore - d.personalScore) / 100;
+          const dy = cy - r * (d.economicScore + d.personalScore - 100) / 100;
+          const color = RESULT_COLORS[d.result] ?? "#64748b";
+          return (
+            <circle key={i} cx={dx} cy={dy} r={5}
+              fill={color} fillOpacity={0.75} stroke="white" strokeWidth={1} strokeOpacity={0.6} />
+          );
+        })}
+      </g>
+    </svg>
+  );
 }
 
 interface ResultsDashboardProps {
@@ -249,6 +320,47 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
           </div>
         </div>
       </div>
+
+      {/* WSPQ Nolan Chart (quiz surveys only) */}
+      {stats.quizData && stats.quizData.dots.length > 0 && (
+        <div style={{
+          background: 'var(--gg-card, white)',
+          borderRadius: 12,
+          padding: 20,
+          border: '1px solid var(--gg-border, #e5e7eb)'
+        }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 16px 0' }}>Political Compass</h2>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div style={{ background: '#0f172a', borderRadius: 12, padding: 12, display: 'inline-block' }}>
+              <AggregateNolanChart dots={stats.quizData.dots} />
+            </div>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <p style={{ fontSize: 13, opacity: 0.6, margin: '0 0 12px' }}>
+                {stats.quizData.dots.length} {stats.quizData.dots.length === 1 ? 'response' : 'responses'} plotted
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {Object.entries(stats.quizData.resultCounts)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([res, count]) => {
+                    const color = RESULT_COLORS[res] ?? '#64748b';
+                    const pct = Math.round((count / stats.quizData!.dots.length) * 100);
+                    return (
+                      <div key={res}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color }}>{res.charAt(0).toUpperCase() + res.slice(1)}</span>
+                          <span style={{ fontSize: 13, opacity: 0.7 }}>{count} · {pct}%</span>
+                        </div>
+                        <div style={{ width: '100%', height: 8, background: 'rgba(0,0,0,0.06)', borderRadius: 4, overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 4 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Question Results */}
       {stats.questions.map((question, idx) => (

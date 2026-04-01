@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSurveyResults } from "@/lib/db/supabase-surveys";
+import { getTenant } from "@/lib/tenant";
 
 export async function GET(
   _request: NextRequest,
@@ -7,7 +8,8 @@ export async function GET(
 ) {
   const { surveyId } = await params;
   try {
-    const results = await getSurveyResults(surveyId);
+    const tenant = await getTenant();
+    const results = await getSurveyResults(surveyId, tenant.id);
     if (!results) {
       return NextResponse.json({ error: "Survey not found" }, { status: 404 });
     }
