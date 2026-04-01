@@ -10,22 +10,6 @@ function makeSb(tenantId: string) {
   );
 }
 
-// Supabase PostgREST caps rows at max_rows (default 1000).
-// Loop with .range() to fetch everything.
-async function fetchAll(buildQuery: () => any, chunkSize = 1000): Promise<any[]> {
-  const all: any[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await buildQuery().range(from, from + chunkSize - 1);
-    if (error) throw new Error(error.message);
-    if (!data?.length) break;
-    all.push(...data);
-    if (data.length < chunkSize) break;
-    from += chunkSize;
-  }
-  return all;
-}
-
 function fmt(l: any): string {
   const nk = (l.normalized_key ?? "").trim();
   if (nk) return nk;
@@ -39,28 +23,38 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const like = q ? `%${q}%` : null;
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 2000);
+  const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0"), 0);
 
-  let allData: any[];
-  try {
-    allData = await fetchAll(() => {
-      let query = sb
-        .from("locations")
-        .select("id, normalized_key, address_line1, city, state, postal_code")
-        .eq("tenant_id", tenant.id)
-        .order("address_line1", { ascending: true });
-      if (like) {
-        query = query.or(
-          `address_line1.ilike.${like},city.ilike.${like},state.ilike.${like},postal_code.ilike.${like}`
-        );
-      }
-      return query;
-    });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  const orClause = like
+    ? `address_line1.ilike.${like},city.ilike.${like},state.ilike.${like},postal_code.ilike.${like}`
+    : null;
 
-  const rows = allData.map((l) => ({ id: l.id, address: fmt(l) }));
-  return NextResponse.json({ rows, total: rows.length });
+  // Run count + page query in parallel
+  let countQ = sb
+    .from("locations")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenant.id);
+  if (orClause) countQ = countQ.or(orClause);
+
+  let dataQ = sb
+    .from("locations")
+    .select("id, normalized_key, address_line1, city, state, postal_code")
+    .eq("tenant_id", tenant.id)
+    .order("address_line1", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (orClause) dataQ = dataQ.or(orClause);
+
+  const [{ count, error: countErr }, { data, error: dataErr }] = await Promise.all([
+    countQ,
+    dataQ,
+  ]);
+
+  if (countErr) return NextResponse.json({ error: countErr.message }, { status: 500 });
+  if (dataErr) return NextResponse.json({ error: dataErr.message }, { status: 500 });
+
+  const rows = (data ?? []).map((l: any) => ({ id: l.id, address: fmt(l) }));
+  return NextResponse.json({ rows, total: count ?? 0 });
 }
 
 export async function POST(request: NextRequest) {

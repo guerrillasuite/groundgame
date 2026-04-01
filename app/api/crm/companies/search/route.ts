@@ -10,52 +10,50 @@ function makeSb(tenantId: string) {
   );
 }
 
-async function fetchAll(buildQuery: () => any, chunkSize = 1000): Promise<any[]> {
-  const all: any[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await buildQuery().range(from, from + chunkSize - 1);
-    if (error) throw new Error(error.message);
-    if (!data?.length) break;
-    all.push(...data);
-    if (data.length < chunkSize) break;
-    from += chunkSize;
-  }
-  return all;
-}
-
 export async function GET(request: Request) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const like = q ? `%${q}%` : null;
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 2000);
+  const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0"), 0);
 
-  let allData: any[];
-  try {
-    allData = await fetchAll(() => {
-      let query = sb
-        .from("companies")
-        .select("id, name, industry, domain, status, tenant_companies!inner(tenant_id)")
-        .eq("tenant_companies.tenant_id", tenant.id)
-        .order("name", { ascending: true });
-      if (like) {
-        query = query.or(`name.ilike.${like},domain.ilike.${like},industry.ilike.${like}`);
-      }
-      return query;
-    });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  const orClause = like
+    ? `name.ilike.${like},domain.ilike.${like},industry.ilike.${like}`
+    : null;
 
-  const rows = allData.map((c) => ({
+  // Run count + page query in parallel
+  let countQ = sb
+    .from("companies")
+    .select("id, tenant_companies!inner(tenant_id)", { count: "exact", head: true })
+    .eq("tenant_companies.tenant_id", tenant.id);
+  if (orClause) countQ = countQ.or(orClause);
+
+  let dataQ = sb
+    .from("companies")
+    .select("id, name, industry, domain, status, tenant_companies!inner(tenant_id)")
+    .eq("tenant_companies.tenant_id", tenant.id)
+    .order("name", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (orClause) dataQ = dataQ.or(orClause);
+
+  const [{ count, error: countErr }, { data, error: dataErr }] = await Promise.all([
+    countQ,
+    dataQ,
+  ]);
+
+  if (countErr) return NextResponse.json({ error: countErr.message }, { status: 500 });
+  if (dataErr) return NextResponse.json({ error: dataErr.message }, { status: 500 });
+
+  const rows = (data ?? []).map((c: any) => ({
     id: c.id,
     name: c.name ?? "(Unnamed)",
     industry: c.industry ?? "",
     domain: c.domain ?? "",
     status: c.status ?? "",
   }));
-  return NextResponse.json({ rows, total: rows.length });
+  return NextResponse.json({ rows, total: count ?? 0 });
 }
 
 export async function POST(request: NextRequest) {

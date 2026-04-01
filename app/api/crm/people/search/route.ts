@@ -10,50 +10,46 @@ function makeSb(tenantId: string) {
   );
 }
 
-// Supabase PostgREST caps rows at max_rows (default 1000).
-// Loop with .range() to fetch everything.
-async function fetchAll(buildQuery: () => any, chunkSize = 1000): Promise<any[]> {
-  const all: any[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await buildQuery().range(from, from + chunkSize - 1);
-    if (error) throw new Error(error.message);
-    if (!data?.length) break;
-    all.push(...data);
-    if (data.length < chunkSize) break;
-    from += chunkSize;
-  }
-  return all;
-}
-
 export async function GET(request: Request) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const like = q ? `%${q}%` : null;
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 2000);
+  const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0"), 0);
 
-  const buildQuery = () => {
-    let query = sb
-      .from("people")
-      .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, tenant_people!inner(tenant_id)")
-      .eq("tenant_people.tenant_id", tenant.id)
-      .order("last_name", { ascending: true })
-      .order("first_name", { ascending: true });
-    if (like) {
-      query = query.or(`first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like},phone_cell.ilike.${like},phone_landline.ilike.${like}`);
-    }
-    return query;
-  };
+  const orClause = like
+    ? `first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},phone.ilike.${like},phone_cell.ilike.${like},phone_landline.ilike.${like}`
+    : null;
 
-  let allData: any[];
-  try {
-    allData = await fetchAll(buildQuery);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  const baseSelect = "id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, tenant_people!inner(tenant_id)";
 
-  const rows = allData.map((p) => ({
+  // Run count + page query in parallel
+  let countQ = sb
+    .from("people")
+    .select("id, tenant_people!inner(tenant_id)", { count: "exact", head: true })
+    .eq("tenant_people.tenant_id", tenant.id);
+  if (orClause) countQ = countQ.or(orClause);
+
+  let dataQ = sb
+    .from("people")
+    .select(baseSelect)
+    .eq("tenant_people.tenant_id", tenant.id)
+    .order("last_name", { ascending: true })
+    .order("first_name", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (orClause) dataQ = dataQ.or(orClause);
+
+  const [{ count, error: countErr }, { data, error: dataErr }] = await Promise.all([
+    countQ,
+    dataQ,
+  ]);
+
+  if (countErr) return NextResponse.json({ error: countErr.message }, { status: 500 });
+  if (dataErr) return NextResponse.json({ error: dataErr.message }, { status: 500 });
+
+  const rows = (data ?? []).map((p: any) => ({
     id: p.id,
     name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "—",
     email: p.email ?? "",
@@ -61,7 +57,7 @@ export async function GET(request: Request) {
     contact_type: p.contact_type ?? "",
   }));
 
-  return NextResponse.json({ rows, total: rows.length });
+  return NextResponse.json({ rows, total: count ?? 0 });
 }
 
 export async function POST(request: NextRequest) {
@@ -102,7 +98,6 @@ export async function POST(request: NextRequest) {
 
   // Filter by location fields if provided (city / state / postal_code)
   if (city?.trim() || state?.trim() || postal_code?.trim()) {
-    // Fetch matching locations, then filter people by household → location
     let locQuery = sb
       .from("locations")
       .select("id, normalized_key")
@@ -116,7 +111,6 @@ export async function POST(request: NextRequest) {
     const locKeys = new Set((locs ?? []).map((l) => l.normalized_key));
 
     if (locKeys.size > 0) {
-      // Fetch households in those locations
       const { data: hhs } = await sb
         .from("households")
         .select("id, location_normalized_key")
@@ -125,7 +119,6 @@ export async function POST(request: NextRequest) {
 
       const hhIds = new Set((hhs ?? []).map((h) => h.id));
       if (hhIds.size > 0) {
-        // Re-query people scoped to matching households
         let personQuery = sb
           .from("people")
           .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, tenant_people!inner(tenant_id)")

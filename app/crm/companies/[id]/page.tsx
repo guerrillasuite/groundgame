@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 
@@ -30,7 +31,7 @@ export default async function CompanyDetail({ params }: Params) {
   if (cErr || !company) {
     return (
       <section style={{ padding: 24 }}>
-        <Link href="/crm/companies" style={{ fontSize: 13, opacity: 0.6 }}>← Companies</Link>
+        <BackButton href="/crm/companies" label="← Companies" style={{ fontSize: 13, opacity: 0.6 }} />
         <p style={{ marginTop: 16, opacity: 0.6 }}>Company not found.</p>
       </section>
     );
@@ -116,9 +117,7 @@ export default async function CompanyDetail({ params }: Params) {
   return (
     <section className="stack" style={{ maxWidth: 720 }}>
       <style>{`.co-member:hover { background: var(--gg-bg, #f9fafb) !important; }`}</style>
-      <Link href="/crm/companies" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }}>
-        ← Companies
-      </Link>
+      <BackButton href="/crm/companies" label="← Companies" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
 
       <div>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{company.name ?? "(Unnamed)"}</h1>

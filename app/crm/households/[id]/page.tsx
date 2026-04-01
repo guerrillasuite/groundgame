@@ -1,5 +1,6 @@
 // app/crm/households/[id]/page.tsx
 import Link from "next/link";
+import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import RemindersSection from "@/app/components/crm/RemindersSection";
@@ -118,9 +119,7 @@ export default async function HouseholdDetail({ params }: Params) {
     <section className="stack" style={{ maxWidth: 680 }}>
       <style>{`.hh-member:hover { background: var(--gg-bg, #f9fafb) !important; }`}</style>
       {/* Back link */}
-      <Link href="/crm/households" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }}>
-        ← Households
-      </Link>
+      <BackButton href="/crm/households" label="← Households" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
 
       {/* Header */}
       <div>

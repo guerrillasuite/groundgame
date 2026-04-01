@@ -18,6 +18,8 @@ type Props = {
   headerActions?: React.ReactNode;
   /** Dynamic contact type options from the tenant's configuration */
   contactTypeOptions?: string[];
+  /** Shown when no search or filter has been run yet (e.g. list of walklists) */
+  defaultContent?: React.ReactNode;
 };
 
 type FilterOp =
@@ -123,11 +125,13 @@ export default function SearchListPage({
   searchPlaceholder = "Search…",
   headerActions,
   contactTypeOptions,
+  defaultContent,
 }: Props) {
   // Merge dynamic contact type options into ENUM_OPTIONS at render time
   const enumOptions = contactTypeOptions?.length
     ? { ...ENUM_OPTIONS, contact_type: contactTypeOptions }
     : ENUM_OPTIONS;
+
   // ── State ──
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Record<string, any>[]>([]);
@@ -136,7 +140,9 @@ export default function SearchListPage({
   const [searched, setSearched] = useState(false);
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(100);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track the last-searched query so page changes re-fetch the right results
+  const lastQuery = useRef("");
 
   const [mode, setMode] = useState<"search" | "filter">("search");
 
@@ -156,13 +162,6 @@ export default function SearchListPage({
   const [exportMode, setExportMode] = useState<"call" | "knock" | "both">("call");
   const [exporting, setExporting] = useState(false);
   const [exportErr, setExportErr] = useState<string | null>(null);
-
-  // ── Restore URL query on mount ──
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const q = new URLSearchParams(window.location.search).get("q") ?? "";
-    if (q) setQuery(q);
-  }, []);
 
   // ── Load schema for filter mode ──
   useEffect(() => {
@@ -184,16 +183,21 @@ export default function SearchListPage({
       .catch(() => {});
   }, [mode, target, schema.length]);
 
-  // ── Quick-search ──
-  const doSearch = useCallback(async (q: string) => {
+  // ── Core search function (server-side pagination) ──
+  const doSearch = useCallback(async (q: string, pg: number, pp: number) => {
     setLoading(true);
     setSearched(true);
+    lastQuery.current = q;
     try {
-      const res = await fetch(`${searchEndpoint}?q=${encodeURIComponent(q.trim())}`);
+      const params = new URLSearchParams();
+      params.set("q", q.trim());
+      params.set("limit", String(pp));
+      params.set("offset", String(pg * pp));
+      const res = await fetch(`${searchEndpoint}?${params}`);
       const json = await res.json();
       setRows(json.rows ?? []);
       setTotal(json.total ?? 0);
-      setPage(0);
+      setPage(pg);
     } catch {
       setRows([]);
       setTotal(0);
@@ -202,7 +206,18 @@ export default function SearchListPage({
     }
   }, [searchEndpoint]);
 
-  // ── Sync URL ──
+  // ── Restore from URL on mount — auto-run if ?q= is present ──
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search).get("q") ?? "";
+    if (q) {
+      setQuery(q);
+      doSearch(q, 0, perPage);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally runs once on mount only
+
+  // ── Sync URL with search query ──
   useEffect(() => {
     if (mode !== "search" || typeof window === "undefined") return;
     const params = new URLSearchParams();
@@ -211,13 +226,21 @@ export default function SearchListPage({
     history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
   }, [mode, query]);
 
-  // ── Debounced search trigger ──
-  useEffect(() => {
-    if (mode !== "search") return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { doSearch(query); }, 350);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [mode, query, doSearch]);
+  // ── Trigger search explicitly ──
+  function handleSearch() {
+    doSearch(query, 0, perPage);
+  }
+
+  // ── Page change re-fetches from server ──
+  function goToPage(pg: number) {
+    doSearch(lastQuery.current, pg, perPage);
+  }
+
+  function changePerPage(pp: number) {
+    setPerPage(pp);
+    if (searched) doSearch(lastQuery.current, 0, pp);
+    setFilterPage(0);
+  }
 
   // ── Filter row helpers ──
   function getSchemaCol(fieldName: string) {
@@ -342,7 +365,7 @@ export default function SearchListPage({
   }
 
   // ── Pagination ──
-  function renderPagination(totalCount: number, pg: number, setPg: (n: number) => void) {
+  function renderPagination(totalCount: number, pg: number, onPageChange: (n: number) => void) {
     const pages = Math.ceil(totalCount / perPage);
     const start = pg * perPage + 1;
     const end = Math.min((pg + 1) * perPage, totalCount);
@@ -358,19 +381,19 @@ export default function SearchListPage({
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
-          {start}–{end} of {totalCount}
+          {start}–{end} of {totalCount.toLocaleString()}
         </span>
         {pages > 1 && <>
-          <button style={btnStyle(pg === 0)} disabled={pg === 0} onClick={() => setPg(0)}>«</button>
-          <button style={btnStyle(pg === 0)} disabled={pg === 0} onClick={() => setPg(pg - 1)}>‹ Prev</button>
-          <button style={btnStyle(pg >= pages - 1)} disabled={pg >= pages - 1} onClick={() => setPg(pg + 1)}>Next ›</button>
-          <button style={btnStyle(pg >= pages - 1)} disabled={pg >= pages - 1} onClick={() => setPg(pages - 1)}>»</button>
+          <button style={btnStyle(pg === 0)} disabled={pg === 0} onClick={() => onPageChange(0)}>«</button>
+          <button style={btnStyle(pg === 0)} disabled={pg === 0} onClick={() => onPageChange(pg - 1)}>‹ Prev</button>
+          <button style={btnStyle(pg >= pages - 1)} disabled={pg >= pages - 1} onClick={() => onPageChange(pg + 1)}>Next ›</button>
+          <button style={btnStyle(pg >= pages - 1)} disabled={pg >= pages - 1} onClick={() => onPageChange(pages - 1)}>»</button>
         </>}
         <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: "var(--gg-text-dim, #6b7280)", marginLeft: "auto" }}>
           Per page:
           <select
             value={perPage}
-            onChange={(e) => { setPerPage(Number(e.target.value)); setPg(0); setPage(0); setFilterPage(0); }}
+            onChange={(e) => changePerPage(Number(e.target.value))}
             style={{ ...selectStyle, padding: "4px 8px", fontSize: 13 }}
           >
             {[25, 50, 100, 250, 500].map((n) => <option key={n} value={n}>{n}</option>)}
@@ -493,15 +516,15 @@ export default function SearchListPage({
       {/* ── QUICK SEARCH ── */}
       {mode === "search" && (
         <>
-          <div style={{ position: "relative" }}>
+          <div style={{ display: "flex", gap: 8 }}>
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
               placeholder={searchPlaceholder}
               style={{
-                width: "100%",
-                boxSizing: "border-box",
+                flex: 1,
                 padding: "8px 12px",
                 border: "1px solid var(--gg-border, #e5e7eb)",
                 borderRadius: 6,
@@ -511,18 +534,38 @@ export default function SearchListPage({
                 outline: "none",
               }}
             />
+            <button
+              onClick={handleSearch}
+              disabled={loading}
+              style={{
+                padding: "8px 20px",
+                background: loading ? "rgba(0,0,0,0.2)" : "var(--gg-primary, #2563eb)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: loading ? "not-allowed" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {loading ? "Searching…" : "Search"}
+            </button>
           </div>
 
-          {loading && <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #9ca3af)" }}>Searching...</p>}
-
-          {!loading && searched && rows.length === 0
-            ? renderTable([], <p style={{ margin: 0, fontSize: 14 }}>
-                {query.trim() ? `No results for "${query}"` : "No records found."}
-              </p>)
-            : renderTable(rows.slice(page * perPage, (page + 1) * perPage))
+          {!searched
+            ? (defaultContent ?? null)
+            : loading
+              ? <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #9ca3af)" }}>Searching...</p>
+              : rows.length === 0
+                ? renderTable([], <p style={{ margin: 0, fontSize: 14 }}>
+                    {query.trim() ? `No results for "${query}"` : "No records found."}
+                  </p>)
+                : <>
+                    {renderTable(rows)}
+                    {total > 0 && renderPagination(total, page, goToPage)}
+                  </>
           }
-
-          {!loading && searched && total > 0 && renderPagination(total, page, setPage)}
         </>
       )}
 

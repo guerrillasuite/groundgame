@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 
@@ -40,7 +41,7 @@ export default async function LocationDetail({ params }: Params) {
   if (locErr || !loc) {
     return (
       <section style={{ padding: 24 }}>
-        <Link href="/crm/locations" style={{ fontSize: 13, opacity: 0.6 }}>← Locations</Link>
+        <BackButton href="/crm/locations" label="← Locations" style={{ fontSize: 13, opacity: 0.6 }} />
         <p style={{ marginTop: 16, opacity: 0.6 }}>Location not found.</p>
       </section>
     );
@@ -154,9 +155,7 @@ export default async function LocationDetail({ params }: Params) {
   return (
     <section className="stack" style={{ maxWidth: 780 }}>
       <style>{`.loc-member:hover { background: var(--gg-bg, #f9fafb) !important; }`}</style>
-      <Link href="/crm/locations" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }}>
-        ← Locations
-      </Link>
+      <BackButton href="/crm/locations" label="← Locations" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
 
       <div>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{address || "(No address)"}</h1>

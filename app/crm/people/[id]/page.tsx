@@ -1,5 +1,6 @@
 // app/crm/people/[id]/page.tsx
 import Link from "next/link";
+import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { hasFeature } from "@/lib/features";
@@ -189,9 +190,7 @@ export default async function PersonDetail({ params }: Params) {
   return (
     <section className="stack" style={{ maxWidth: 720 }}>
       {/* Back link */}
-      <Link href="/crm/people" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }}>
-        ← People
-      </Link>
+      <BackButton href="/crm/people" label="← People" style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", textDecoration: "none" }} />
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "space-between" }}>
