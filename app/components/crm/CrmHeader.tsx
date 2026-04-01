@@ -33,7 +33,6 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
   const fieldItems: NavItem[] = [];
   if (f("crm_lists"))   fieldItems.push({ href: "/crm/lists",   label: "Lists" });
   if (f("crm_surveys")) fieldItems.push({ href: "/crm/survey",  label: "Surveys" });
-  if (f("crm"))         fieldItems.push({ href: "/crm/quiz",    label: "Quiz" });
   if (f("crm_stops"))   fieldItems.push({ href: "/crm/stops",   label: "Stops" });
   if (fieldItems.length > 0) nav.push({ label: "Field", items: fieldItems });
 

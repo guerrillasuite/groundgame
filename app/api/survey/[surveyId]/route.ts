@@ -21,11 +21,11 @@ export async function GET(request: NextRequest, { params }: Ctx) {
 export async function PUT(request: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
-    const { title, description, active } = await request.json();
+    const { title, description, website_url, footer_text, active } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
-    await updateSurvey(surveyId, { title: title.trim(), description, active: Boolean(active) });
+    await updateSurvey(surveyId, { title: title.trim(), description, website_url, footer_text, active: Boolean(active) });
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Error updating survey:", error);

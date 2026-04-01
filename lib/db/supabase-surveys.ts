@@ -37,6 +37,8 @@ export type Survey = {
   tenant_id: string;
   title: string;
   description: string | null;
+  website_url: string | null;
+  footer_text: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -135,7 +137,7 @@ export async function createSurvey(params: {
 
 export async function updateSurvey(
   surveyId: string,
-  params: { title: string; description?: string; active: boolean }
+  params: { title: string; description?: string; website_url?: string; footer_text?: string; active: boolean }
 ): Promise<void> {
   const sb = getAdminClient();
   const { error } = await sb
@@ -143,6 +145,8 @@ export async function updateSurvey(
     .update({
       title: params.title,
       description: params.description ?? null,
+      website_url: params.website_url ?? null,
+      footer_text: params.footer_text ?? null,
       active: params.active,
       updated_at: new Date().toISOString(),
     })

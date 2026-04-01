@@ -25,7 +25,7 @@ export default async function QuizPage({ searchParams }: Props) {
   // Find the active WSPQ survey for this tenant
   const { data: survey } = await sb
     .from("surveys")
-    .select("id, title, website_url")
+    .select("id, title, website_url, footer_text")
     .eq("tenant_id", tenant.id)
     .eq("active", true)
     .ilike("id", "wspq-%")
@@ -53,6 +53,7 @@ export default async function QuizPage({ searchParams }: Props) {
       tenantId={tenant.id}
       title={survey.title}
       websiteUrl={survey.website_url ?? null}
+      footerText={survey.footer_text ?? null}
       questions={questions ?? []}
       isKiosk={kiosk === "1"}
     />

@@ -1,57 +1,56 @@
-import { SurveyContainer } from "@/app/components/survey/SurveyContainer";
-import PublicSurveyEntry from "@/app/components/survey/PublicSurveyEntry";
+import SurveyPanel from "@/app/components/survey/SurveyPanel";
 import { createClient } from "@supabase/supabase-js";
 
-async function fetchContactInfo(contactId: string) {
-  const sb = createClient(
+function makeSb() {
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
-  const { data } = await sb
-    .from("people")
-    .select("first_name, last_name, email, phone")
-    .eq("id", contactId)
-    .maybeSingle();
-  if (!data) return undefined;
-  return {
-    name: [data.first_name, data.last_name].filter(Boolean).join(" "),
-    email: data.email ?? "",
-    phone: data.phone ?? "",
-  };
 }
 
 interface Props {
   params: Promise<{ surveyId: string }>;
-  searchParams: Promise<{ cid?: string }>;
+  searchParams: Promise<{ kiosk?: string }>;
 }
 
 export default async function PublicSurveyPage({ params, searchParams }: Props) {
   const { surveyId } = await params;
-  const { cid } = await searchParams;
-  const contactInfo = cid ? await fetchContactInfo(cid) : undefined;
+  const { kiosk } = await searchParams;
+  const sb = makeSb();
+
+  const { data: survey } = await sb
+    .from("surveys")
+    .select("id, tenant_id, title, website_url, footer_text")
+    .eq("id", surveyId)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (!survey) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0f172a" }}>
+        <p style={{ color: "#94a3b8" }}>Survey not available.</p>
+      </div>
+    );
+  }
+
+  const { data: questions } = await sb
+    .from("questions")
+    .select("id, question_text, order_index, options")
+    .eq("survey_id", surveyId)
+    .order("order_index", { ascending: true });
 
   return (
-    <>
-      {cid ? (
-        // Pre-personalized link: go straight to survey
-        <SurveyContainer surveyId={surveyId} contactId={cid} contactInfo={contactInfo} randomizeOptions={true} />
-      ) : (
-        // No contact ID: lookup flow
-        <PublicSurveyEntry surveyId={surveyId} />
-      )}
-
-      <div
-        style={{
-          textAlign: "center",
-          padding: "24px 16px",
-          color: "rgb(var(--text-300))",
-          fontSize: "12px",
-          background: "rgb(var(--bg-900))",
-        }}
-      >
-        Paid for by the Libertarian Booster PAC
-      </div>
-    </>
+    <div style={{ minHeight: "100vh", background: "#0f172a" }}>
+      <SurveyPanel
+        surveyId={survey.id}
+        tenantId={survey.tenant_id}
+        title={survey.title}
+        websiteUrl={survey.website_url ?? null}
+        footerText={survey.footer_text ?? null}
+        questions={questions ?? []}
+        isKiosk={kiosk === "1"}
+      />
+    </div>
   );
 }
 

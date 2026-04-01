@@ -66,6 +66,8 @@ export default function SurveyBuilder({ surveyId }: { surveyId?: string }) {
   // Survey meta
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [footerText, setFooterText] = useState("");
   const [active, setActive] = useState(true);
 
   // Questions
@@ -88,6 +90,8 @@ export default function SurveyBuilder({ surveyId }: { surveyId?: string }) {
         if (data.error) return;
         setTitle(data.survey.title ?? "");
         setDescription(data.survey.description ?? "");
+        setWebsiteUrl(data.survey.website_url ?? "");
+        setFooterText(data.survey.footer_text ?? "");
         setActive(Boolean(data.survey.active));
         const qs: LocalQuestion[] = (data.questions ?? []).map((q: any) => ({
           id: q.id,
@@ -207,7 +211,7 @@ export default function SurveyBuilder({ surveyId }: { surveyId?: string }) {
         const res = await fetch(`/api/survey/${sid}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, description, active }),
+          body: JSON.stringify({ title, description, website_url: websiteUrl || null, footer_text: footerText || null, active }),
         });
         if (!res.ok) throw new Error("Failed to update survey");
       }
@@ -379,6 +383,30 @@ export default function SurveyBuilder({ surveyId }: { surveyId?: string }) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Short description for canvassers"
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, opacity: 0.7 }}>
+            "Learn More" URL (optional)
+          </label>
+          <input
+            type="url"
+            value={websiteUrl}
+            onChange={(e) => setWebsiteUrl(e.target.value)}
+            placeholder="https://example.com"
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, opacity: 0.7 }}>
+            Footer text (optional — e.g. "Paid for by…")
+          </label>
+          <input
+            type="text"
+            value={footerText}
+            onChange={(e) => setFooterText(e.target.value)}
+            placeholder="Paid for by…"
             style={inputStyle}
           />
         </div>
