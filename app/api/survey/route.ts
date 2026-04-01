@@ -14,14 +14,20 @@ function slugify(text: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, description } = await request.json();
+    const { title, description, id: customId } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
     const tenant = await getTenant();
-    const slug = slugify(title.trim()) || "survey";
-    const rand = Math.random().toString(36).slice(2, 6);
-    const survey_id = `${slug}-${rand}`;
+
+    let survey_id: string;
+    if (customId?.trim() && /^[a-z0-9-]+$/.test(customId.trim())) {
+      survey_id = customId.trim();
+    } else {
+      const slug = slugify(title.trim()) || "survey";
+      const rand = Math.random().toString(36).slice(2, 6);
+      survey_id = `${slug}-${rand}`;
+    }
 
     await createSurvey({
       id: survey_id,

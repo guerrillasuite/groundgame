@@ -237,6 +237,9 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
 
   return (
     <section className="stack" style={{ padding: 16 }}>
+      <a href="/crm/survey" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 14, opacity: 0.6, textDecoration: 'none' }}>
+        ← Surveys
+      </a>
       {/* Header */}
       <div style={{
         background: 'var(--gg-card, white)',

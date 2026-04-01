@@ -69,6 +69,8 @@ export default function SurveyBuilder({ surveyId }: { surveyId?: string }) {
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [footerText, setFooterText] = useState("");
   const [active, setActive] = useState(true);
+  const [slug, setSlug] = useState("");
+  const [slugManual, setSlugManual] = useState(false);
 
   // Questions
   const [questions, setQuestions] = useState<LocalQuestion[]>([]);
@@ -201,7 +203,7 @@ export default function SurveyBuilder({ surveyId }: { surveyId?: string }) {
         const res = await fetch("/api/survey", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, description }),
+          body: JSON.stringify({ title, description, id: slug.trim() || undefined }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Failed to create survey");
@@ -369,10 +371,41 @@ export default function SurveyBuilder({ surveyId }: { surveyId?: string }) {
           <input
             type="text"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              if (!slugManual) {
+                setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
+              }
+            }}
             placeholder="e.g. Voter Issues Survey 2026"
             style={inputStyle}
           />
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, opacity: 0.7 }}>
+            {isNew ? "URL Slug" : "Survey ID"}
+          </label>
+          {isNew ? (
+            <div>
+              <input
+                type="text"
+                value={slug}
+                onChange={(e) => {
+                  setSlugManual(true);
+                  setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""));
+                }}
+                placeholder="e.g. wspq-event-june"
+                style={inputStyle}
+              />
+              <p style={{ margin: "4px 0 0", fontSize: 12, opacity: 0.5 }}>
+                Public URL will be <code>/s/{slug || "your-slug"}</code>
+              </p>
+            </div>
+          ) : (
+            <div style={{ ...inputStyle, background: "rgba(0,0,0,0.04)", color: "inherit", opacity: 0.7, cursor: "default" }}>
+              {surveyId}
+            </div>
+          )}
         </div>
         <div style={{ display: "grid", gap: 6 }}>
           <label style={{ fontSize: 13, fontWeight: 600, opacity: 0.7 }}>

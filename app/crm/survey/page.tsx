@@ -4,6 +4,7 @@ import { getSurveys, getWalklistsBySurvey } from "@/lib/db/supabase-surveys";
 import { getTenant } from "@/lib/tenant";
 import { createClient } from "@supabase/supabase-js";
 import SurveyShareButton from "@/app/components/survey/SurveyShareButton";
+import SurveyDuplicateButton from "@/app/components/survey/SurveyDuplicateButton";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -245,6 +246,7 @@ export default async function SurveyPage() {
                   >
                     Export
                   </a>
+                  <SurveyDuplicateButton surveyId={survey.id} />
                   <SurveyShareButton surveyId={survey.id} />
                 </div>
               </div>
