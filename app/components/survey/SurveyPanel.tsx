@@ -238,10 +238,6 @@ export default function SurveyPanel({
   // ── Contact form submit ─────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!firstName.trim() && !lastName.trim() && !email.trim() && !phone.trim()) {
-      setPhase("thankyou");
-      return;
-    }
     setSubmitting(true);
     try {
       if (isWspq) {
@@ -465,7 +461,7 @@ export default function SurveyPanel({
               <button type="submit" disabled={submitting} style={btn(submitColor)}>
                 {submitting ? "Saving…" : "Save My Results"}
               </button>
-              <button type="button" onClick={() => setPhase("thankyou")} style={{ ...ghostBtn, marginTop: 10 }}>
+              <button type="submit" style={{ ...ghostBtn, marginTop: 10 }}>
                 Skip
               </button>
             </form>
