@@ -119,6 +119,23 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
 
+  // Fetch survey title for stop notes
+  const { data: surveyRow } = await sb
+    .from("surveys")
+    .select("title")
+    .eq("id", survey_id)
+    .maybeSingle();
+
+  // Record stop so this interaction appears in CRM activity
+  await sb.from("stops").insert({
+    tenant_id: tenant.id,
+    person_id: personId,
+    channel: "survey",
+    result: "completed",
+    notes: surveyRow?.title ?? survey_id,
+    stop_at: now,
+  });
+
   // Upsert survey session
   await sb.from("survey_sessions").upsert(
     { crm_contact_id: personId, survey_id, started_at: now, completed_at: now, last_question_answered: null },
