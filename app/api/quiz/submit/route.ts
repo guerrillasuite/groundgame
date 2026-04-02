@@ -193,6 +193,12 @@ export async function POST(req: NextRequest) {
   const reviewNote = reviewNeeded ? " · ⚠ REVIEW: possible duplicate" : "";
   const stopNotes = scoreNote + reviewNote;
 
+  // Save Nolan scores to person record
+  await sb.from("people").update({
+    nolan_personal_score: personal_score,
+    nolan_economic_score: economic_score,
+  }).eq("id", personId);
+
   // Insert stop (walklist_id is now nullable)
   await sb.from("stops").insert({
     tenant_id: tenant.id,
