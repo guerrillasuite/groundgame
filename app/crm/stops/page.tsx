@@ -100,6 +100,7 @@ export default async function StopsPage({
       </div>
       <ListPage
         title=""
+        rowHrefPrefix="/crm/stops/"
         columns={[
           { key: "when",    label: "When",    width: 160 },
           { key: "channel", label: "Channel", width: 80 },
