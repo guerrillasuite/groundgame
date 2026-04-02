@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     notes = null,
     opportunity = null,
   } = body as {
-    channel?: "doors" | "call";
+    channel?: "doors" | "call" | "street" | "table";
     address_line1?: string;
     city?: string;
     state?: string;

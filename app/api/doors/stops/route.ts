@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
         walklist_item_id: body.item_id,
         person_id: body.person_id ?? null,
         user_id: null,
-        channel: "door",
+        channel: "doors",
         result: body.result,
         notes: body.notes ?? null,
         duration_sec: 0,

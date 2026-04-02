@@ -44,9 +44,13 @@ function formatDuration(sec: number | null | undefined) {
 }
 
 const CHANNEL_COLORS: Record<string, { bg: string; color: string }> = {
-  quiz:  { bg: "rgba(234,179,8,0.12)", color: "#b45309" },
-  doors: { bg: "rgba(59,130,246,0.1)",  color: "#2563eb" },
-  call:  { bg: "rgba(34,197,94,0.1)",   color: "#16a34a" },
+  quiz:   { bg: "rgba(234,179,8,0.12)",  color: "#b45309" },
+  doors:  { bg: "rgba(59,130,246,0.1)",  color: "#2563eb" },
+  call:   { bg: "rgba(34,197,94,0.1)",   color: "#16a34a" },
+  text:   { bg: "rgba(168,85,247,0.1)",  color: "#7c3aed" },
+  survey: { bg: "rgba(20,184,166,0.1)",  color: "#0f766e" },
+  street: { bg: "rgba(249,115,22,0.1)",  color: "#c2410c" },
+  table:  { bg: "rgba(236,72,153,0.1)",  color: "#be185d" },
 };
 
 const RESULT_COLORS: Record<string, string> = {

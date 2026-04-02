@@ -23,7 +23,7 @@ export async function POST() {
           walklist_item_id: stop.item_id,
           person_id: stop.person_id ?? null,
           user_id: null,
-          channel: "door",
+          channel: "doors",
           result: stop.result,
           notes: stop.notes ?? null,
           duration_sec: 0,
