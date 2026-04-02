@@ -143,6 +143,9 @@ const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
     { column: "score_mod_dem",              label: "Score: Moderate Dem",           data_type: "smallint", is_join: false },
     { column: "score_cons_rep",             label: "Score: Conservative Rep",       data_type: "smallint", is_join: false },
     { column: "score_mod_rep",              label: "Score: Moderate Rep",           data_type: "smallint", is_join: false },
+    // Nolan Chart scores (from WSPQ quiz)
+    { column: "nolan_personal_score",       label: "Nolan: Personal Freedom (0–100)", data_type: "smallint", is_join: false },
+    { column: "nolan_economic_score",       label: "Nolan: Economic Freedom (0–100)", data_type: "smallint", is_join: false },
     // Voting history
     { column: "voting_frequency",   label: "Voting Frequency",   data_type: "text",     is_join: false },
     { column: "early_voter",        label: "Early Voter",        data_type: "boolean",  is_join: false },
