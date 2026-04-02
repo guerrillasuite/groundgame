@@ -39,10 +39,13 @@ function computeScores(questions: Question[], answers: Record<string, string>) {
 }
 
 function computeResult(personal: number, economic: number): QuizResult {
-  if (personal >= 60 && economic >= 60) return "libertarian";
-  if (personal >= 60 && economic < 60) return "progressive";
-  if (personal < 60 && economic >= 60) return "conservative";
-  if (personal < 60 && economic < 60 && (personal < 40 || economic < 40)) return "authoritarian";
+  // Zone boundaries derived from SVG geometry (ri = r*0.35, inner corners at E+P=135/65, E-P=±35)
+  const sum = economic + personal;
+  const diff = economic - personal;
+  if (sum >= 135) return "libertarian";
+  if (sum <= 65) return "authoritarian";
+  if (diff <= -35) return "progressive";
+  if (diff >= 35) return "conservative";
   return "moderate";
 }
 
