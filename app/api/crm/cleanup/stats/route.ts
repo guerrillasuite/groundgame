@@ -12,6 +12,15 @@ function makeSb(tenantId: string) {
   );
 }
 
+/** Normalize a phone number to (XXX) XXX-XXXX or null if invalid. */
+function normalizePhone(raw: string | null): string | null {
+  if (!raw) return null;
+  let digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) digits = digits.slice(1);
+  if (digits.length !== 10) return null;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 async function fetchAll<T>(
   queryFn: (offset: number) => PromiseLike<{ data: T[] | null; error: any }>
 ): Promise<T[]> {
@@ -61,7 +70,10 @@ export async function GET() {
   ).length;
 
   const malformedPhones = activePeople.filter((p) =>
-    [p.phone, p.phone_cell, p.phone_landline].some((ph) => ph?.trim())
+    [p.phone, p.phone_cell, p.phone_landline].some((ph) => {
+      if (!ph?.trim()) return false;
+      return normalizePhone(ph) !== ph;
+    })
   ).length;
 
   const malformedEmails = activePeople.filter((p) => {
@@ -89,14 +101,10 @@ export async function GET() {
     (p.length_of_residence !== null && p.length_of_residence !== undefined && p.length_of_residence <= 12)
   ).length;
 
-  // Duplicate people groups — match dedupe page logic (normalized name key)
-  const nameGroups = new Map<string, number>();
-  for (const p of activePeople) {
-    const key = `${(p.first_name ?? "").trim().toLowerCase()}|${(p.last_name ?? "").trim().toLowerCase()}`;
-    if (!key || key === "|") continue;
-    nameGroups.set(key, (nameGroups.get(key) ?? 0) + 1);
-  }
-  const duplicatePeopleGroups = [...nameGroups.values()].filter((c) => c > 1).length;
+  // Duplicate people groups — use the same RPC as the dedupe page to avoid drift
+  const { data: dupRows } = await sb.rpc("find_dup_people", { p_tenant_id: tenantId });
+  const duplicatePeopleGroups = ((dupRows as any[]) ?? [])
+    .filter((r: any) => (r.person_ids as string[])?.length > 1).length;
 
   // Fetch ALL households for this tenant
   const allHouseholds = await fetchAll<{ id: string; location_id: string | null }>((offset) =>
@@ -144,6 +152,28 @@ export async function GET() {
   );
   const orphanedLocations = allLocs.filter((l) => !allUsedLocIds.has(l.id)).length;
 
+  // Count locations needing address normalization (missing parsed fields or bad capitalization)
+  let addressesToNormalize = 0;
+  if (linkedLocIds.length > 0) {
+    for (let i = 0; i < linkedLocIds.length; i += 200) {
+      const chunk = linkedLocIds.slice(i, i + 200);
+      const { data: locRows } = await sb
+        .from("locations")
+        .select("id, address_line1, street_name, normalized_key")
+        .in("id", chunk)
+        .not("address_line1", "is", null);
+      for (const loc of locRows ?? []) {
+        const needsParsing = !loc.street_name;
+        const needsCaps =
+          loc.address_line1 !== null &&
+          (loc.address_line1 === loc.address_line1.toUpperCase() ||
+           loc.address_line1 === loc.address_line1.toLowerCase());
+        const missingKey = !loc.normalized_key;
+        if (needsParsing || needsCaps || missingKey) addressesToNormalize++;
+      }
+    }
+  }
+
   return NextResponse.json({
     missingMiddleInitial,
     missingCoordinates,
@@ -156,5 +186,6 @@ export async function GET() {
     householdsNeedingNameRebuild,
     orphanedLocations,
     likelyMovers,
+    addressesToNormalize,
   });
 }

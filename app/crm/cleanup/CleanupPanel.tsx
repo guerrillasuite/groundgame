@@ -15,6 +15,7 @@ type CleanupStats = {
   householdsNeedingNameRebuild: number;
   orphanedLocations: number;
   likelyMovers: number;
+  addressesToNormalize: number;
 };
 
 type CardResult = { label: string; color?: string } | null;
@@ -280,6 +281,7 @@ export default function CleanupPanel() {
         <StatPill label="Blank records" value={s.blankRecords ?? 0} warn />
         <StatPill label="Orphaned locations" value={s.orphanedLocations ?? 0} />
         <StatPill label="Likely movers" value={s.likelyMovers ?? 0} />
+        <StatPill label="Addresses unparsed" value={s.addressesToNormalize ?? 0} warn />
       </div>
 
       {/* ── People Data section ── */}
@@ -356,6 +358,25 @@ export default function CleanupPanel() {
           onAction={() => runCard("geocode", "/api/crm/locations/geocode", "POST", (d) => ({ label: `✓ Geocoded ${d.geocoded} · Failed ${d.failed} · Skipped ${d.skipped}` }))}
           loading={running.geocode}
           result={results.geocode}
+        />
+
+        <ActionCard
+          title="Normalize Addresses"
+          description="Fix capitalization (ALL CAPS / all lowercase), parse address into street number and street name, and refresh the dedup key. Enables filtering by street name in walklists."
+          stat={
+            (s.addressesToNormalize ?? 0) > 0
+              ? `${s.addressesToNormalize.toLocaleString()} addresses need normalizing`
+              : "All addresses normalized ✓"
+          }
+          statColor={(s.addressesToNormalize ?? 0) > 0 ? "#fbbf24" : "#16a34a"}
+          buttonLabel={`Normalize ${(s.addressesToNormalize ?? 0).toLocaleString()} Addresses`}
+          onAction={() =>
+            runCard("normalizeAddresses", "/api/crm/cleanup/normalize-addresses", "POST", (d) => ({
+              label: `✓ Normalized ${d.updated} addresses`,
+            }))
+          }
+          loading={running.normalizeAddresses}
+          result={results.normalizeAddresses}
         />
 
         <ActionCard
