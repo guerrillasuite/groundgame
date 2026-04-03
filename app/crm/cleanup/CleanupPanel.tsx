@@ -16,6 +16,10 @@ type CleanupStats = {
   orphanedLocations: number;
   likelyMovers: number;
   addressesToNormalize: number;
+  duplicateCompanyGroups: number;
+  duplicateLocationGroups: number;
+  duplicateOpportunityGroups: number;
+  duplicateStopGroups: number;
 };
 
 type CardResult = { label: string; color?: string } | null;
@@ -282,6 +286,10 @@ export default function CleanupPanel() {
         <StatPill label="Orphaned locations" value={s.orphanedLocations ?? 0} />
         <StatPill label="Likely movers" value={s.likelyMovers ?? 0} />
         <StatPill label="Addresses unparsed" value={s.addressesToNormalize ?? 0} warn />
+        <StatPill label="Dup companies" value={s.duplicateCompanyGroups ?? 0} warn />
+        <StatPill label="Dup locations" value={s.duplicateLocationGroups ?? 0} warn />
+        <StatPill label="Dup opportunities" value={s.duplicateOpportunityGroups ?? 0} warn />
+        <StatPill label="Dup stops" value={s.duplicateStopGroups ?? 0} />
       </div>
 
       {/* ── People Data section ── */}
@@ -439,8 +447,15 @@ export default function CleanupPanel() {
         <ActionCard
           title="Dedupe Records"
           description="Find and merge duplicate people or households. Duplicate detection is based on matching names or shared addresses."
-          stat={`${(s.duplicatePeopleGroups ?? 0).toLocaleString()} duplicate people groups · ${(s.duplicateHouseholdGroups ?? 0).toLocaleString()} duplicate households`}
-          statColor={(s.duplicatePeopleGroups ?? 0) + (s.duplicateHouseholdGroups ?? 0) > 0 ? "#fbbf24" : "#16a34a"}
+          stat={[
+            `${(s.duplicatePeopleGroups ?? 0).toLocaleString()} people`,
+            `${(s.duplicateHouseholdGroups ?? 0).toLocaleString()} households`,
+            `${(s.duplicateCompanyGroups ?? 0).toLocaleString()} companies`,
+            `${(s.duplicateLocationGroups ?? 0).toLocaleString()} locations`,
+            `${(s.duplicateOpportunityGroups ?? 0).toLocaleString()} opportunities`,
+            `${(s.duplicateStopGroups ?? 0).toLocaleString()} stops`,
+          ].join(" · ")}
+          statColor={(s.duplicatePeopleGroups ?? 0) + (s.duplicateHouseholdGroups ?? 0) + (s.duplicateCompanyGroups ?? 0) + (s.duplicateLocationGroups ?? 0) + (s.duplicateOpportunityGroups ?? 0) > 0 ? "#fbbf24" : "#16a34a"}
           linkHref="/crm/dedupe"
           linkLabel="Go to Dedupe"
         />

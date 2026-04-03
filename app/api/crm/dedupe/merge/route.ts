@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const { type, keepId, deleteIds } = body as {
-    type: "people" | "households";
+    type: "people" | "households" | "companies" | "locations" | "opportunities" | "stops";
     keepId: string;
     deleteIds: string[];
   };
@@ -63,52 +63,47 @@ export async function POST(request: Request) {
 
   // ── Merge households ──────────────────────────────────────────────────────
   if (type === "households") {
-    // Move all people from duplicate households → keeper
-    const { error: peopleErr } = await sb
-      .from("people")
-      .update({ household_id: keepId })
-      .eq("tenant_id", tenant.id)
-      .in("household_id", deleteIds);
+    const { data, error } = await sb.rpc("gs_merge_households_v1", {
+      p_tenant_id: tenant.id, p_keep_id: keepId, p_delete_ids: deleteIds,
+    });
+    if (error) return NextResponse.json({ error: `merge failed: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ merged: (data as any) ?? deleteIds.length });
+  }
 
-    if (peopleErr) return NextResponse.json({ error: `people update: ${peopleErr.message}` }, { status: 500 });
+  // ── Merge companies ───────────────────────────────────────────────────────
+  if (type === "companies") {
+    const { data, error } = await sb.rpc("gs_merge_companies_v1", {
+      p_tenant_id: tenant.id, p_keep_id: keepId, p_delete_ids: deleteIds,
+    });
+    if (error) return NextResponse.json({ error: `merge failed: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ merged: (data as any) ?? deleteIds.length });
+  }
 
-    // Move person_households junction entries → keeper (upsert to avoid duplicate conflicts)
-    const { data: phRows } = await sb
-      .from("person_households")
-      .select("person_id")
-      .eq("tenant_id", tenant.id)
-      .in("household_id", deleteIds);
+  // ── Merge locations ───────────────────────────────────────────────────────
+  if (type === "locations") {
+    const { data, error } = await sb.rpc("gs_merge_locations_v1", {
+      p_tenant_id: tenant.id, p_keep_id: keepId, p_delete_ids: deleteIds,
+    });
+    if (error) return NextResponse.json({ error: `merge failed: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ merged: (data as any) ?? deleteIds.length });
+  }
 
-    if (phRows && phRows.length > 0) {
-      // Delete old junction rows
-      await sb.from("person_households").delete().eq("tenant_id", tenant.id).in("household_id", deleteIds);
-      // Re-insert pointing to keeper (ignore conflicts in case person already in keeper)
-      const newRows = phRows.map((r: any) => ({ tenant_id: tenant.id, household_id: keepId, person_id: r.person_id }));
-      await sb.from("person_households").upsert(newRows, { onConflict: "tenant_id,household_id,person_id", ignoreDuplicates: true });
-    }
+  // ── Merge opportunities ───────────────────────────────────────────────────
+  if (type === "opportunities") {
+    const { data, error } = await sb.rpc("gs_merge_opportunities_v1", {
+      p_tenant_id: tenant.id, p_keep_id: keepId, p_delete_ids: deleteIds,
+    });
+    if (error) return NextResponse.json({ error: `merge failed: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ merged: (data as any) ?? deleteIds.length });
+  }
 
-    // Delete duplicate households
-    const { error: delErr, count } = await sb
-      .from("households")
-      .delete({ count: "exact" })
-      .eq("tenant_id", tenant.id)
-      .in("id", deleteIds);
-
-    if (delErr) return NextResponse.json({ error: `households delete: ${delErr.message}` }, { status: 500 });
-
-    // Refresh household name from current residents
-    const { data: residents } = await sb
-      .from("people")
-      .select("last_name")
-      .eq("tenant_id", tenant.id)
-      .eq("household_id", keepId);
-
-    const names = [...new Set((residents ?? []).map((r: any) => (r.last_name ?? "").trim()).filter(Boolean))].slice(0, 3);
-    if (names.length > 0) {
-      await sb.from("households").update({ name: names.join(" / ") }).eq("id", keepId).eq("tenant_id", tenant.id);
-    }
-
-    return NextResponse.json({ merged: count ?? deleteIds.length });
+  // ── Merge stops ───────────────────────────────────────────────────────────
+  if (type === "stops") {
+    const { data, error } = await sb.rpc("gs_merge_stops_v1", {
+      p_tenant_id: tenant.id, p_keep_id: keepId, p_delete_ids: deleteIds,
+    });
+    if (error) return NextResponse.json({ error: `merge failed: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ merged: (data as any) ?? deleteIds.length });
   }
 
   return NextResponse.json({ error: "Unknown type" }, { status: 400 });
