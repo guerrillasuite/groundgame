@@ -48,15 +48,14 @@ export async function POST(request: Request) {
       await sb.from("tenant_people").delete().eq("tenant_id", tenant.id).in("person_id", unlinkOnly);
     }
 
-    // For records only this tenant has: safe to fully delete
+    // For records only this tenant has: atomically reassign all references and delete
     if (safeToDelete.length > 0) {
-      // Remove from junction table first
-      await sb.from("person_households").delete().eq("tenant_id", tenant.id).in("person_id", safeToDelete);
-      // Remove this tenant's link
-      await sb.from("tenant_people").delete().eq("tenant_id", tenant.id).in("person_id", safeToDelete);
-      // Delete the duplicate person records (no other tenant references them)
-      const { error: delErr } = await sb.from("people").delete().in("id", safeToDelete);
-      if (delErr) return NextResponse.json({ error: `people delete: ${delErr.message}` }, { status: 500 });
+      const { error: mergeErr } = await sb.rpc("gs_merge_people_v1", {
+        p_tenant_id:  tenant.id,
+        p_keep_id:    keepId,
+        p_delete_ids: safeToDelete,
+      });
+      if (mergeErr) return NextResponse.json({ error: `merge failed: ${mergeErr.message}` }, { status: 500 });
     }
 
     return NextResponse.json({ merged: deleteIds.length });
