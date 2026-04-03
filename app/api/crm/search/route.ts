@@ -10,6 +10,21 @@ function makeSb(tenantId: string) {
   );
 }
 
+// Chunked .in() helper — avoids PostgREST URL limit for large ID arrays.
+async function queryInChunks(
+  sb: any, table: string, select: string, inCol: string, ids: string[],
+  extraFilters?: (q: any) => any, chunkSize = 200
+): Promise<any[]> {
+  const all: any[] = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    let q = sb.from(table).select(select).in(inCol, ids.slice(i, i + chunkSize));
+    if (extraFilters) q = extraFilters(q);
+    const { data } = await q;
+    if (data) all.push(...data);
+  }
+  return all;
+}
+
 // Supabase PostgREST caps rows at max_rows (default 1000).
 // Loop with .range() to fetch everything.
 async function fetchAll(buildQuery: () => any, chunkSize = 1000): Promise<any[]> {
@@ -156,9 +171,10 @@ export async function POST(request: NextRequest) {
   const sb = makeSb(tenant.id);
 
   const body = await request.json();
-  const { target, filters = [] } = body as {
+  const { target, filters = [], link_filters = {} } = body as {
     target: SearchTarget;
     filters: SearchFilter[];
+    link_filters?: { people?: SearchFilter[] };
   };
 
   if (!target) {
@@ -341,12 +357,54 @@ export async function POST(request: NextRequest) {
 
   // ── LOCATIONS ────────────────────────────────────────────────────────────
   if (target === "locations") {
+    // If people link_filters provided, resolve which location IDs have matching people.
+    let allowedLocIds: Set<string> | null = null;
+    const peopleFilters = link_filters?.people ?? [];
+    if (peopleFilters.length > 0) {
+      try {
+        const matchingPeople = await fetchAll(() => {
+          let q = sb.from("people").select("id, household_id").eq("tenant_id", tenant.id);
+          for (const f of peopleFilters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
+          return q;
+        });
+        if (!matchingPeople.length) return NextResponse.json([]);
+
+        const personIds = matchingPeople.map((p: any) => p.id);
+        const resolvedLocIds = new Set<string>();
+
+        // Path 1: direct household_id FK
+        const withHh = matchingPeople.filter((p: any) => p.household_id);
+        if (withHh.length) {
+          const hhs = await queryInChunks(sb, "households", "id, location_id", "id",
+            withHh.map((p: any) => p.household_id), (q) => q.eq("tenant_id", tenant.id));
+          for (const h of hhs) if (h.location_id) resolvedLocIds.add(h.location_id);
+        }
+
+        // Path 2: person_households junction for those without direct household_id
+        const withoutHh = matchingPeople.filter((p: any) => !p.household_id);
+        if (withoutHh.length) {
+          const phRows = await queryInChunks(sb, "person_households", "person_id, household_id",
+            "person_id", withoutHh.map((p: any) => p.id));
+          const juncHhIds = [...new Set((phRows as any[]).map((r) => r.household_id).filter(Boolean))];
+          if (juncHhIds.length) {
+            const juncHhs = await queryInChunks(sb, "households", "id, location_id", "id",
+              juncHhIds, (q) => q.eq("tenant_id", tenant.id));
+            for (const h of juncHhs) if (h.location_id) resolvedLocIds.add(h.location_id);
+          }
+        }
+
+        allowedLocIds = resolvedLocIds;
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
+
     let locations: any[];
     try {
       locations = await fetchAll(() => {
         let q = sb
           .from("locations")
-          .select("id, address_line1, city, state, postal_code")
+          .select("id, address_line1, city, state, postal_code, lat, lon")
           .eq("tenant_id", tenant.id);
         for (const f of filters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
         return q;
@@ -355,19 +413,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: err.message }, { status: 500 });
     }
 
+    // Intersect with people link_filter results (JS-side — avoids large .in() URL issue)
+    if (allowedLocIds !== null) {
+      locations = locations.filter((l: any) => (allowedLocIds as Set<string>).has(l.id));
+    }
+
     if (!locations.length) return NextResponse.json([]);
 
     // Count people via households
     const locIds = locations.map((l: any) => l.id);
-    const { data: hhs } = await sb
-      .from("households")
-      .select("id, location_id")
-      .eq("tenant_id", tenant.id)
-      .in("location_id", locIds);
+    const hhs = await queryInChunks(sb, "households", "id, location_id", "location_id",
+      locIds, (q) => q.eq("tenant_id", tenant.id));
 
-    const hhIds = (hhs ?? []).map((h: any) => h.id);
+    const hhIds = hhs.map((h: any) => h.id);
     const locToHh = new Map<string, string[]>();
-    for (const h of hhs ?? []) {
+    for (const h of hhs) {
       const arr = locToHh.get(h.location_id) ?? [];
       arr.push(h.id);
       locToHh.set(h.location_id, arr);
@@ -375,13 +435,10 @@ export async function POST(request: NextRequest) {
 
     const peopleCounts = new Map<string, number>();
     if (hhIds.length) {
-      const { data: phRows } = await sb
-        .from("person_households")
-        .select("household_id")
-        .eq("tenant_id", tenant.id)
-        .in("household_id", hhIds);
+      const phRows = await queryInChunks(sb, "person_households", "household_id", "household_id",
+        hhIds, (q) => q.eq("tenant_id", tenant.id));
       const hhPeopleCount = new Map<string, number>();
-      for (const ph of phRows ?? []) {
+      for (const ph of phRows) {
         hhPeopleCount.set(ph.household_id, (hhPeopleCount.get(ph.household_id) ?? 0) + 1);
       }
       for (const [locId, hhArr] of locToHh) {
@@ -398,6 +455,8 @@ export async function POST(request: NextRequest) {
         state: l.state ?? "",
         postal_code: l.postal_code ?? "",
         people_count: peopleCounts.get(l.id) ?? 0,
+        lat: l.lat ?? null,
+        lon: l.lon ?? null,
       }))
     );
   }

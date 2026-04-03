@@ -1,6 +1,6 @@
 // app/crm/lists/page.tsx
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Map } from "lucide-react";
 import { getTenant } from "@/lib/tenant";
 import { createClient } from "@supabase/supabase-js";
 import DeleteListButton from "@/app/components/lists/DeleteListButton";
@@ -91,24 +91,45 @@ export default async function ListsPage() {
           </p>
         </div>
         {crmUser?.isAdmin && (
-          <Link
-            href="/crm/lists/new"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "10px 18px",
-              background: "var(--gg-primary, #2563eb)",
-              color: "white",
-              borderRadius: 8,
-              fontWeight: 600,
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <Plus size={16} />
-            Create List
-          </Link>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Link
+              href="/crm/lists/map-builder"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "10px 18px",
+                background: "transparent",
+                color: "var(--gg-primary, #2563eb)",
+                border: "1.5px solid var(--gg-primary, #2563eb)",
+                borderRadius: 8,
+                fontWeight: 600,
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Map size={16} />
+              Map Builder
+            </Link>
+            <Link
+              href="/crm/lists/new"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "10px 18px",
+                background: "var(--gg-primary, #2563eb)",
+                color: "white",
+                borderRadius: 8,
+                fontWeight: 600,
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Plus size={16} />
+              Create List
+            </Link>
+          </div>
         )}
       </div>
 
