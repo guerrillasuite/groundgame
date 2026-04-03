@@ -63,6 +63,14 @@ const fmtAddr = (l: any) => {
   return [l?.address_line1, line2, l?.postal_code].filter(Boolean).join(", ");
 };
 
+const fmtDate = (iso: string | null | undefined) => {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-US", {
+    timeZone: "America/Chicago",
+    month: "2-digit", day: "2-digit", year: "2-digit",
+  });
+};
+
 export default async function ListDetail({
   params,
   searchParams,
@@ -120,7 +128,7 @@ export default async function ListDetail({
   const allItemIds = allItems.map(r => r.id).filter(Boolean) as string[];
   const allStops = allItemIds.length
     ? await queryInChunks(
-        sb, "stops", "walklist_item_id, result",
+        sb, "stops", "walklist_item_id, result, stop_at",
         "walklist_item_id", allItemIds,
         (q) => q.eq("tenant_id", tenant.id).order("created_at", { ascending: false })
       )
@@ -143,46 +151,123 @@ export default async function ListDetail({
   }
   const colorMap = buildColorMap(resolveDispoConfig((tenant as any).settings ?? {}));
 
+  // ── Shared enrichment: last contacted + opportunities (used by all paths) ─────
+  // companyId → the person linked to that company item (for last-contacted + opp lookup)
+  const companyPersonIdMap = new Map<string, string>();
+  for (const item of allItems as any[]) {
+    if (item.company_id && item.person_id && !companyPersonIdMap.has(item.company_id)) {
+      companyPersonIdMap.set(item.company_id, item.person_id);
+    }
+  }
+  const allEnrichedPersonIds = personIds; // already all person_ids from allItems
+  const [personStops, opps] = await Promise.all([
+    allEnrichedPersonIds.length
+      ? queryInChunks(sb, "stops", "person_id,stop_at", "person_id", allEnrichedPersonIds,
+          (q) => q.eq("tenant_id", tenant.id).order("stop_at", { ascending: false }))
+      : Promise.resolve([]),
+    allEnrichedPersonIds.length
+      ? queryInChunks(sb, "opportunities", "contact_person_id,stage,title", "contact_person_id", allEnrichedPersonIds,
+          (q) => q.eq("tenant_id", tenant.id))
+      : Promise.resolve([]),
+  ]);
+  const lastContactedByPersonId = new Map<string, string>();
+  for (const s of personStops as any[]) {
+    if (!lastContactedByPersonId.has(s.person_id)) lastContactedByPersonId.set(s.person_id, s.stop_at);
+  }
+  const oppByPersonId = new Map((opps as any[]).map((o: any) => [o.contact_person_id, o]));
+
   // -------- COMPANIES PATH --------
-  let companyRows: Array<{ id: string; name: string; phone: string; email: string }> = [];
+  let companyRows: Array<Record<string, any>> = [];
   if (companyIds.length) {
     const cos = await queryInChunks(
-      sb, "companies", "id,name,phone,email", "id", companyIds
+      sb, "companies", "id,name,phone,email,location_id,status,industry", "id", companyIds
     );
-    companyRows = cos.map((c: any) => {
+    // Fetch addresses for companies via location_id
+    const coLocIds = [...new Set((cos as any[]).map((c: any) => c.location_id).filter(Boolean) as string[])];
+    const coLocs = coLocIds.length
+      ? await queryInChunks(sb, "locations", "id,normalized_key,address_line1,city,state,postal_code", "id", coLocIds)
+      : [];
+    const coLocMap = new Map((coLocs as any[]).map((l: any) => [l.id, fmtAddr(l)]));
+
+    companyRows = (cos as any[]).map((c: any) => {
       const result = lastResultByCompanyId.get(c.id);
+      const personId = companyPersonIdMap.get(c.id);
+      const opp = personId ? (oppByPersonId.get(personId) as any) : undefined;
       return {
         id: c.id,
         name: c.name ?? "",
         phone: c.phone ?? "",
         email: c.email ?? "",
+        address: c.location_id ? (coLocMap.get(c.location_id) ?? "") : "",
+        status: c.status ?? "",
+        industry: c.industry ?? "",
+        opp_stage: opp?.stage ?? "",
+        last_contacted: personId ? fmtDate(lastContactedByPersonId.get(personId)) : "",
         _color: result ? colorMap[result] : undefined,
       };
     });
     if (q) {
-      companyRows = companyRows.filter(r =>
-        r.name.toLowerCase().includes(q) || r.phone.toLowerCase().includes(q) || r.email.toLowerCase().includes(q)
+      companyRows = companyRows.filter((r: any) =>
+        [r.name, r.phone, r.email, r.address, r.status, r.industry, r.opp_stage]
+          .some(v => v.toLowerCase().includes(q))
       );
     }
   }
 
   // -------- PEOPLE PATH (for call lists or if personIds exist) --------
-  let peopleRows: Array<{ id: string; name: string; phone: string; email: string }> = [];
+  let peopleRows: Array<Record<string, any>> = [];
   let peopleResolved = 0;
 
   if (personIds.length || modeLower === "call" || modeLower === "text") {
     // Fetch all people by ID using chunked queries (bypasses PostgREST 1000-row cap)
     const ppl = await queryInChunks(
-      sb, "people", "id,first_name,last_name,phone,phone_cell,phone_landline,email", "id", personIds,
+      sb, "people",
+      "id,first_name,last_name,phone,phone_cell,phone_landline,email,party,likelihood_to_vote,contact_type,household_id",
+      "id", personIds,
       (q) => q.eq("tenant_id", tenant.id)
     );
-    peopleRows = ppl.map((p: any) => {
+
+    // Batch fetch addresses: people.household_id → households → locations
+    const hhIds = [...new Set((ppl as any[]).map((p: any) => p.household_id).filter(Boolean) as string[])];
+    const pplHouseholds = hhIds.length
+      ? await queryInChunks(sb, "households", "id,location_id", "id", hhIds, (q) => q.eq("tenant_id", tenant.id))
+      : [];
+    const hhLocMap = new Map((pplHouseholds as any[]).map((h: any) => [h.id, h.location_id]));
+    const locIdsPpl = [...new Set((pplHouseholds as any[]).map((h: any) => h.location_id).filter(Boolean) as string[])];
+    const pplLocs = locIdsPpl.length
+      ? await queryInChunks(sb, "locations", "id,normalized_key,address_line1,city,state,postal_code", "id", locIdsPpl)
+      : [];
+    const locDetailMap = new Map((pplLocs as any[]).map((l: any) => [l.id, l]));
+
+    const addressByPersonId = new Map<string, string>();
+    for (const p of ppl as any[]) {
+      if (!p.household_id) continue;
+      const locId = hhLocMap.get(p.household_id);
+      if (!locId) continue;
+      const loc = locDetailMap.get(locId);
+      if (loc) addressByPersonId.set(p.id, fmtAddr(loc));
+    }
+
+    // hasPartyData / hasOppData drive dynamic column visibility
+    const hasPartyData = (ppl as any[]).some((p: any) => p.party || p.likelihood_to_vote != null);
+    const hasOppData = oppByPersonId.size > 0;
+
+    peopleRows = (ppl as any[]).map((p: any) => {
       const result = lastResultByPersonId.get(p.id);
+      const opp = oppByPersonId.get(p.id) as any;
       return {
         id: p.id,
         name: `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim(),
         phone: p.phone_cell ? `C: ${p.phone_cell}` : p.phone_landline ? `L: ${p.phone_landline}` : (p.phone ?? ""),
         email: p.email ?? "",
+        address: addressByPersonId.get(p.id) ?? "",
+        contact_type: p.contact_type ?? "",
+        party: p.party ?? "",
+        likelihood: p.likelihood_to_vote != null ? `${p.likelihood_to_vote}%` : "",
+        opp_stage: opp?.stage ?? "",
+        last_contacted: fmtDate(lastContactedByPersonId.get(p.id)),
+        _hasPartyData: hasPartyData,
+        _hasOppData: hasOppData,
         _color: result ? colorMap[result] : undefined,
       };
     });
@@ -191,10 +276,10 @@ export default async function ListDetail({
     // Fallback: placeholders if RLS is blocking
     if (!peopleRows.length && personIds.length) {
       peopleRows = personIds.map(id => ({
-        id,
-        name: "(unavailable due to access policy)",
-        phone: "",
-        email: "",
+        id, name: "(unavailable due to access policy)",
+        phone: "", email: "", address: "", contact_type: "",
+        party: "", likelihood: "", opp_stage: "", last_contacted: "",
+        _hasPartyData: false, _hasOppData: false,
       }));
     }
   }
@@ -203,12 +288,14 @@ export default async function ListDetail({
   const filterLike = (s: string) => s.toLowerCase().includes(q);
   if (q) {
     peopleRows = peopleRows.filter(
-      r => filterLike(r.name) || filterLike(r.phone) || filterLike(r.email)
+      r => filterLike(r.name) || filterLike(r.phone) || filterLike(r.email) ||
+           filterLike(r.address) || filterLike(r.party) || filterLike(r.opp_stage) ||
+           filterLike(r.contact_type)
     );
   }
 
   // -------- LOCATIONS PATH (default if not call) --------
-  let locationRows: Array<{ id: string; address: string; name: string; phone: string }> = [];
+  let locationRows: Array<Record<string, any>> = [];
   if (!personIds.length || modeLower !== "call") {
     if (locationIds.length) {
       // Fetch locations in chunks to avoid URL length limits
@@ -246,6 +333,17 @@ export default async function ListDetail({
       }
 
       const hhIds2 = [...hhToLocId.keys()];
+
+      // Global last_contacted per household (across all channels)
+      const hhStops = hhIds2.length
+        ? await queryInChunks(sb, "stops", "household_id,stop_at", "household_id", hhIds2,
+            (q) => q.eq("tenant_id", tenant.id).order("stop_at", { ascending: false }))
+        : [];
+      const lastContactedByHhId = new Map<string, string>();
+      for (const s of hhStops as any[]) {
+        if (!lastContactedByHhId.has(s.household_id)) lastContactedByHhId.set(s.household_id, s.stop_at);
+      }
+
       if (hhIds2.length) {
         const addPerson = (locId: string, p: any) => {
           const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim();
@@ -307,6 +405,7 @@ export default async function ListDetail({
           address: r.address,
           name: people.map((p: any) => p.name).filter(Boolean).join(", "),
           phone: people.map((p: any) => p.phone).filter(Boolean).join(", "),
+          last_contacted: fmtDate(lastContactedByHhId.get(locToHhId.get(r.id) ?? "")),
           _color: result ? colorMap[result] : undefined,
         };
       });
@@ -341,17 +440,28 @@ export default async function ListDetail({
           <PeopleSearch placeholder="Search companies in this list…" />
         </div>
         {surveyPanel}
-        <ListPage
-          title=""
-          rowHrefPrefix="/crm/companies/"
-          columns={[
-            { key: "name", label: "Company", width: 280 },
-            { key: "phone", label: "Phone", width: 160 },
-            { key: "email", label: "Email", width: 240 },
-          ]}
-          rows={companyRows}
-          rowColorKey="_color"
-        />
+        {(() => {
+          const hasCoOpp = companyRows.some((r: any) => r.opp_stage);
+          const coCols = [
+            { key: "name",          label: "Company",      width: 220 },
+            { key: "phone",         label: "Phone",        width: 140 },
+            { key: "email",         label: "Email",        width: 190 },
+            { key: "address",       label: "Address",      width: 220 },
+            { key: "industry",      label: "Industry",     width: 120 },
+            { key: "status",        label: "Status",       width: 90  },
+            ...(hasCoOpp ? [{ key: "opp_stage", label: "Opp Stage", width: 110 }] : []),
+            { key: "last_contacted", label: "Last Contact", width: 120 },
+          ];
+          return (
+            <ListPage
+              title=""
+              rowHrefPrefix="/crm/companies/"
+              columns={coCols}
+              rows={companyRows}
+              rowColorKey="_color"
+            />
+          );
+        })()}
       </section>
     );
   }
@@ -373,32 +483,57 @@ export default async function ListDetail({
           <PeopleSearch placeholder={isText ? "Search text list…" : "Search people in this list…"} />
         </div>
         {surveyPanel}
-        {peopleRows.length > 0 && (
-          <ListPage
-            title={hasCompanyIds ? "People" : ""}
-            rowHrefPrefix="/crm/people/"
-            columns={[
-              { key: "name", label: "Name", width: 280 },
-              { key: "phone", label: "Phone", width: 160 },
-              { key: "email", label: "Email", width: 240 },
-            ]}
-            rows={peopleRows}
-            rowColorKey="_color"
-          />
-        )}
-        {companyRows.length > 0 && (
-          <ListPage
-            title="Companies"
-            rowHrefPrefix="/crm/companies/"
-            columns={[
-              { key: "name", label: "Company", width: 280 },
-              { key: "phone", label: "Phone", width: 160 },
-              { key: "email", label: "Email", width: 240 },
-            ]}
-            rows={companyRows}
-            rowColorKey="_color"
-          />
-        )}
+        {peopleRows.length > 0 && (() => {
+          const firstRow = peopleRows[0] as any;
+          const showParty = firstRow?._hasPartyData ?? false;
+          const showOpp = firstRow?._hasOppData ?? false;
+          const cols = [
+            { key: "name",          label: "Name",         width: 200 },
+            { key: "phone",         label: "Phone",        width: 140 },
+            { key: "email",         label: "Email",        width: 190 },
+            { key: "address",       label: "Address",      width: 220 },
+            { key: "contact_type",  label: "Type",         width: 90  },
+            ...(showParty ? [
+              { key: "party",       label: "Party",        width: 70  },
+              { key: "likelihood",  label: "Vote %",       width: 70  },
+            ] : []),
+            ...(showOpp ? [
+              { key: "opp_stage",   label: "Opp Stage",    width: 110 },
+            ] : []),
+            { key: "last_contacted", label: "Last Contact", width: 120 },
+          ];
+          return (
+            <ListPage
+              title={hasCompanyIds ? "People" : ""}
+              rowHrefPrefix="/crm/people/"
+              columns={cols}
+              rows={peopleRows}
+              rowColorKey="_color"
+            />
+          );
+        })()}
+        {companyRows.length > 0 && (() => {
+          const hasCoOpp = companyRows.some((r: any) => r.opp_stage);
+          const coCols = [
+            { key: "name",          label: "Company",      width: 200 },
+            { key: "phone",         label: "Phone",        width: 140 },
+            { key: "email",         label: "Email",        width: 180 },
+            { key: "address",       label: "Address",      width: 200 },
+            { key: "industry",      label: "Industry",     width: 110 },
+            { key: "status",        label: "Status",       width: 90  },
+            ...(hasCoOpp ? [{ key: "opp_stage", label: "Opp Stage", width: 110 }] : []),
+            { key: "last_contacted", label: "Last Contact", width: 120 },
+          ];
+          return (
+            <ListPage
+              title="Companies"
+              rowHrefPrefix="/crm/companies/"
+              columns={coCols}
+              rows={companyRows}
+              rowColorKey="_color"
+            />
+          );
+        })()}
       </section>
     );
   }
@@ -415,9 +550,10 @@ export default async function ListDetail({
         title=""
         rowHrefPrefix="/crm/households/"
         columns={[
-          { key: "address", label: "Address", width: 320 },
-          { key: "name", label: "Name", width: 220 },
-          { key: "phone", label: "Phone", width: 160 },
+          { key: "address",        label: "Address",      width: 300 },
+          { key: "name",           label: "Name",         width: 200 },
+          { key: "phone",          label: "Phone",        width: 150 },
+          { key: "last_contacted", label: "Last Contact", width: 120 },
         ]}
         rows={locationRows}
         rowColorKey="_color"
