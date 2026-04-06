@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { MapPoint } from "@/app/crm/lists/map-builder/MapBuilderPanel";
@@ -8,10 +8,11 @@ import type { MapPoint } from "@/app/crm/lists/map-builder/MapBuilderPanel";
 type Props = {
   locations: MapPoint[];
   selectedIds: Set<string>;
+  savedIds?: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
 };
 
-export default function LocationMapSelector({ locations, selectedIds, onSelectionChange }: Props) {
+export default function LocationMapSelector({ locations, selectedIds, savedIds = new Set(), onSelectionChange }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [ready, setReady] = useState(false);
@@ -62,9 +63,20 @@ export default function LocationMapSelector({ locations, selectedIds, onSelectio
         source: "locs",
         paint: {
           "circle-radius": 7,
-          "circle-color": ["case", ["==", ["get", "sel"], 1], "#f59e0b", "#2563eb"],
+          "circle-color": [
+            "case",
+            ["==", ["get", "sel"], 1], "#f59e0b",
+            ["==", ["get", "saved"], 1], "#9ca3af",
+            "#2563eb"
+          ],
           "circle-stroke-width": 2,
-          "circle-stroke-color": ["case", ["==", ["get", "sel"], 1], "#d97706", "#1d4ed8"],
+          "circle-stroke-color": [
+            "case",
+            ["==", ["get", "sel"], 1], "#d97706",
+            ["==", ["get", "saved"], 1], "#6b7280",
+            "#1d4ed8"
+          ],
+          "circle-opacity": ["case", ["==", ["get", "saved"], 1], 0.5, 1],
         },
       });
 
@@ -118,10 +130,10 @@ export default function LocationMapSelector({ locations, selectedIds, onSelectio
       features: locations.map((l) => ({
         type: "Feature",
         geometry: { type: "Point", coordinates: [l.lon, l.lat] },
-        properties: { id: l.id, sel: selectedIds.has(l.id) ? 1 : 0, address: l.address ?? "" },
+        properties: { id: l.id, sel: selectedIds.has(l.id) ? 1 : 0, saved: savedIds.has(l.id) ? 1 : 0, address: l.address ?? "" },
       })),
     });
-  }, [ready, locations, selectedIds]);
+  }, [ready, locations, selectedIds, savedIds]);
 
   // ── Fit bounds when locations change ──────────────────────────────────────
   useEffect(() => {
