@@ -135,6 +135,7 @@ function FilterSection({
   schema,
   loading,
   onChange,
+  hideJoined = false,
 }: {
   title: string;
   table: string;
@@ -142,11 +143,13 @@ function FilterSection({
   schema: ColumnDef[];
   loading: boolean;
   onChange: (f: FilterRow[]) => void;
+  hideJoined?: boolean;
 }) {
+  const visibleSchema = hideJoined ? schema.filter((c) => !c.is_join) : schema;
   const [open, setOpen] = useState(table === "locations" || table === "people");
 
   function addRow() {
-    const first = schema[0];
+    const first = visibleSchema[0];
     if (!first) return;
     onChange([...filters, { id: mkId(), field: first.column, op: defaultOp(first.data_type), value: "", data_type: first.data_type }]);
   }
@@ -160,7 +163,7 @@ function FilterSection({
       if (f.id !== id) return f;
       const next = { ...f, ...patch };
       if (patch.field && patch.field !== f.field) {
-        const def = schema.find((c) => c.column === patch.field);
+        const def = visibleSchema.find((c) => c.column === patch.field);
         next.data_type = def?.data_type ?? "text";
         next.op = defaultOp(next.data_type);
         next.value = "";
@@ -199,7 +202,7 @@ function FilterSection({
         <div style={{ paddingBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
           {loading && <div style={{ fontSize: 12, color: "var(--gg-text-dim, #9ca3af)" }}>Loading fields…</div>}
           {filters.map((f) => {
-            const fieldDef = schema.find((c) => c.column === f.field);
+            const fieldDef = visibleSchema.find((c) => c.column === f.field);
             const ops = opsForType(fieldDef?.data_type ?? f.data_type ?? "text");
             const enumOpts = ENUM_OPTIONS[f.field];
             const noVal = NO_VALUE_OPS.includes(f.op);
@@ -213,16 +216,16 @@ function FilterSection({
                   onChange={(e) => updateRow(f.id, { field: e.target.value })}
                   style={selectSm}
                 >
-                  {schema.filter((c) => !c.is_join).length > 0 && (
+                  {visibleSchema.filter((c) => !c.is_join).length > 0 && (
                     <optgroup label={title}>
-                      {schema.filter((c) => !c.is_join).map((c) => (
+                      {visibleSchema.filter((c) => !c.is_join).map((c) => (
                         <option key={c.column} value={c.column}>{c.label}</option>
                       ))}
                     </optgroup>
                   )}
-                  {schema.filter((c) => c.is_join).length > 0 && (
+                  {!hideJoined && visibleSchema.filter((c) => c.is_join).length > 0 && (
                     <optgroup label="Location (joined)">
-                      {schema.filter((c) => c.is_join).map((c) => (
+                      {visibleSchema.filter((c) => c.is_join).map((c) => (
                         <option key={c.column} value={c.column}>{c.label}</option>
                       ))}
                     </optgroup>
@@ -543,6 +546,7 @@ export default function MapBuilderPanel() {
               schema={schemas.people}
               loading={!!schemaLoading.people}
               onChange={setPeopleFilters}
+              hideJoined
             />
             <FilterSection
               title="Households"
@@ -551,6 +555,7 @@ export default function MapBuilderPanel() {
               schema={schemas.households}
               loading={!!schemaLoading.households}
               onChange={setHhFilters}
+              hideJoined
             />
             <FilterSection
               title="Companies"
@@ -559,6 +564,7 @@ export default function MapBuilderPanel() {
               schema={schemas.companies}
               loading={!!schemaLoading.companies}
               onChange={setCoFilters}
+              hideJoined
             />
 
             <div style={{ paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
