@@ -1,11 +1,9 @@
 import { redirect } from "next/navigation";
-import dynamic from "next/dynamic";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
+import MapBuilderPanel from "./MapBuilderPanel";
 
 export const metadata = { title: "Map Builder | GroundGame" };
-
-const MapBuilderPanel = dynamic(() => import("./MapBuilderPanel"), { ssr: false });
 
 export default async function MapBuilderPage() {
   const [, crmUser] = await Promise.all([getTenant(), getCrmUser()]);
