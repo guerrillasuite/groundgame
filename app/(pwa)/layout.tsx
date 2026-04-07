@@ -29,12 +29,20 @@ export async function generateViewport(): Promise<Viewport> {
   return { themeColor: b.primaryColor, viewportFit: "cover", width: "device-width", initialScale: 1 };
 }
 
+function contrastColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5 ? "#111827" : "#ffffff";
+}
+
 export default async function PwaLayout({ children }: { children: React.ReactNode }) {
   const [b, { features }] = await Promise.all([getTenantBranding(), getTenant()]);
+  const onPrimary = contrastColor(b.primaryColor);
   return (
     <div className="app-wrap">
       {b.primaryColor !== BASE_BRANDING.primaryColor && (
-        <style>{`:root { --gg-primary: ${b.primaryColor}; }`}</style>
+        <style>{`:root { --gg-primary: ${b.primaryColor}; --on-primary: ${onPrimary}; }`}</style>
       )}
       <Header logoUrl={b.logoUrl} appName={b.appName} showInstall />
       <OfflineBanner />

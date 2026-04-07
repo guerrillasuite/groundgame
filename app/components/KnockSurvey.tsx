@@ -596,17 +596,17 @@ function SurveyTopBar({
           onClick={onRefuse}
           style={{
             background: "none",
-            border: "1px solid rgba(255,255,255,0.18)",
-            borderRadius: 8,
-            padding: "3px 10px",
-            fontSize: 11,
+            border: "1px solid rgba(255,255,255,0.25)",
+            borderRadius: 10,
+            padding: "6px 16px",
+            fontSize: 13,
             fontWeight: 500,
             color: "inherit",
-            opacity: 0.6,
+            opacity: 0.7,
             cursor: "pointer",
           }}
         >
-          Refuse
+          Refuse Survey
         </button>
       </div>
     </div>
