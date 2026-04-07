@@ -10,8 +10,17 @@ type QuizResult = "libertarian" | "progressive" | "conservative" | "authoritaria
 interface Question {
   id: string;
   question_text: string;
+  question_type: string;
   order_index: number;
   options: string[] | null;
+  display_format: string | null;
+}
+
+interface Branding {
+  primaryColor?: string;
+  bgColor?: string;
+  textColor?: string;
+  logoUrl?: string;
 }
 
 interface SurveyPanelProps {
@@ -22,6 +31,7 @@ interface SurveyPanelProps {
   footerText: string | null;
   questions: Question[];
   isKiosk: boolean;
+  branding?: Branding;
 }
 
 // ── WSPQ scoring ───────────────────────────────────────────────────────────────
@@ -182,12 +192,25 @@ export default function SurveyPanel({
   footerText,
   questions,
   isKiosk,
+  branding,
 }: SurveyPanelProps) {
   const isWspq = surveyId.startsWith("wspq-");
+
+  // Branding-derived colors (with safe fallbacks)
+  const primaryColor = branding?.primaryColor ?? "#2563eb";
+  const bgColor = branding?.bgColor ?? "#0B0F17";
+  const textColor = branding?.textColor ?? "#F9FAFB";
+  const logoUrl = branding?.logoUrl;
+  // Contrast-safe button text
+  function btnTextColor(bg: string): string {
+    const r = parseInt(bg.slice(1,3),16), g = parseInt(bg.slice(3,5),16), b = parseInt(bg.slice(5,7),16);
+    return (0.299*r + 0.587*g + 0.114*b) / 255 > 0.5 ? "#111827" : "#ffffff";
+  }
 
   const [phase, setPhase] = useState<Phase>("quiz");
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [openAnswer, setOpenAnswer] = useState(""); // for text/number/email/phone/date
   const [personalScore, setPersonalScore] = useState(0);
   const [economicScore, setEconomicScore] = useState(0);
   const [result, setResult] = useState<QuizResult>("moderate");
@@ -225,6 +248,7 @@ export default function SurveyPanel({
   function selectAnswer(ans: string) {
     const updated = { ...answers, [currentQuestion.id]: ans };
     setAnswers(updated);
+    setOpenAnswer(""); // reset open input for next question
     if (current < totalQuestions - 1) {
       setCurrent(current + 1);
     } else {
@@ -237,6 +261,23 @@ export default function SurveyPanel({
       setPhase("results");
     }
   }
+
+  // For open-ended types: manually advance to next question
+  function advanceOpenAnswer() {
+    const val = openAnswer.trim();
+    if (!val && currentQuestion.required) return;
+    const updated = { ...answers, [currentQuestion.id]: val };
+    setAnswers(updated);
+    setOpenAnswer("");
+    if (current < totalQuestions - 1) {
+      setCurrent(current + 1);
+    } else {
+      setPhase("results");
+    }
+  }
+
+  const OPEN_TYPES = ["text", "text_short", "number", "email", "phone", "date"];
+  const isOpenType = OPEN_TYPES.includes(currentQuestion?.question_type ?? "");
 
   // ── Contact form submit ─────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
@@ -294,17 +335,28 @@ export default function SurveyPanel({
     }
   }
 
-  // ── Styles ──────────────────────────────────────────────────────────────────
+  // ── Styles (branding-aware) ──────────────────────────────────────────────────
+  // Determine if bg is dark to choose appropriate secondary colors
+  const r0 = parseInt(bgColor.slice(1,3)||"0b",16);
+  const g0 = parseInt(bgColor.slice(3,5)||"0f",16);
+  const b0 = parseInt(bgColor.slice(5,7)||"17",16);
+  const bgLum = (0.299*r0 + 0.587*g0 + 0.114*b0)/255;
+  const isDark = bgLum < 0.5;
+
+  const cardBg = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)";
+  const mutedText = isDark ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)";
+  const borderColor = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
+
   const card: React.CSSProperties = {
-    background: "#1e293b",
+    background: cardBg,
     borderRadius: 16,
     padding: "32px 28px",
     maxWidth: 480,
     width: "100%",
-    boxShadow: "0 4px 32px rgba(0,0,0,0.5)",
+    boxShadow: isDark ? "0 4px 32px rgba(0,0,0,0.5)" : "0 4px 24px rgba(0,0,0,0.1)",
   };
 
-  const btn = (color: string, textColor = "#fff"): React.CSSProperties => ({
+  const btn = (color: string, tc?: string): React.CSSProperties => ({
     display: "block",
     width: "100%",
     padding: "14px 20px",
@@ -313,7 +365,7 @@ export default function SurveyPanel({
     borderRadius: 10,
     border: "none",
     background: color,
-    color: textColor,
+    color: tc ?? btnTextColor(color.startsWith("#") ? color : primaryColor),
     cursor: "pointer",
     textAlign: "center",
     transition: "opacity 0.15s",
@@ -322,8 +374,8 @@ export default function SurveyPanel({
 
   const ghostBtn: React.CSSProperties = {
     background: "transparent",
-    border: "1px solid rgba(255,255,255,0.2)",
-    color: "rgba(255,255,255,0.6)",
+    border: `1px solid ${borderColor}`,
+    color: mutedText,
     borderRadius: 10,
     padding: "10px 20px",
     fontSize: 14,
@@ -335,10 +387,10 @@ export default function SurveyPanel({
     width: "100%",
     padding: "11px 14px",
     fontSize: 15,
-    background: "#0f172a",
-    border: "1px solid rgba(255,255,255,0.15)",
+    background: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.7)",
+    border: `1px solid ${borderColor}`,
     borderRadius: 8,
-    color: "#f1f5f9",
+    color: textColor,
     outline: "none",
     boxSizing: "border-box",
   };
@@ -353,21 +405,31 @@ export default function SurveyPanel({
   // ── Phase: Quiz ─────────────────────────────────────────────────────────────
   if (phase === "quiz") {
     const progress = (Object.keys(answers).length / totalQuestions) * 100;
-    const options = isWspq
+    const qType = currentQuestion?.question_type ?? "multiple_choice";
+    const isDropdown = currentQuestion?.display_format === "dropdown";
+    const choiceOptions = isWspq
       ? wspqOptions
-      : (currentQuestion?.options ?? []).map(o => ({ value: o, label: o, color: "#2563eb" }));
+      : (currentQuestion?.options ?? []).map(o => ({ value: o, label: o, color: primaryColor }));
+    const isMultiSelect = ["multiple_select", "multiple_select_with_other"].includes(qType);
+    const [multiVals, setMultiVals] = [
+      answers[currentQuestion?.id] ? (() => { try { return JSON.parse(answers[currentQuestion.id]); } catch { return []; } })() : [],
+      (vals: string[]) => setAnswers({ ...answers, [currentQuestion.id]: JSON.stringify(vals) }),
+    ];
 
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px 16px" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px 16px", background: bgColor }}>
+        {logoUrl && (
+          <img src={logoUrl} alt="" style={{ height: 40, marginBottom: 20, objectFit: "contain", maxWidth: 160 }} />
+        )}
         <div style={card}>
-          <p style={{ color: "#94a3b8", fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 4px", textTransform: "uppercase" }}>
+          <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 4px", textTransform: "uppercase" }}>
             {title}
           </p>
-          <div style={{ height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 2, margin: "8px 0 20px" }}>
-            <div style={{ height: "100%", width: `${progress}%`, background: "#eab308", borderRadius: 2, transition: "width 0.3s" }} />
+          <div style={{ height: 4, background: borderColor, borderRadius: 2, margin: "8px 0 20px" }}>
+            <div style={{ height: "100%", width: `${progress}%`, background: primaryColor, borderRadius: 2, transition: "width 0.3s" }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <span style={{ color: "#64748b", fontSize: 13 }}>Question {current + 1} of {totalQuestions}</span>
+            <span style={{ color: mutedText, fontSize: 13 }}>Question {current + 1} of {totalQuestions}</span>
             {isWspq && (
               <span style={{
                 fontSize: 11, fontWeight: 700, letterSpacing: 1, padding: "3px 8px", borderRadius: 4,
@@ -378,33 +440,138 @@ export default function SurveyPanel({
               </span>
             )}
           </div>
-          <p style={{ fontSize: 20, fontWeight: 600, color: "#f1f5f9", lineHeight: 1.45, margin: "0 0 28px" }}>
+          <p style={{ fontSize: 20, fontWeight: 600, color: textColor, lineHeight: 1.45, margin: "0 0 28px" }}>
             {currentQuestion?.question_text}
+            {currentQuestion?.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {options.map(({ value, label, color }) => {
-              const isSelected = answers[currentQuestion?.id] === value;
-              return (
-                <button
-                  key={value}
-                  onClick={() => selectAnswer(value)}
-                  style={{
-                    ...btn(isSelected ? color : "rgba(255,255,255,0.07)", isSelected ? "#fff" : "#cbd5e1"),
-                    border: isSelected ? `2px solid ${color}` : "2px solid transparent",
-                  }}
+
+          {/* Choice questions */}
+          {(isWspq || ["multiple_choice", "multiple_choice_with_other"].includes(qType)) && !isMultiSelect && (
+            <>
+              {isDropdown && !isWspq ? (
+                <select
+                  value={answers[currentQuestion?.id] || ""}
+                  onChange={(e) => e.target.value && selectAnswer(e.target.value)}
+                  style={{ ...input, fontSize: 16, cursor: "pointer" }}
                 >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          {current > 0 && (
+                  <option value="">— Select —</option>
+                  {choiceOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                  {qType === "multiple_choice_with_other" && <option value="other">Other…</option>}
+                </select>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {choiceOptions.map(({ value, label, color }) => {
+                    const isSelected = answers[currentQuestion?.id] === value;
+                    return (
+                      <button
+                        key={value}
+                        onClick={() => selectAnswer(value)}
+                        style={{
+                          ...btn(isSelected ? color : (isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.04)"), isSelected ? btnTextColor(color.startsWith("#") ? color : primaryColor) : textColor),
+                          border: isSelected ? `2px solid ${color}` : `2px solid ${borderColor}`,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                  {qType === "multiple_choice_with_other" && !isWspq && (
+                    <button
+                      onClick={() => selectAnswer("other")}
+                      style={{ ...btn(answers[currentQuestion?.id] === "other" ? primaryColor : (isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.04)"), answers[currentQuestion?.id] === "other" ? btnTextColor(primaryColor) : textColor), border: `2px solid ${borderColor}` }}
+                    >
+                      Other…
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Multi-select */}
+          {isMultiSelect && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {(currentQuestion?.options ?? []).map((opt: string) => {
+                const checked = multiVals.includes(opt);
+                return (
+                  <label key={opt} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", padding: "12px 16px", borderRadius: 10, border: `2px solid ${checked ? primaryColor : borderColor}`, background: checked ? `${primaryColor}15` : "transparent" }}>
+                    <input type="checkbox" checked={checked} onChange={() => {
+                      const next = checked ? multiVals.filter((v: string) => v !== opt) : [...multiVals, opt];
+                      setMultiVals(next);
+                    }} style={{ width: 18, height: 18 }} />
+                    <span style={{ fontSize: 16, color: textColor }}>{opt}</span>
+                  </label>
+                );
+              })}
+              <button onClick={() => selectAnswer(answers[currentQuestion.id] || "[]")} style={btn(primaryColor)} disabled={!multiVals.length && currentQuestion?.required}>
+                Next →
+              </button>
+            </div>
+          )}
+
+          {/* Yes/No */}
+          {qType === "yes_no" && (
+            <div style={{ display: "flex", gap: 12 }}>
+              {["Yes", "No"].map((opt) => {
+                const isSelected = answers[currentQuestion?.id] === opt;
+                return (
+                  <button key={opt} onClick={() => selectAnswer(opt)}
+                    style={{ flex: 1, padding: "16px", borderRadius: 12, fontSize: 18, fontWeight: 700, border: `2px solid ${isSelected ? primaryColor : borderColor}`, background: isSelected ? `${primaryColor}20` : "transparent", color: textColor, cursor: "pointer" }}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Rating scale */}
+          {qType === "rating" && (
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+                {Array.from({ length: parseInt(currentQuestion?.options?.[0] ?? "5") }, (_, i) => i + 1).map((n) => {
+                  const val = String(n);
+                  const isSelected = answers[currentQuestion?.id] === val;
+                  return (
+                    <button key={n}
+                      style={{ width: 48, height: 48, borderRadius: 10, fontSize: 18, fontWeight: 700, border: `2px solid ${isSelected ? primaryColor : borderColor}`, background: isSelected ? `${primaryColor}20` : "transparent", color: textColor, cursor: "pointer" }}
+                      onClick={() => selectAnswer(val)}
+                    >
+                      {n}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Open-ended types */}
+          {OPEN_TYPES.includes(qType) && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {qType === "text" ? (
+                <textarea rows={4} value={openAnswer} onChange={(e) => setOpenAnswer(e.target.value)} placeholder="Your answer…" style={{ ...input, resize: "vertical" }} />
+              ) : (
+                <input
+                  type={qType === "text_short" ? "text" : qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : "date"}
+                  value={openAnswer}
+                  onChange={(e) => setOpenAnswer(e.target.value)}
+                  placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"}
+                  style={input}
+                />
+              )}
+              <button onClick={advanceOpenAnswer} style={btn(primaryColor)} disabled={!openAnswer.trim() && currentQuestion?.required}>
+                {current === totalQuestions - 1 ? "Submit →" : "Next →"}
+              </button>
+            </div>
+          )}
+
+          {current > 0 && !isMultiSelect && !OPEN_TYPES.includes(qType) && (
             <button onClick={() => setCurrent(current - 1)} style={{ ...ghostBtn, marginTop: 16 }}>
               ← Back
             </button>
           )}
         </div>
-        {footerText && <SurveyFooter text={footerText} />}
+        {footerText && <SurveyFooter text={footerText} textColor={mutedText} />}
       </div>
     );
   }
@@ -412,25 +579,26 @@ export default function SurveyPanel({
   // ── Phase: Results ──────────────────────────────────────────────────────────
   if (phase === "results") {
     const meta = isWspq ? RESULT_META[result] : null;
-    const submitColor = meta?.color ?? "#2563eb";
+    const submitColor = meta?.color ?? primaryColor;
 
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minHeight: "100vh", padding: "32px 16px" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minHeight: "100vh", padding: "32px 16px", background: bgColor }}>
         <div style={{ ...card, maxWidth: 520 }}>
           <div style={{ textAlign: "center", marginBottom: 24 }}>
-            <p style={{ color: "#94a3b8", fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 8px", textTransform: "uppercase" }}>{title}</p>
+            {logoUrl && <img src={logoUrl} alt="" style={{ height: 32, marginBottom: 12, objectFit: "contain", maxWidth: 120 }} />}
+            <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 8px", textTransform: "uppercase" }}>{title}</p>
             {isWspq && meta ? (
               <>
-                <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 2px" }}>You scored</p>
+                <p style={{ color: mutedText, fontSize: 14, margin: "0 0 2px" }}>You scored</p>
                 <h1 style={{ fontSize: 32, fontWeight: 800, color: meta.color, margin: "0 0 8px", lineHeight: 1.1 }}>{meta.label}</h1>
-                <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 4px" }}>
-                  Personal: <strong style={{ color: "#e2e8f0" }}>{personalScore}/100</strong>
+                <p style={{ color: mutedText, fontSize: 14, margin: "0 0 4px" }}>
+                  Personal: <strong style={{ color: textColor }}>{personalScore}/100</strong>
                   {" · "}
-                  Economic: <strong style={{ color: "#e2e8f0" }}>{economicScore}/100</strong>
+                  Economic: <strong style={{ color: textColor }}>{economicScore}/100</strong>
                 </p>
               </>
             ) : (
-              <h1 style={{ fontSize: 26, fontWeight: 800, color: "#f1f5f9", margin: "0 0 8px" }}>All done!</h1>
+              <h1 style={{ fontSize: 26, fontWeight: 800, color: textColor, margin: "0 0 8px" }}>All done!</h1>
             )}
           </div>
 
@@ -445,11 +613,11 @@ export default function SurveyPanel({
             </>
           )}
 
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 24 }}>
-            <p style={{ color: "#e2e8f0", fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
+          <div style={{ borderTop: `1px solid ${borderColor}`, paddingTop: 24 }}>
+            <p style={{ color: textColor, fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
               Want to stay connected?
             </p>
-            <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 16px" }}>
+            <p style={{ color: mutedText, fontSize: 13, margin: "0 0 16px" }}>
               Leave your info below — all fields optional.
             </p>
             <form onSubmit={handleSubmit}>
@@ -479,13 +647,14 @@ export default function SurveyPanel({
   const meta = isWspq ? RESULT_META[result] : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px 16px" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px 16px", background: bgColor }}>
       <div style={{ ...card, textAlign: "center", maxWidth: 420 }}>
+        {logoUrl && <img src={logoUrl} alt="" style={{ height: 36, marginBottom: 12, objectFit: "contain", maxWidth: 120 }} />}
         <div style={{ fontSize: 48, marginBottom: 12 }}>🗳️</div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", margin: "0 0 8px" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: textColor, margin: "0 0 8px" }}>
           {isWspq ? "Thanks for taking the quiz!" : "Thanks for your response!"}
         </h1>
-        <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 24px", lineHeight: 1.6 }}>
+        <p style={{ color: mutedText, fontSize: 14, margin: "0 0 24px", lineHeight: 1.6 }}>
           {isWspq && meta ? (
             <>You scored <strong style={{ color: meta.color }}>{meta.label}</strong>. Share this quiz with your friends and see where they stand!</>
           ) : (
@@ -495,12 +664,12 @@ export default function SurveyPanel({
         {!isKiosk && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {websiteUrl && (
-              <a href={websiteUrl} target="_blank" rel="noopener noreferrer" style={{ ...btn("#2563eb"), textDecoration: "none" }}>
+              <a href={websiteUrl} target="_blank" rel="noopener noreferrer" style={{ ...btn(primaryColor), textDecoration: "none" }}>
                 Learn More →
               </a>
             )}
             <div style={{ position: "relative" }}>
-              <button onClick={handleShare} style={btn("rgba(255,255,255,0.1)", "#e2e8f0")}>
+              <button onClick={handleShare} style={btn(isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)", textColor)}>
                 Share
               </button>
               {shareToast && (
@@ -514,19 +683,19 @@ export default function SurveyPanel({
         )}
         {isKiosk && countdown !== null && (
           <div style={{ marginTop: 8 }}>
-            <p style={{ color: "#475569", fontSize: 13 }}>Resetting in {countdown}s…</p>
-            <button onClick={resetSurvey} style={btn(meta?.color ?? "#2563eb")}>Start Over Now</button>
+            <p style={{ color: mutedText, fontSize: 13 }}>Resetting in {countdown}s…</p>
+            <button onClick={resetSurvey} style={btn(meta?.color ?? primaryColor)}>Start Over Now</button>
           </div>
         )}
       </div>
-      {footerText && <SurveyFooter text={footerText} />}
+      {footerText && <SurveyFooter text={footerText} textColor={mutedText} />}
     </div>
   );
 }
 
-function SurveyFooter({ text }: { text: string }) {
+function SurveyFooter({ text, textColor }: { text: string; textColor?: string }) {
   return (
-    <div style={{ textAlign: "center", padding: "20px 16px 8px", color: "rgba(255,255,255,0.25)", fontSize: 11 }}>
+    <div style={{ textAlign: "center", padding: "20px 16px 8px", color: textColor ?? "rgba(255,255,255,0.25)", fontSize: 11 }}>
       {text}
     </div>
   );

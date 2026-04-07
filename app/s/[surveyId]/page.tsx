@@ -1,11 +1,34 @@
 import SurveyPanel from "@/app/components/survey/SurveyPanel";
 import { createClient } from "@supabase/supabase-js";
+import { BASE_BRANDING } from "@/lib/tenant";
 
 function makeSb() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+}
+
+async function fetchSurveyByIdOrSlug(surveyId: string) {
+  const sb = makeSb();
+  // Try by ID first
+  let { data: survey } = await sb
+    .from("surveys")
+    .select("id, tenant_id, title, website_url, footer_text")
+    .eq("id", surveyId)
+    .eq("active", true)
+    .maybeSingle();
+  // Fallback: try public_slug
+  if (!survey) {
+    const { data: bySlug } = await sb
+      .from("surveys")
+      .select("id, tenant_id, title, website_url, footer_text")
+      .eq("public_slug", surveyId)
+      .eq("active", true)
+      .maybeSingle();
+    survey = bySlug;
+  }
+  return survey;
 }
 
 interface Props {
@@ -18,12 +41,7 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
   const { kiosk } = await searchParams;
   const sb = makeSb();
 
-  const { data: survey } = await sb
-    .from("surveys")
-    .select("id, tenant_id, title, website_url, footer_text")
-    .eq("id", surveyId)
-    .eq("active", true)
-    .maybeSingle();
+  const survey = await fetchSurveyByIdOrSlug(surveyId);
 
   if (!survey) {
     return (
@@ -33,30 +51,42 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
     );
   }
 
-  const { data: questions } = await sb
-    .from("questions")
-    .select("id, question_text, order_index, options")
-    .eq("survey_id", surveyId)
-    .order("order_index", { ascending: true });
+  // Fetch questions and tenant branding in parallel
+  const [{ data: questions }, { data: tenant }] = await Promise.all([
+    sb.from("questions")
+      .select("id, question_text, question_type, order_index, options, display_format")
+      .eq("survey_id", survey.id)
+      .order("order_index", { ascending: true }),
+    sb.from("tenants")
+      .select("branding")
+      .eq("id", survey.tenant_id)
+      .maybeSingle(),
+  ]);
+
+  const branding = tenant?.branding
+    ? { ...BASE_BRANDING, ...tenant.branding }
+    : undefined;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f172a" }}>
-      <SurveyPanel
-        surveyId={survey.id}
-        tenantId={survey.tenant_id}
-        title={survey.title}
-        websiteUrl={survey.website_url ?? null}
-        footerText={survey.footer_text ?? null}
-        questions={questions ?? []}
-        isKiosk={kiosk === "1"}
-      />
-    </div>
+    <SurveyPanel
+      surveyId={survey.id}
+      tenantId={survey.tenant_id}
+      title={survey.title}
+      websiteUrl={survey.website_url ?? null}
+      footerText={survey.footer_text ?? null}
+      questions={(questions ?? []).map((q: any) => ({
+        ...q,
+        question_type: q.question_type ?? "multiple_choice",
+        display_format: q.display_format ?? null,
+      }))}
+      isKiosk={kiosk === "1"}
+      branding={branding ? { primaryColor: branding.primaryColor, bgColor: branding.bgColor, textColor: branding.textColor, logoUrl: branding.logoUrl } : undefined}
+    />
   );
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ surveyId: string }> }) {
   const { surveyId } = await params;
-  const sb = makeSb();
-  const { data } = await sb.from("surveys").select("title").eq("id", surveyId).eq("active", true).maybeSingle();
-  return { title: data?.title ?? "Survey | GroundGame" };
+  const survey = await fetchSurveyByIdOrSlug(surveyId);
+  return { title: survey?.title ?? "Survey | GroundGame" };
 }

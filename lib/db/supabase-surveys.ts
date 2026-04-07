@@ -34,6 +34,7 @@ function getAdminClient() {
 
 export type Survey = {
   id: string;
+  public_slug: string | null;
   tenant_id: string;
   title: string;
   description: string | null;
@@ -50,9 +51,21 @@ export type Question = {
   question_text: string;
   question_type: string;
   options: string[] | null; // stored as JSONB in Postgres
+  display_format: "list" | "dropdown" | null;
   required: boolean;
   order_index: number;
   created_at: string;
+};
+
+export type ViewType = "embedded" | "hosted" | "door" | "call" | "text";
+export type PaginationMode = "one_at_a_time" | "all_at_once" | "pages";
+
+export type ViewConfig = {
+  survey_id: string;
+  view_type: ViewType;
+  pagination: PaginationMode;
+  page_groups: string[][] | null; // arrays of question IDs per page
+  enabled: boolean;
 };
 
 export type SurveyWithStats = Survey & {
@@ -100,22 +113,31 @@ export async function getSurveys(tenantId: string): Promise<SurveyWithStats[]> {
 export async function getSurvey(
   surveyId: string,
   opts: { requireActive?: boolean } = {}
-): Promise<{ survey: Survey; questions: Question[] } | null> {
+): Promise<{ survey: Survey; questions: Question[]; viewConfigs: ViewConfig[] } | null> {
   const sb = getClient();
 
+  // Try by ID first, then fall back to public_slug
   let q = sb.from("surveys").select("*").eq("id", surveyId);
   if (opts.requireActive) q = q.eq("active", true);
+  let { data: survey, error } = await q.maybeSingle();
 
-  const { data: survey, error } = await q.single();
+  if (!survey) {
+    // Fallback: try public_slug lookup
+    let q2 = sb.from("surveys").select("*").eq("public_slug", surveyId);
+    if (opts.requireActive) q2 = q2.eq("active", true);
+    const { data: bySlug } = await q2.maybeSingle();
+    survey = bySlug;
+    error = null;
+  }
+
   if (error || !survey) return null;
 
-  const { data: questions } = await sb
-    .from("questions")
-    .select("*")
-    .eq("survey_id", surveyId)
-    .order("order_index", { ascending: true });
+  const [{ data: questions }, { data: viewConfigs }] = await Promise.all([
+    sb.from("questions").select("*").eq("survey_id", survey.id).order("order_index", { ascending: true }),
+    sb.from("survey_view_configs").select("*").eq("survey_id", survey.id),
+  ]);
 
-  return { survey, questions: questions ?? [] };
+  return { survey, questions: questions ?? [], viewConfigs: viewConfigs ?? [] };
 }
 
 export async function createSurvey(params: {
@@ -127,6 +149,7 @@ export async function createSurvey(params: {
   const sb = getServiceClient(params.tenantId);
   const { error } = await sb.from("surveys").insert({
     id: params.id,
+    public_slug: params.id, // default public_slug = id
     tenant_id: params.tenantId,
     title: params.title,
     description: params.description ?? null,
@@ -137,20 +160,26 @@ export async function createSurvey(params: {
 
 export async function updateSurvey(
   surveyId: string,
-  params: { title: string; description?: string; website_url?: string; footer_text?: string; active: boolean }
+  params: {
+    title: string;
+    description?: string;
+    website_url?: string;
+    footer_text?: string;
+    active: boolean;
+    public_slug?: string;
+  }
 ): Promise<void> {
   const sb = getAdminClient();
-  const { error } = await sb
-    .from("surveys")
-    .update({
-      title: params.title,
-      description: params.description ?? null,
-      website_url: params.website_url ?? null,
-      footer_text: params.footer_text ?? null,
-      active: params.active,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", surveyId);
+  const update: Record<string, unknown> = {
+    title: params.title,
+    description: params.description ?? null,
+    website_url: params.website_url ?? null,
+    footer_text: params.footer_text ?? null,
+    active: params.active,
+    updated_at: new Date().toISOString(),
+  };
+  if (params.public_slug !== undefined) update.public_slug = params.public_slug || null;
+  const { error } = await sb.from("surveys").update(update).eq("id", surveyId);
   if (error) throw error;
 }
 
@@ -169,6 +198,7 @@ export async function createQuestion(
     question_text: string;
     question_type: string;
     options: string[] | null;
+    display_format?: "list" | "dropdown" | null;
     required: boolean;
     order_index: number;
   }
@@ -180,6 +210,7 @@ export async function createQuestion(
     question_text: params.question_text,
     question_type: params.question_type,
     options: params.options?.length ? params.options : null,
+    display_format: params.display_format ?? null,
     required: params.required,
     order_index: params.order_index,
   });
@@ -192,6 +223,7 @@ export async function updateQuestion(
     question_text: string;
     question_type: string;
     options: string[] | null;
+    display_format?: "list" | "dropdown" | null;
     required: boolean;
     order_index: number;
   }
@@ -203,6 +235,7 @@ export async function updateQuestion(
       question_text: params.question_text,
       question_type: params.question_type,
       options: params.options?.length ? params.options : null,
+      display_format: params.display_format ?? null,
       required: params.required,
       order_index: params.order_index,
     })
@@ -384,6 +417,49 @@ export async function getSurveyResults(surveyId: string, tenantId: string) {
     questions: questionResults,
     quizData,
   };
+}
+
+// ── View configs ─────────────────────────────────────────────────────────────
+
+export async function getViewConfigs(surveyId: string): Promise<ViewConfig[]> {
+  const sb = getAdminClient();
+  const { data } = await sb.from("survey_view_configs").select("*").eq("survey_id", surveyId);
+  return data ?? [];
+}
+
+export async function upsertViewConfigs(
+  surveyId: string,
+  configs: Array<{ view_type: ViewType; pagination: PaginationMode; page_groups?: string[][] | null }>
+): Promise<void> {
+  const sb = getAdminClient();
+  for (const cfg of configs) {
+    await sb.from("survey_view_configs").upsert({
+      survey_id: surveyId,
+      view_type: cfg.view_type,
+      pagination: cfg.pagination,
+      page_groups: cfg.page_groups ?? null,
+      enabled: true,
+    }, { onConflict: "survey_id,view_type" });
+  }
+}
+
+// ── User assignments ──────────────────────────────────────────────────────────
+
+export async function getUserAssignments(surveyId: string): Promise<string[]> {
+  const sb = getAdminClient();
+  const { data } = await sb.from("survey_user_assignments").select("user_id").eq("survey_id", surveyId);
+  return (data ?? []).map((r: { user_id: string }) => r.user_id);
+}
+
+export async function syncUserAssignments(surveyId: string, userIds: string[]): Promise<void> {
+  const sb = getAdminClient();
+  // Delete existing, re-insert desired list
+  await sb.from("survey_user_assignments").delete().eq("survey_id", surveyId);
+  if (userIds.length > 0) {
+    await sb.from("survey_user_assignments").insert(
+      userIds.map((uid) => ({ survey_id: surveyId, user_id: uid }))
+    );
+  }
 }
 
 // ── Walklist ↔ Survey linking ─────────────────────────────────────────────────

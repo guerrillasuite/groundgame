@@ -21,11 +21,26 @@ export async function GET(request: NextRequest, { params }: Ctx) {
 export async function PUT(request: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
-    const { title, description, website_url, footer_text, active } = await request.json();
+    const { title, description, website_url, footer_text, active, public_slug } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
-    await updateSurvey(surveyId, { title: title.trim(), description, website_url, footer_text, active: Boolean(active) });
+    try {
+      await updateSurvey(surveyId, {
+        title: title.trim(),
+        description,
+        website_url,
+        footer_text,
+        active: Boolean(active),
+        public_slug: public_slug?.trim() || undefined,
+      });
+    } catch (err: any) {
+      // Unique constraint violation on public_slug
+      if (err?.code === "23505" || err?.message?.includes("unique")) {
+        return NextResponse.json({ error: "That URL slug is already taken. Please choose a different one." }, { status: 409 });
+      }
+      throw err;
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Error updating survey:", error);

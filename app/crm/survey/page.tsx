@@ -120,13 +120,14 @@ export default async function SurveyPage() {
                       borderRadius: 12,
                       fontSize: 11,
                       fontWeight: 600,
-                      background: survey.active ? "#dcfce7" : "#f3f4f6",
-                      color: survey.active ? "#166534" : "#374151",
+                      background: survey.active ? "rgba(34,197,94,0.15)" : "rgba(107,114,128,0.15)",
+                      color: survey.active ? "#16a34a" : "var(--gg-text-dim, #6b7280)",
+                      border: `1px solid ${survey.active ? "rgba(34,197,94,0.3)" : "rgba(107,114,128,0.3)"}`,
                     }}>
                       {survey.active ? "Active" : "Inactive"}
                     </span>
                     {isWspq && (
-                      <span style={{ padding: "4px 12px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: "rgba(234,179,8,0.12)", color: "#b45309" }}>
+                      <span style={{ padding: "4px 12px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: "rgba(234,179,8,0.15)", color: "#d97706", border: "1px solid rgba(234,179,8,0.3)" }}>
                         Political Quiz
                       </span>
                     )}
@@ -216,7 +217,7 @@ export default async function SurveyPage() {
                   </Link>
                   <Link
                     href={`/crm/survey/${survey.id}/edit`}
-                    style={{ padding: "10px 16px", background: "rgba(0,0,0,0.05)", color: "inherit", borderRadius: 8, fontWeight: 600, textDecoration: "none", display: "block" }}
+                    style={{ padding: "10px 16px", border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", color: "var(--gg-text, inherit)", borderRadius: 8, fontWeight: 600, textDecoration: "none", display: "block" }}
                   >
                     Edit
                   </Link>
@@ -225,19 +226,20 @@ export default async function SurveyPage() {
                       href={`/s/${survey.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{ padding: "10px 16px", background: "rgba(234,179,8,0.12)", color: "#b45309", borderRadius: 8, fontWeight: 600, textDecoration: "none", display: "block" }}
+                      style={{ padding: "10px 16px", background: "rgba(234,179,8,0.12)", color: "#b45309", borderRadius: 8, fontWeight: 600, textDecoration: "none", display: "block", border: "1px solid rgba(234,179,8,0.3)" }}
                     >
                       Open Quiz ↗
                     </a>
                   )}
                   {!isWspq && (
-                    <Link
-                      href={`/survey/${survey.id}?contact_id=PREVIEW`}
+                    <a
+                      href={`/s/${survey.id}`}
                       target="_blank"
-                      style={{ padding: "10px 16px", background: "rgba(0,0,0,0.05)", color: "inherit", borderRadius: 8, fontWeight: 600, textDecoration: "none", display: "block" }}
+                      rel="noopener noreferrer"
+                      style={{ padding: "10px 16px", border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", color: "var(--gg-text, inherit)", borderRadius: 8, fontWeight: 600, textDecoration: "none", display: "block" }}
                     >
-                      Preview
-                    </Link>
+                      Preview ↗
+                    </a>
                   )}
                   <a
                     href={`/api/survey/${survey.id}/export`}

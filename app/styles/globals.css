@@ -423,7 +423,8 @@ label { color: rgb(var(--text-100)); font-weight: 600; }
 .doors.center-wrap { max-width: 720px; margin-inline: auto; }
 
 :root {
-  --primary: var(--primary, #3b82f6);
+  --primary: var(--gg-primary, #2563eb);  /* inherits tenant brand color */
+  --on-primary: #fff;                     /* contrast text on primary bg */
   --border: var(--border, rgba(255,255,255,0.1));
 }
 
@@ -438,7 +439,7 @@ label { color: rgb(var(--text-100)); font-weight: 600; }
   border: 1px solid var(--border);
   border-radius: 14px;
   background: rgba(255,255,255,0.03);
-  color: var(--press-fg, #9fa3a9);
+  color: inherit;
   box-shadow: 0 1px 0 rgba(0,0,0,0.2);
   transition: box-shadow .2s ease, border-color .2s ease, transform .08s ease;
 }
@@ -518,17 +519,17 @@ label { color: rgb(var(--text-100)); font-weight: 600; }
 .doors .actions .action-skip { flex: 0 0 32%; }
 .doors .actions .action-submit { flex: 1 1 auto; border-radius: 14px; padding: 0.95rem 1.1rem; font-weight: 600; }
 
-/* Primary button baseline (in case it isn't already defined) */
+/* Primary button baseline */
 .btn {
   background: var(--primary);
-  color: #9fa3a9;
+  color: var(--on-primary, #fff);  /* always readable on primary bg */
   border-radius: 14px;
   padding: 0.95rem 1.1rem;
   font-weight: 600;
-  box-shadow: 0 8px 18px rgba(59,130,246,.22);
+  box-shadow: 0 8px 18px rgba(0,0,0,.22);
   transition: transform .08s ease, box-shadow .2s ease;
 }
-.btn:hover { box-shadow: 0 12px 22px rgba(59,130,246,.28); }
+.btn:hover { box-shadow: 0 12px 22px rgba(0,0,0,.28); }
 .btn:active { transform: scale(.98); }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 /* globals.css (snippet) */

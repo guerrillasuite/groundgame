@@ -6,7 +6,8 @@ export const ALL_FEATURE_KEYS = [
   "crm_companies",     // companies module
   "crm_opportunities", // pipeline / kanban
   "crm_lists",         // dial & walk lists
-  "crm_surveys",       // surveys & questionnaires
+  "crm_surveys",          // surveys & questionnaires
+  "crm_survey_branding",  // tenant-branded embedded/hosted forms (FieldPack+)
   "crm_stops",         // stops / activity feed
   "crm_import",        // CSV bulk import
   "crm_dedupe",        // duplicate detection & merge
@@ -32,7 +33,8 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   crm_companies:     { label: "Companies",                                group: "CRM Core" },
   crm_opportunities: { label: "Opportunities / Pipeline",                 group: "CRM Core" },
   crm_lists:         { label: "Lists (Dial & Walklists)",                 group: "CRM Field" },
-  crm_surveys:       { label: "Surveys",                                  group: "CRM Field" },
+  crm_surveys:          { label: "Surveys",                                        group: "CRM Field" },
+  crm_survey_branding:  { label: "Survey Branding (FieldPack+)",                 group: "CRM Field" },
   crm_stops:         { label: "Stops / Activity Feed",                    group: "CRM Field" },
   crm_import:        { label: "Import (CSV Bulk Upload)",                 group: "CRM Data" },
   crm_dedupe:        { label: "Dedupe",                                   group: "CRM Data" },

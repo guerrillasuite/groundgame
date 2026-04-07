@@ -11,6 +11,7 @@ interface Question {
   question_text: string;
   question_type: string;
   options: string[] | null;
+  display_format: string | null;
   required: boolean;
   order_index: number;
 }
@@ -428,45 +429,169 @@ export function SurveyContainer({
             )}
           </h2>
           
-          {currentQuestion.question_type === 'multiple_choice_with_other' && (
-            <MultipleChoiceQuestion
-              questionId={currentQuestion.id}
-              options={currentQuestion.options || []}
-              hasOther={true}
-              required={currentQuestion.required}
-              onAnswer={handleAnswer}
-              initialValue={currentAnswer?.value || ''}
-              initialOtherText={currentAnswer?.text || ''}
-              randomize={shouldRandomize}
+          {/* Single-choice */}
+          {['multiple_choice', 'multiple_choice_with_other'].includes(currentQuestion.question_type) && (
+            currentQuestion.display_format === 'dropdown' ? (
+              <select
+                value={currentAnswer?.value || ''}
+                onChange={(e) => handleAnswer(e.target.value)}
+                style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, cursor: 'pointer' }}
+              >
+                <option value="">— Select an option —</option>
+                {(currentQuestion.options || []).map((opt: string) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+                {currentQuestion.question_type === 'multiple_choice_with_other' && (
+                  <option value="other">Other…</option>
+                )}
+              </select>
+            ) : (
+              <MultipleChoiceQuestion
+                questionId={currentQuestion.id}
+                options={currentQuestion.options || []}
+                hasOther={currentQuestion.question_type === 'multiple_choice_with_other'}
+                required={currentQuestion.required}
+                onAnswer={handleAnswer}
+                initialValue={currentAnswer?.value || ''}
+                initialOtherText={currentAnswer?.text || ''}
+                randomize={shouldRandomize}
+              />
+            )
+          )}
+
+          {/* Multi-select */}
+          {['multiple_select', 'multiple_select_with_other'].includes(currentQuestion.question_type) && (
+            currentQuestion.display_format === 'dropdown' ? (
+              <select
+                multiple
+                value={currentAnswer?.value ? JSON.parse(currentAnswer.value) : []}
+                onChange={(e) => {
+                  const vals = Array.from(e.target.selectedOptions, (o) => o.value);
+                  handleMultiSelectAnswer(vals);
+                }}
+                style={{ width: '100%', padding: '8px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, minHeight: 140 }}
+              >
+                {(currentQuestion.options || []).map((opt: string) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+                {currentQuestion.question_type === 'multiple_select_with_other' && (
+                  <option value="other">Other…</option>
+                )}
+              </select>
+            ) : (
+              <MultipleSelectQuestion
+                questionId={currentQuestion.id}
+                options={currentQuestion.options || []}
+                maxSelections={10}
+                hasOther={currentQuestion.question_type === 'multiple_select_with_other'}
+                required={currentQuestion.required}
+                onAnswer={handleMultiSelectAnswer}
+                initialValues={currentAnswer?.value ? JSON.parse(currentAnswer.value) : []}
+                initialOtherText={currentAnswer?.text || ''}
+                randomize={shouldRandomize}
+              />
+            )
+          )}
+
+          {/* Yes/No */}
+          {currentQuestion.question_type === 'yes_no' && (
+            <div style={{ display: 'flex', gap: 12 }}>
+              {['Yes', 'No'].map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => handleAnswer(opt)}
+                  style={{
+                    flex: 1, padding: '16px', borderRadius: 12, fontSize: 18, fontWeight: 700,
+                    border: `2px solid ${currentAnswer?.value === opt ? 'rgb(var(--primary-600))' : 'rgb(var(--border-600))'}`,
+                    background: currentAnswer?.value === opt ? 'rgba(var(--primary-600), 0.15)' : 'transparent',
+                    color: 'rgb(var(--text-100))', cursor: 'pointer',
+                  }}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Rating scale */}
+          {currentQuestion.question_type === 'rating' && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {Array.from({ length: parseInt(currentQuestion.options?.[0] ?? '5') }, (_, i) => i + 1).map((n) => {
+                const val = String(n);
+                return (
+                  <button
+                    key={n}
+                    onClick={() => handleAnswer(val)}
+                    style={{
+                      width: 48, height: 48, borderRadius: 10, fontSize: 18, fontWeight: 700,
+                      border: `2px solid ${currentAnswer?.value === val ? 'rgb(var(--primary-600))' : 'rgb(var(--border-600))'}`,
+                      background: currentAnswer?.value === val ? 'rgba(var(--primary-600), 0.15)' : 'transparent',
+                      color: 'rgb(var(--text-100))', cursor: 'pointer',
+                    }}
+                  >
+                    {n}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Open-ended text types */}
+          {currentQuestion.question_type === 'text' && (
+            <textarea
+              rows={4}
+              value={currentAnswer?.value || ''}
+              onChange={(e) => handleAnswer(e.target.value)}
+              placeholder="Your answer…"
+              style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, resize: 'vertical', boxSizing: 'border-box' }}
             />
           )}
-          
-          {currentQuestion.question_type === 'multiple_choice' && (
-            <MultipleChoiceQuestion
-              questionId={currentQuestion.id}
-              options={currentQuestion.options || []}
-              hasOther={false}
-              required={currentQuestion.required}
-              onAnswer={handleAnswer}
-              initialValue={currentAnswer?.value || ''}
-              randomize={shouldRandomize}
+          {currentQuestion.question_type === 'text_short' && (
+            <input
+              type="text"
+              value={currentAnswer?.value || ''}
+              onChange={(e) => handleAnswer(e.target.value)}
+              placeholder="Your answer…"
+              style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, boxSizing: 'border-box' }}
             />
           )}
-          
-          {currentQuestion.question_type === 'multiple_select_with_other' && (
-            <MultipleSelectQuestion
-              questionId={currentQuestion.id}
-              options={currentQuestion.options || []}
-              maxSelections={3}
-              hasOther={true}
-              required={currentQuestion.required}
-              onAnswer={handleMultiSelectAnswer}
-              initialValues={currentAnswer?.value ? JSON.parse(currentAnswer.value) : []}
-              initialOtherText={currentAnswer?.text || ''}
-              randomize={shouldRandomize}
+          {currentQuestion.question_type === 'number' && (
+            <input
+              type="number"
+              value={currentAnswer?.value || ''}
+              onChange={(e) => handleAnswer(e.target.value)}
+              placeholder="0"
+              style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, boxSizing: 'border-box' }}
             />
           )}
-          
+          {currentQuestion.question_type === 'email' && (
+            <input
+              type="email"
+              value={currentAnswer?.value || ''}
+              onChange={(e) => handleAnswer(e.target.value)}
+              placeholder="email@example.com"
+              style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, boxSizing: 'border-box' }}
+            />
+          )}
+          {currentQuestion.question_type === 'phone' && (
+            <input
+              type="tel"
+              value={currentAnswer?.value || ''}
+              onChange={(e) => handleAnswer(e.target.value)}
+              placeholder="(555) 555-5555"
+              style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, boxSizing: 'border-box' }}
+            />
+          )}
+          {currentQuestion.question_type === 'date' && (
+            <input
+              type="date"
+              value={currentAnswer?.value || ''}
+              onChange={(e) => handleAnswer(e.target.value)}
+              style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, boxSizing: 'border-box' }}
+            />
+          )}
+
+          {/* Contact verification */}
           {currentQuestion.question_type === 'contact_verification' && (
             <ContactVerification
               questionId={currentQuestion.id}
