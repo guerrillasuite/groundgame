@@ -1,87 +1,20 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronRight, Map } from "lucide-react";
+import { ArrowLeft, Search, Map } from "lucide-react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { ColumnDef } from "@/app/api/crm/schema/route";
+import FilterSection, {
+  type FilterRow,
+  NO_VALUE_OPS,
+  makeFilterId as mkId,
+  defaultOp,
+} from "@/app/components/crm/FilterSection";
 
 const LocationMapSelector = dynamic(() => import("@/app/components/LocationMapSelector"), { ssr: false });
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type FilterOp =
-  | "contains" | "equals" | "starts_with" | "not_contains"
-  | "is_empty" | "not_empty"
-  | "greater_than" | "gte" | "less_than" | "lte"
-  | "is_true" | "is_false"
-  | "in_list" | "not_in_list";
-
-type FilterRow = { id: string; field: string; op: FilterOp; value: string; data_type: string };
-
 export type MapPoint = { id: string; lat: number; lon: number; address?: string };
-
-// ─── Operator sets ────────────────────────────────────────────────────────────
-
-const TEXT_OPS: { value: FilterOp; label: string }[] = [
-  { value: "contains",     label: "contains" },
-  { value: "equals",       label: "equals" },
-  { value: "in_list",      label: "is any of" },
-  { value: "not_in_list",  label: "is none of" },
-  { value: "starts_with",  label: "starts with" },
-  { value: "not_contains", label: "does not contain" },
-  { value: "is_empty",     label: "is empty" },
-  { value: "not_empty",    label: "is not empty" },
-];
-
-const NUM_OPS: { value: FilterOp; label: string }[] = [
-  { value: "equals",       label: "=" },
-  { value: "greater_than", label: ">" },
-  { value: "gte",          label: "≥" },
-  { value: "less_than",    label: "<" },
-  { value: "lte",          label: "≤" },
-  { value: "is_empty",     label: "is empty" },
-  { value: "not_empty",    label: "is not empty" },
-];
-
-const BOOL_OPS: { value: FilterOp; label: string }[] = [
-  { value: "is_true",  label: "is true" },
-  { value: "is_false", label: "is false" },
-];
-
-const ENUM_OPTIONS: Record<string, string[]> = {
-  party:            ["DEM", "REP", "IND", "NPA", "LIB", "GRN", "OTH"],
-  gender:           ["M", "F", "U"],
-  voter_status:     ["Active", "Inactive"],
-  contact_type:     ["voter", "volunteer", "donor", "staff", "other"],
-  voting_frequency: ["frequent", "occasional", "infrequent", "rare"],
-  ethnicity:        ["White", "Black", "Hispanic", "Asian", "Native American", "Other", "Unknown"],
-  marital_status:   ["Single", "Married", "Divorced", "Widowed", "Unknown"],
-  education_level:  ["Less than High School", "High School", "Some College", "College", "Graduate"],
-  income_range:     ["<25k", "25-50k", "50-75k", "75-100k", "100-150k", "150k+"],
-  absentee_type:    ["mail", "early", "in-person"],
-  home_dwelling_type: ["Single Family", "Multi Family", "Condo", "Apartment", "Mobile Home"],
-  urbanicity:       ["urban", "suburban", "rural"],
-  street_parity:    ["odd", "even"],
-  state:            ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"],
-};
-
-const NUMERIC_TYPES = new Set(["integer","int","int2","int4","int8","bigint","smallint","numeric","decimal","real","float4","float8","double precision"]);
-const NO_VALUE_OPS: FilterOp[] = ["is_empty", "not_empty", "is_true", "is_false"];
-
-function isNumericType(dt: string) { return NUMERIC_TYPES.has(dt); }
-
-function opsForType(dt: string): { value: FilterOp; label: string }[] {
-  if (dt === "boolean") return BOOL_OPS;
-  if (isNumericType(dt)) return NUM_OPS;
-  return TEXT_OPS;
-}
-
-function defaultOp(dt: string): FilterOp {
-  if (dt === "boolean") return "is_true";
-  if (isNumericType(dt)) return "equals";
-  return "contains";
-}
 
 // ─── Fallback schemas ─────────────────────────────────────────────────────────
 
@@ -122,199 +55,6 @@ const FALLBACK: Record<string, ColumnDef[]> = {
     { column: "industry", label: "Industry",     data_type: "text", is_join: false },
   ],
 };
-
-let _fid = 0;
-function mkId() { return `f${++_fid}`; }
-
-// ─── FilterSection ─────────────────────────────────────────────────────────────
-
-function FilterSection({
-  title,
-  table,
-  filters,
-  schema,
-  loading,
-  onChange,
-  hideJoined = false,
-}: {
-  title: string;
-  table: string;
-  filters: FilterRow[];
-  schema: ColumnDef[];
-  loading: boolean;
-  onChange: (f: FilterRow[]) => void;
-  hideJoined?: boolean;
-}) {
-  const visibleSchema = hideJoined ? schema.filter((c) => !c.is_join) : schema;
-  const [open, setOpen] = useState(table === "locations" || table === "people");
-
-  function addRow() {
-    const first = visibleSchema[0];
-    if (!first) return;
-    onChange([...filters, { id: mkId(), field: first.column, op: defaultOp(first.data_type), value: "", data_type: first.data_type }]);
-  }
-
-  function removeRow(id: string) {
-    onChange(filters.filter((f) => f.id !== id));
-  }
-
-  function updateRow(id: string, patch: Partial<FilterRow>) {
-    onChange(filters.map((f) => {
-      if (f.id !== id) return f;
-      const next = { ...f, ...patch };
-      if (patch.field && patch.field !== f.field) {
-        const def = visibleSchema.find((c) => c.column === patch.field);
-        next.data_type = def?.data_type ?? "text";
-        next.op = defaultOp(next.data_type);
-        next.value = "";
-      }
-      return next;
-    }));
-  }
-
-  const activeCount = filters.filter((f) => f.value || NO_VALUE_OPS.includes(f.op)).length;
-
-  return (
-    <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-          background: "none", border: "none", cursor: "pointer",
-          padding: "10px 0", fontWeight: 600, fontSize: 12,
-          textTransform: "uppercase", letterSpacing: "0.05em",
-          color: "var(--gg-text-dim, #6b7280)",
-        }}
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          {title}
-          {activeCount > 0 && (
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
-              background: "var(--gg-primary, #2563eb)", color: "white",
-            }}>{activeCount}</span>
-          )}
-        </span>
-      </button>
-
-      {open && (
-        <div style={{ paddingBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-          {loading && <div style={{ fontSize: 12, color: "var(--gg-text-dim, #9ca3af)" }}>Loading fields…</div>}
-          {filters.map((f) => {
-            const fieldDef = visibleSchema.find((c) => c.column === f.field);
-            const ops = opsForType(fieldDef?.data_type ?? f.data_type ?? "text");
-            const enumOpts = ENUM_OPTIONS[f.field];
-            const noVal = NO_VALUE_OPS.includes(f.op);
-            const numeric = isNumericType(f.data_type ?? "text");
-
-            return (
-              <div key={f.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 4 }}>
-                {/* Field */}
-                <select
-                  value={f.field}
-                  onChange={(e) => updateRow(f.id, { field: e.target.value })}
-                  style={selectSm}
-                >
-                  {visibleSchema.filter((c) => !c.is_join).length > 0 && (
-                    <optgroup label={title}>
-                      {visibleSchema.filter((c) => !c.is_join).map((c) => (
-                        <option key={c.column} value={c.column}>{c.label}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {!hideJoined && visibleSchema.filter((c) => c.is_join).length > 0 && (
-                    <optgroup label="Location (joined)">
-                      {visibleSchema.filter((c) => c.is_join).map((c) => (
-                        <option key={c.column} value={c.column}>{c.label}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-
-                {/* Op */}
-                <select
-                  value={f.op}
-                  onChange={(e) => updateRow(f.id, { op: e.target.value as FilterOp })}
-                  style={selectSm}
-                >
-                  {ops.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-
-                {/* Remove */}
-                <button onClick={() => removeRow(f.id)} style={iconBtnStyle} title="Remove">
-                  <X size={13} />
-                </button>
-
-                {/* Value row — spans all 3 cols */}
-                {!noVal && (
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    {(f.op === "in_list" || f.op === "not_in_list") && enumOpts ? (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                        {enumOpts.map((v) => {
-                          const selected = new Set(f.value.split(",").map((x) => x.trim()).filter(Boolean));
-                          const on = selected.has(v);
-                          const isExclude = f.op === "not_in_list";
-                          const activeColor = isExclude ? "#dc2626" : "var(--gg-primary, #2563eb)";
-                          return (
-                            <button
-                              key={v}
-                              type="button"
-                              onClick={() => {
-                                const next = new Set(selected);
-                                if (on) next.delete(v); else next.add(v);
-                                updateRow(f.id, { value: [...next].join(",") });
-                              }}
-                              style={{
-                                padding: "3px 8px", borderRadius: 5, fontSize: 11, cursor: "pointer",
-                                border: `1px solid ${on ? activeColor : "var(--gg-border, #e5e7eb)"}`,
-                                background: on ? (isExclude ? "rgba(220,38,38,0.08)" : "rgba(37,99,235,0.08)") : "white",
-                                color: on ? activeColor : "var(--gg-text-dim, #6b7280)",
-                                fontWeight: on ? 600 : 400,
-                              }}
-                            >{v}</button>
-                          );
-                        })}
-                      </div>
-                    ) : (f.op === "in_list" || f.op === "not_in_list") ? (
-                      <input
-                        value={f.value}
-                        onChange={(e) => updateRow(f.id, { value: e.target.value })}
-                        placeholder="value1, value2, …"
-                        style={inputSm}
-                      />
-                    ) : enumOpts ? (
-                      <select
-                        value={f.value}
-                        onChange={(e) => updateRow(f.id, { value: e.target.value })}
-                        style={selectSm}
-                      >
-                        <option value="">— select —</option>
-                        {enumOpts.map((v) => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    ) : (
-                      <input
-                        type={numeric ? "number" : "text"}
-                        value={f.value}
-                        onChange={(e) => updateRow(f.id, { value: e.target.value })}
-                        placeholder="Filter value…"
-                        style={inputSm}
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          <button onClick={addRow} style={addBtnStyle}>
-            <Plus size={12} /> Add filter
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
@@ -533,24 +273,23 @@ export default function MapBuilderPanel() {
 
             <FilterSection
               title="Locations"
-              table="locations"
               filters={locFilters}
               schema={schemas.locations}
               loading={!!schemaLoading.locations}
               onChange={setLocFilters}
+              defaultOpen
             />
             <FilterSection
               title="People"
-              table="people"
               filters={peopleFilters}
               schema={schemas.people}
               loading={!!schemaLoading.people}
               onChange={setPeopleFilters}
               hideJoined
+              defaultOpen
             />
             <FilterSection
               title="Households"
-              table="households"
               filters={hhFilters}
               schema={schemas.households}
               loading={!!schemaLoading.households}
@@ -559,7 +298,6 @@ export default function MapBuilderPanel() {
             />
             <FilterSection
               title="Companies"
-              table="companies"
               filters={coFilters}
               schema={schemas.companies}
               loading={!!schemaLoading.companies}
@@ -685,30 +423,7 @@ export default function MapBuilderPanel() {
   );
 }
 
-// ─── Shared styles ────────────────────────────────────────────────────────────
-
-const selectSm: React.CSSProperties = {
-  padding: "5px 6px", border: "1px solid var(--gg-border, #e5e7eb)",
-  borderRadius: 6, fontSize: 12, background: "white", width: "100%",
-};
-
-const inputSm: React.CSSProperties = {
-  padding: "5px 6px", border: "1px solid var(--gg-border, #e5e7eb)",
-  borderRadius: 6, fontSize: 12, width: "100%", boxSizing: "border-box",
-};
-
-const iconBtnStyle: React.CSSProperties = {
-  display: "flex", alignItems: "center", justifyContent: "center",
-  background: "none", border: "none", cursor: "pointer",
-  color: "var(--gg-text-dim, #9ca3af)", padding: 4, borderRadius: 4, flexShrink: 0,
-};
-
-const addBtnStyle: React.CSSProperties = {
-  display: "inline-flex", alignItems: "center", gap: 4,
-  background: "none", border: "1px dashed var(--gg-border, #e5e7eb)",
-  borderRadius: 6, padding: "5px 10px", cursor: "pointer",
-  fontSize: 12, color: "var(--gg-text-dim, #6b7280)",
-};
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const outlineBtnStyle: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,

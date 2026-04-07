@@ -2,21 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, X, Search, Check, Users } from "lucide-react";
+import { ArrowLeft, Search, Check, Users } from "lucide-react";
 import type { ColumnDef } from "@/app/api/crm/schema/route";
+import FilterSection, {
+  type FilterRow,
+  type FilterOp,
+  NO_VALUE_OPS,
+  makeFilterId,
+  defaultOp,
+} from "@/app/components/crm/FilterSection";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type AppMode = "call" | "knock" | "both" | "text";
 type Target = "people" | "households" | "locations" | "companies";
-type FilterOp =
-  | "contains" | "equals" | "starts_with" | "not_contains"
-  | "is_empty" | "not_empty"
-  | "greater_than" | "gte" | "less_than" | "lte"
-  | "is_true" | "is_false"
-  | "in_list" | "not_in_list";
-
-type FilterRow = { id: string; field: string; op: FilterOp; value: string; data_type: string };
 
 type PersonResult = {
   id: string;
@@ -56,113 +55,43 @@ type CompanyResult = {
 
 type TenantUser = { id: string; email: string; name: string };
 
-// ─── Field / Op helpers (schema-driven) ──────────────────────────────────────
+// ─── Fallback schemas (used before API loads) ─────────────────────────────────
 
-const TEXT_OPS: { value: FilterOp; label: string }[] = [
-  { value: "contains",     label: "contains" },
-  { value: "equals",       label: "equals" },
-  { value: "in_list",      label: "is any of" },
-  { value: "not_in_list",  label: "is none of" },
-  { value: "starts_with",  label: "starts with" },
-  { value: "not_contains", label: "does not contain" },
-  { value: "is_empty",     label: "is empty" },
-  { value: "not_empty",    label: "is not empty" },
-];
-
-const NUM_OPS: { value: FilterOp; label: string }[] = [
-  { value: "equals",       label: "=" },
-  { value: "greater_than", label: ">" },
-  { value: "gte",          label: "≥" },
-  { value: "less_than",    label: "<" },
-  { value: "lte",          label: "≤" },
-  { value: "is_empty",     label: "is empty" },
-  { value: "not_empty",    label: "is not empty" },
-];
-
-const BOOL_OPS: { value: FilterOp; label: string }[] = [
-  { value: "is_true",  label: "is true" },
-  { value: "is_false", label: "is false" },
-];
-
-const ENUM_OPTIONS: Record<string, string[]> = {
-  party:            ["DEM", "REP", "IND", "NPA", "LIB", "GRN", "OTH"],
-  gender:           ["M", "F", "U"],
-  voter_status:     ["Active", "Inactive"],
-  contact_type:     ["voter", "volunteer", "donor", "staff", "other"],
-  voting_frequency: ["frequent", "occasional", "infrequent", "rare"],
-  ethnicity:        ["White", "Black", "Hispanic", "Asian", "Native American", "Other", "Unknown"],
-  marital_status:   ["Single", "Married", "Divorced", "Widowed", "Unknown"],
-  education_level:  ["Less than High School", "High School", "Some College", "College", "Graduate"],
-  income_range:     ["<25k", "25-50k", "50-75k", "75-100k", "100-150k", "150k+"],
-  absentee_type:    ["mail", "early", "in-person"],
-  home_dwelling_type: ["Single Family", "Multi Family", "Condo", "Apartment", "Mobile Home"],
-  urbanicity:       ["urban", "suburban", "rural"],
-  street_parity:    ["odd", "even"],
-  state:            ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"],
-};
-
-const NUMERIC_TYPES = new Set([
-  "integer", "int", "int2", "int4", "int8",
-  "bigint", "smallint", "numeric", "decimal",
-  "real", "float4", "float8", "double precision",
-]);
-
-function isNumericType(dt: string) { return NUMERIC_TYPES.has(dt); }
-
-function opsForType(dt: string): { value: FilterOp; label: string }[] {
-  if (dt === "boolean") return BOOL_OPS;
-  if (isNumericType(dt)) return NUM_OPS;
-  return TEXT_OPS;
-}
-
-function defaultOp(dt: string): FilterOp {
-  if (dt === "boolean") return "is_true";
-  if (isNumericType(dt)) return "equals";
-  return "contains";
-}
-
-// Hardcoded fallback schema if API unavailable
-const FALLBACK_SCHEMA: Record<Target, ColumnDef[]> = {
+const FALLBACK_SCHEMA: Record<string, ColumnDef[]> = {
+  people: [
+    { column: "first_name",  label: "First Name",   data_type: "text",  is_join: false },
+    { column: "last_name",   label: "Last Name",    data_type: "text",  is_join: false },
+    { column: "email",       label: "Email",        data_type: "text",  is_join: false },
+    { column: "phone",       label: "Phone",        data_type: "text",  is_join: false },
+    { column: "contact_type",label: "Contact Type", data_type: "text",  is_join: false },
+    { column: "party",       label: "Party",        data_type: "text",  is_join: false },
+    { column: "city",        label: "City",         data_type: "text",  is_join: true  },
+    { column: "state",       label: "State",        data_type: "text",  is_join: true  },
+    { column: "postal_code", label: "Zip Code",     data_type: "text",  is_join: true  },
+  ],
+  households: [
+    { column: "name",        label: "Household Name", data_type: "text", is_join: false },
+    { column: "city",        label: "City",           data_type: "text", is_join: true  },
+    { column: "state",       label: "State",          data_type: "text", is_join: true  },
+    { column: "postal_code", label: "Zip Code",       data_type: "text", is_join: true  },
+  ],
+  locations: [
+    { column: "address_line1", label: "Street Address", data_type: "text", is_join: false },
+    { column: "city",          label: "City",           data_type: "text", is_join: false },
+    { column: "state",         label: "State",          data_type: "text", is_join: false },
+    { column: "postal_code",   label: "Zip Code",       data_type: "text", is_join: false },
+  ],
   companies: [
     { column: "name",     label: "Company Name", data_type: "text", is_join: false },
     { column: "phone",    label: "Phone",        data_type: "text", is_join: false },
     { column: "email",    label: "Email",        data_type: "text", is_join: false },
     { column: "industry", label: "Industry",     data_type: "text", is_join: false },
-    { column: "status",   label: "Status",       data_type: "text", is_join: false },
   ],
-  people: [
-    { column: "first_name", label: "First Name", data_type: "text", is_join: false },
-    { column: "last_name", label: "Last Name", data_type: "text", is_join: false },
-    { column: "email", label: "Email", data_type: "text", is_join: false },
-    { column: "phone", label: "Phone", data_type: "text", is_join: false },
-    { column: "contact_type", label: "Contact Type", data_type: "text", is_join: false },
-    { column: "notes", label: "Notes", data_type: "text", is_join: false },
-    { column: "city", label: "City", data_type: "text", is_join: true },
-    { column: "state", label: "State", data_type: "text", is_join: true },
-    { column: "postal_code", label: "Zip Code", data_type: "text", is_join: true },
-    { column: "address", label: "Street Address", data_type: "text", is_join: true },
-  ],
-  households: [
-    { column: "name", label: "Household Name", data_type: "text", is_join: false },
-    { column: "notes", label: "Notes", data_type: "text", is_join: false },
-    { column: "city", label: "City", data_type: "text", is_join: true },
-    { column: "state", label: "State", data_type: "text", is_join: true },
-    { column: "postal_code", label: "Zip Code", data_type: "text", is_join: true },
-    { column: "address", label: "Street Address", data_type: "text", is_join: true },
-  ],
-  locations: [
-    { column: "address_line1",   label: "Street Address",   data_type: "text", is_join: false },
-    { column: "city",            label: "City",             data_type: "text", is_join: false },
-    { column: "state",           label: "State",            data_type: "text", is_join: false },
-    { column: "postal_code",     label: "Zip Code",         data_type: "text", is_join: false },
-    { column: "postal_community",label: "Postal Community", data_type: "text", is_join: false },
-    { column: "house_number",    label: "House Number",     data_type: "text", is_join: false },
-    { column: "street_name",     label: "Street Name",      data_type: "text", is_join: false },
-    { column: "street_suffix",   label: "Street Suffix",    data_type: "text", is_join: false },
-    { column: "pre_dir",         label: "Pre-Directional",  data_type: "text", is_join: false },
-    { column: "parcel_id",       label: "Parcel ID / APN",  data_type: "text", is_join: false },
-    { column: "land_use",        label: "Land Use",         data_type: "text", is_join: false },
-    { column: "subdivision",     label: "Subdivision",      data_type: "text", is_join: false },
+  opportunities: [
+    { column: "title",        label: "Opportunity Title", data_type: "text",    is_join: false },
+    { column: "stage",        label: "Stage",             data_type: "text",    is_join: false },
+    { column: "amount_cents", label: "Amount ($)",        data_type: "integer", is_join: false },
+    { column: "priority",     label: "Priority",          data_type: "text",    is_join: false },
   ],
 };
 
@@ -237,11 +166,6 @@ function toggleBtn(active: boolean): React.CSSProperties {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-let _filterId = 0;
-function makeFilterId() {
-  return `f${++_filterId}`;
-}
-
 function fullName(p: PersonResult) {
   return [p.first_name, p.last_name].filter(Boolean).join(" ") || "(No name)";
 }
@@ -254,8 +178,6 @@ function initials(name: string) {
     .toUpperCase()
     .slice(0, 2);
 }
-
-const NO_VALUE_OPS: FilterOp[] = ["is_empty", "not_empty", "is_true", "is_false"];
 
 const MODE_LABELS: Record<AppMode, string> = {
   call: "Dials (Call List)",
@@ -282,12 +204,22 @@ export default function CreateListWizard() {
   const [appMode, setAppMode] = useState<AppMode>("call");
   const [target, setTarget] = useState<Target>("people");
 
-  // Schema (loaded per target)
-  const [schema, setSchema] = useState<ColumnDef[]>(FALLBACK_SCHEMA.people);
+  // Per-table schemas
+  const [schemas, setSchemas] = useState<Record<string, ColumnDef[]>>(FALLBACK_SCHEMA);
   const [schemaLoading, setSchemaLoading] = useState(false);
 
-  // Step 2
-  const [filters, setFilters] = useState<FilterRow[]>(() => [{ id: makeFilterId(), field: "first_name", op: "contains", value: "", data_type: "text" }]);
+  // Opportunity stages (for dynamic stage chips)
+  const [stages, setStages] = useState<{ key: string; label: string }[]>([]);
+
+  // Per-section filter state
+  const [primaryFilters, setPrimaryFilters] = useState<FilterRow[]>(() => [
+    { id: makeFilterId(), field: "first_name", op: "contains", value: "", data_type: "text" },
+  ]);
+  const [locFilters,  setLocFilters]  = useState<FilterRow[]>([]);
+  const [hhFilters,   setHhFilters]   = useState<FilterRow[]>([]);
+  const [oppFilters,  setOppFilters]  = useState<FilterRow[]>(() => [
+    { id: makeFilterId(), field: "stage", op: "equals", value: "", data_type: "text" },
+  ]);
   const [results, setResults] = useState<(PersonResult | HouseholdResult | LocationResult | CompanyResult)[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searching, setSearching] = useState(false);
@@ -312,21 +244,21 @@ export default function CreateListWizard() {
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
-  async function loadSchema(t: Target) {
+  async function loadAllSchemas() {
     setSchemaLoading(true);
-    try {
-      const res = await fetch(`/api/crm/schema?table=${t}`);
-      const data = await res.json();
-      const cols: ColumnDef[] = Array.isArray(data) && data.length > 0 ? data : FALLBACK_SCHEMA[t];
-      setSchema(cols);
-      return cols;
-    } catch {
-      const cols = FALLBACK_SCHEMA[t];
-      setSchema(cols);
-      return cols;
-    } finally {
-      setSchemaLoading(false);
-    }
+    const tables = ["people", "households", "locations", "companies", "opportunities"];
+    const results = await Promise.allSettled(
+      tables.map((t) => fetch(`/api/crm/schema?table=${t}`).then((r) => r.json()))
+    );
+    const updated: Record<string, ColumnDef[]> = { ...FALLBACK_SCHEMA };
+    tables.forEach((t, i) => {
+      const r = results[i];
+      if (r.status === "fulfilled" && Array.isArray(r.value) && r.value.length > 0) {
+        updated[t] = r.value;
+      }
+    });
+    setSchemas(updated);
+    setSchemaLoading(false);
   }
 
   function changeTarget(t: Target) {
@@ -335,19 +267,21 @@ export default function CreateListWizard() {
     setSelectedIds(new Set());
     setHasSearched(false);
     setSearchErr(null);
-    const fallback = FALLBACK_SCHEMA[t];
-    setSchema(fallback);
-    const fb0dt = fallback[0]?.data_type ?? "text";
-    setFilters([{ id: makeFilterId(), field: fallback[0]?.column ?? "", op: defaultOp(fb0dt), value: "", data_type: fb0dt }]);
-    loadSchema(t).then((cols) => {
-      const c0dt = cols[0]?.data_type ?? "text";
-      setFilters([{ id: makeFilterId(), field: cols[0]?.column ?? "", op: defaultOp(c0dt), value: "", data_type: c0dt }]);
-    });
+    // Reset primary filters to first field of new target's schema
+    const cols = schemas[t] ?? FALLBACK_SCHEMA[t] ?? [];
+    const first = cols.filter((c: ColumnDef) => !c.is_join)[0] ?? cols[0];
+    if (first) {
+      setPrimaryFilters([{ id: makeFilterId(), field: first.column, op: defaultOp(first.data_type), value: "", data_type: first.data_type }]);
+    }
   }
 
-  // Load schema for initial target on mount
+  // Load all schemas on mount
   useEffect(() => {
-    loadSchema("people");
+    loadAllSchemas();
+    fetch("/api/crm/opportunities/stages")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setStages(d); })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -370,34 +304,6 @@ export default function CreateListWizard() {
       .finally(() => setUsersLoading(false));
   }, [step]);
 
-  // ── Filters ───────────────────────────────────────────────────────────────
-
-  function addFilter() {
-    const first = schema[0];
-    if (!first) return;
-    setFilters((prev) => [...prev, { id: makeFilterId(), field: first.column, op: defaultOp(first.data_type), value: "", data_type: first.data_type }]);
-  }
-
-  function removeFilter(id: string) {
-    setFilters((prev) => (prev.length > 1 ? prev.filter((f) => f.id !== id) : prev));
-  }
-
-  function updateFilter(id: string, patch: Partial<Omit<FilterRow, "id">>) {
-    setFilters((prev) =>
-      prev.map((f) => {
-        if (f.id !== id) return f;
-        const next = { ...f, ...patch };
-        if (patch.field && patch.field !== f.field) {
-          const def = schema.find((c) => c.column === patch.field);
-          next.data_type = def?.data_type ?? "text";
-          next.op = defaultOp(next.data_type);
-          next.value = "";
-        }
-        return next;
-      })
-    );
-  }
-
   // ── Search ────────────────────────────────────────────────────────────────
 
   async function handleSearch(e: React.FormEvent) {
@@ -407,13 +313,42 @@ export default function CreateListWizard() {
     setSelectedIds(new Set());
     setHasSearched(true);
     try {
+      function cleanFilters(rows: FilterRow[]) {
+        return rows
+          .filter((f) => f.field && (f.value.trim() || NO_VALUE_OPS.includes(f.op)))
+          .map(({ field, op, value, data_type }) => ({ field, op, value, data_type }));
+      }
+
+      const body: any = { target };
+
+      if (target === "locations") {
+        // Primary = location filters; locFilters = people cross-join; hhFilters = households cross-join
+        body.filters = cleanFilters(primaryFilters);
+        const pf = cleanFilters(locFilters);
+        const hf = cleanFilters(hhFilters);
+        if (pf.length || hf.length) {
+          body.link_filters = {};
+          if (pf.length) body.link_filters.people = pf;
+          if (hf.length) body.link_filters.households = hf;
+        }
+      } else {
+        // Primary + location join + household join all go into main filters array
+        // (search route splits them by LOCATION_JOIN_FIELDS / HOUSEHOLD_JOIN_FIELDS)
+        body.filters = [
+          ...cleanFilters(primaryFilters),
+          ...cleanFilters(locFilters),
+          ...cleanFilters(hhFilters),
+        ];
+        const of = cleanFilters(oppFilters);
+        if (of.length && (target === "people" || target === "companies")) {
+          body.link_filters = { opportunities: of };
+        }
+      }
+
       const res = await fetch("/api/crm/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          target,
-          filters: filters.filter((f) => f.field).map(({ field, op, value, data_type }) => ({ field, op, value, data_type })),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Search failed");
@@ -471,28 +406,6 @@ export default function CreateListWizard() {
       setCreateErr(err.message ?? "Failed to create list");
       setCreating(false);
     }
-  }
-
-  // ── Field dropdown ────────────────────────────────────────────────────────
-
-  function renderSchemaOptions() {
-    // Group by join vs direct
-    const direct = schema.filter((c) => !c.is_join);
-    const joined = schema.filter((c) => c.is_join);
-    return (
-      <>
-        {direct.length > 0 && (
-          <optgroup label={target === "people" ? "Person" : target === "households" ? "Household" : "Location"}>
-            {direct.map((c) => <option key={c.column} value={c.column}>{c.label}</option>)}
-          </optgroup>
-        )}
-        {joined.length > 0 && (
-          <optgroup label="Location (joined)">
-            {joined.map((c) => <option key={c.column} value={c.column}>{c.label}</option>)}
-          </optgroup>
-        )}
-      </>
-    );
   }
 
   const resultCount = results.length;
@@ -648,144 +561,68 @@ export default function CreateListWizard() {
       {step === 2 && (
         <div style={{ display: "grid", gap: 16 }}>
           <div style={cardStyle}>
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 12 }}>
               <span style={{ fontWeight: 700, fontSize: 15 }}>Filter {TARGET_LABELS[target]}</span>
               <span style={{ fontSize: 12, color: "var(--gg-text-dim, #6b7280)", marginLeft: 8 }}>
-                All conditions must match (AND). Leave filters empty to match everything.
+                All conditions match (AND). Leave sections empty to match everything.
               </span>
             </div>
 
             <form onSubmit={handleSearch}>
               {schemaLoading && (
-                <p style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", margin: "0 0 12px" }}>Loading fields…</p>
+                <p style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)", margin: "0 0 8px" }}>Loading fields…</p>
               )}
-              <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
-                {filters.map((f, i) => {
-                  const fieldDef = schema.find((c) => c.column === f.field);
-                  const ops = opsForType(fieldDef?.data_type ?? "text");
-                  return (
-                  <div
-                    key={f.id}
-                    style={{ display: "grid", gridTemplateColumns: "1fr 170px 1fr 32px", gap: 8, alignItems: "end" }}
-                  >
-                    <div>
-                      {i === 0 && <label style={labelStyle}>Field</label>}
-                      <select value={f.field} onChange={(e) => updateFilter(f.id, { field: e.target.value })} style={selectStyle}>
-                        {renderSchemaOptions()}
-                      </select>
-                    </div>
 
-                    <div>
-                      {i === 0 && <label style={labelStyle}>Condition</label>}
-                      <select value={f.op} onChange={(e) => updateFilter(f.id, { op: e.target.value as FilterOp })} style={selectStyle}>
-                        {ops.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </div>
+              {/* ── People target ── */}
+              {target === "people" && (
+                <>
+                  <FilterSection title="People" filters={primaryFilters} schema={schemas.people ?? []} onChange={setPrimaryFilters} defaultOpen />
+                  <FilterSection title="Location" filters={locFilters} schema={schemas.locations ?? []} onChange={setLocFilters} />
+                  <FilterSection title="Household" filters={hhFilters} schema={schemas.households ?? []} onChange={setHhFilters} hideJoined />
+                  <FilterSection
+                    title="Linked Opportunities"
+                    filters={oppFilters}
+                    schema={schemas.opportunities ?? []}
+                    onChange={setOppFilters}
+                    hideJoined
+                    dynamicEnumOpts={{ stage: stages.map((s) => s.key) }}
+                  />
+                </>
+              )}
 
-                    <div>
-                      {i === 0 && <label style={labelStyle}>Value</label>}
-                      {NO_VALUE_OPS.includes(f.op) ? (
-                        <div style={{ ...inputStyle, background: "var(--gg-bg, #f9fafb)", color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>
-                          (no value)
-                        </div>
-                      ) : (() => {
-                        const enumOpts = ENUM_OPTIONS[f.field];
-                        const numeric = isNumericType(f.data_type ?? "text");
-                        if (f.op === "in_list" || f.op === "not_in_list") {
-                          const isExclude = f.op === "not_in_list";
-                          const activeColor = isExclude ? "#dc2626" : "var(--gg-primary, #2563eb)";
-                          if (enumOpts) {
-                            const selected = new Set(f.value.split(",").map((v) => v.trim()).filter(Boolean));
-                            return (
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                {enumOpts.map((v) => {
-                                  const on = selected.has(v);
-                                  return (
-                                    <button
-                                      key={v}
-                                      type="button"
-                                      onClick={() => {
-                                        const next = new Set(selected);
-                                        if (on) next.delete(v); else next.add(v);
-                                        updateFilter(f.id, { value: [...next].join(",") });
-                                      }}
-                                      style={{
-                                        padding: "4px 10px",
-                                        borderRadius: 5,
-                                        border: `1px solid ${on ? activeColor : "var(--gg-border, #e5e7eb)"}`,
-                                        background: on ? (isExclude ? "rgba(220,38,38,0.08)" : "rgba(37,99,235,0.08)") : "var(--gg-input, white)",
-                                        color: on ? activeColor : "var(--gg-text-dim, #6b7280)",
-                                        fontSize: 13,
-                                        fontWeight: on ? 600 : 400,
-                                        cursor: "pointer",
-                                      }}
-                                    >
-                                      {v}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            );
-                          }
-                          return (
-                            <input
-                              style={inputStyle}
-                              value={f.value}
-                              onChange={(e) => updateFilter(f.id, { value: e.target.value })}
-                              placeholder="value1, value2, …"
-                            />
-                          );
-                        }
-                        if (enumOpts) {
-                          return (
-                            <select
-                              value={f.value}
-                              onChange={(e) => updateFilter(f.id, { value: e.target.value })}
-                              style={selectStyle}
-                            >
-                              <option value="">— select —</option>
-                              {enumOpts.map((v) => <option key={v} value={v}>{v}</option>)}
-                            </select>
-                          );
-                        }
-                        return (
-                          <input
-                            type={numeric ? "number" : "text"}
-                            style={inputStyle}
-                            value={f.value}
-                            onChange={(e) => updateFilter(f.id, { value: e.target.value })}
-                            placeholder="Filter value…"
-                          />
-                        );
-                      })()}
-                    </div>
+              {/* ── Households target ── */}
+              {target === "households" && (
+                <>
+                  <FilterSection title="Households" filters={primaryFilters} schema={schemas.households ?? []} onChange={setPrimaryFilters} defaultOpen />
+                  <FilterSection title="Location" filters={locFilters} schema={schemas.locations ?? []} onChange={setLocFilters} />
+                </>
+              )}
 
-                    <button
-                      type="button"
-                      onClick={() => removeFilter(f.id)}
-                      disabled={filters.length === 1}
-                      style={{
-                        background: "none", border: "none", cursor: filters.length === 1 ? "default" : "pointer",
-                        padding: 6, borderRadius: 6, color: filters.length === 1 ? "var(--gg-border, #d1d5db)" : "var(--gg-text-dim, #6b7280)",
-                        display: "flex", alignItems: "center", height: 38,
-                      }}
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                )})}
-              </div>
+              {/* ── Locations target ── */}
+              {target === "locations" && (
+                <>
+                  <FilterSection title="Locations" filters={primaryFilters} schema={schemas.locations ?? []} onChange={setPrimaryFilters} defaultOpen />
+                  <FilterSection title="People (linked)" filters={locFilters} schema={schemas.people ?? []} onChange={setLocFilters} hideJoined />
+                  <FilterSection title="Households (linked)" filters={hhFilters} schema={schemas.households ?? []} onChange={setHhFilters} hideJoined />
+                </>
+              )}
 
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={addFilter}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 7, background: "none", border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--gg-text, #374151)" }}
-                >
-                  <Plus size={14} />
-                  Add Filter
-                </button>
+              {/* ── Companies target ── */}
+              {target === "companies" && (
+                <>
+                  <FilterSection title="Companies" filters={primaryFilters} schema={schemas.companies ?? []} onChange={setPrimaryFilters} defaultOpen />
+                  <FilterSection
+                    title="Linked Opportunities"
+                    filters={oppFilters}
+                    schema={schemas.opportunities ?? []}
+                    onChange={setOppFilters}
+                    hideJoined
+                    dynamicEnumOpts={{ stage: stages.map((s) => s.key) }}
+                  />
+                </>
+              )}
 
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 16 }}>
                 <button type="submit" disabled={searching} style={primaryBtn(searching)}>
                   <Search size={15} />
                   {searching ? "Searching…" : "Search"}

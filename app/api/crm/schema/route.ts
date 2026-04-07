@@ -11,7 +11,7 @@ export type ColumnDef = {
 };
 
 // Tables that users can introspect
-const ALLOWED_TABLES = ["people", "households", "locations", "companies"] as const;
+const ALLOWED_TABLES = ["people", "households", "locations", "companies", "opportunities"] as const;
 type AllowedTable = (typeof ALLOWED_TABLES)[number];
 
 // Columns to always strip out — system/FK/internal/geo
@@ -181,6 +181,15 @@ const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
     { column: "status",   label: "Status",   data_type: "text", is_join: false },
     { column: "presence", label: "Presence", data_type: "text", is_join: false },
   ],
+  opportunities: [
+    { column: "title",        label: "Opportunity Title", data_type: "text",    is_join: false },
+    { column: "stage",        label: "Stage",             data_type: "text",    is_join: false },
+    { column: "amount_cents", label: "Amount ($)",        data_type: "integer", is_join: false },
+    { column: "priority",     label: "Priority",          data_type: "text",    is_join: false },
+    { column: "source",       label: "Source",            data_type: "text",    is_join: false },
+    { column: "contact_type", label: "Contact Type",      data_type: "text",    is_join: false },
+    { column: "description",  label: "Description",       data_type: "text",    is_join: false },
+  ],
   locations: [
     { column: "address_line1",    label: "Street Address",    data_type: "text",    is_join: false },
     { column: "unit",             label: "Unit / Apt",        data_type: "text",    is_join: false },
@@ -216,7 +225,7 @@ export async function GET(request: NextRequest) {
   const table = request.nextUrl.searchParams.get("table") as AllowedTable | null;
 
   if (!table || !ALLOWED_TABLES.includes(table)) {
-    return NextResponse.json({ error: "Invalid table. Must be one of: people, households, locations, companies" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid table. Must be one of: people, households, locations, companies, opportunities" }, { status: 400 });
   }
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

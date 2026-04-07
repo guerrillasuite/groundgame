@@ -174,8 +174,21 @@ export async function POST(request: NextRequest) {
   const { target, filters = [], link_filters = {} } = body as {
     target: SearchTarget;
     filters: SearchFilter[];
-    link_filters?: { people?: SearchFilter[] };
+    link_filters?: {
+      people?: SearchFilter[];
+      households?: SearchFilter[];
+      opportunities?: SearchFilter[];
+    };
   };
+
+  // Multiply amount_cents filter values by 100 (UI accepts dollars, DB stores cents)
+  function prepOppFilters(fs: SearchFilter[]): SearchFilter[] {
+    return fs.map((f) =>
+      f.field === "amount_cents" && f.value
+        ? { ...f, value: String(Math.round(Number(f.value) * 100)) }
+        : f
+    );
+  }
 
   if (!target) {
     return NextResponse.json({ error: "target is required" }, { status: 400 });
@@ -243,6 +256,44 @@ export async function POST(request: NextRequest) {
       if (finalPersonIdFilter.length === 0) return NextResponse.json([]);
     } else {
       finalPersonIdFilter = personIdFilterFromLocation ?? personIdFilterFromHH ?? null;
+    }
+
+    // Opportunity cross-join: find person IDs linked to matching opportunities
+    const rawOppFilters = link_filters?.opportunities ?? [];
+    if (rawOppFilters.length > 0) {
+      try {
+        const oppFilters = prepOppFilters(rawOppFilters);
+        const matchingOpps = await fetchAll(() => {
+          let q = sb.from("opportunities").select("id, contact_person_id").eq("tenant_id", tenant.id);
+          for (const f of oppFilters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
+          return q;
+        });
+        if (!matchingOpps.length) return NextResponse.json([]);
+
+        const oppPersonIds = new Set<string>();
+        const oppIds: string[] = [];
+        for (const o of matchingOpps) {
+          if (o.contact_person_id) oppPersonIds.add(o.contact_person_id);
+          oppIds.push(o.id);
+        }
+        // Also check opportunity_people junction for additional contacts
+        if (oppIds.length > 0) {
+          const juncRows = await queryInChunks(sb, "opportunity_people", "person_id", "opportunity_id", oppIds,
+            (q: any) => q.eq("tenant_id", tenant.id));
+          for (const r of juncRows) if (r.person_id) oppPersonIds.add(r.person_id);
+        }
+
+        // Intersect with any existing person ID filter
+        if (finalPersonIdFilter) {
+          const allowed = new Set(finalPersonIdFilter);
+          finalPersonIdFilter = [...oppPersonIds].filter((id) => allowed.has(id));
+        } else {
+          finalPersonIdFilter = [...oppPersonIds];
+        }
+        if (!finalPersonIdFilter.length) return NextResponse.json([]);
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
     }
 
     let people: any[];
@@ -399,6 +450,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Household link_filter: find location IDs from households matching filters
+    const hhLinkFilters = link_filters?.households ?? [];
+    if (hhLinkFilters.length > 0) {
+      try {
+        const matchingHHs = await fetchAll(() => {
+          let q = sb.from("households").select("id, location_id").eq("tenant_id", tenant.id);
+          for (const f of hhLinkFilters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
+          return q;
+        });
+        if (!matchingHHs.length) return NextResponse.json([]);
+        const hhLocIds = new Set<string>(
+          (matchingHHs as any[]).map((h) => h.location_id).filter(Boolean)
+        );
+        // Intersect with existing allowedLocIds (from people link_filter, if any)
+        if (allowedLocIds !== null) {
+          allowedLocIds = new Set([...allowedLocIds].filter((id) => hhLocIds.has(id)));
+        } else {
+          allowedLocIds = hhLocIds;
+        }
+        if (!allowedLocIds.size) return NextResponse.json([]);
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
+
     let locations: any[];
     try {
       locations = await fetchAll(() => {
@@ -486,6 +562,31 @@ export async function POST(request: NextRequest) {
     } catch (err: any) {
       return NextResponse.json({ error: err.message }, { status: 500 });
     }
+
+    // Opportunity cross-join: keep only companies with matching opportunities
+    const rawCoOppFilters = link_filters?.opportunities ?? [];
+    if (rawCoOppFilters.length > 0) {
+      try {
+        const oppFilters = prepOppFilters(rawCoOppFilters);
+        const matchingOpps = await fetchAll(() => {
+          let q = sb.from("opportunities")
+            .select("customer_company_id")
+            .eq("tenant_id", tenant.id)
+            .not("customer_company_id", "is", null);
+          for (const f of oppFilters) q = applyFilter(q, f.field, f.op, f.value, f.data_type);
+          return q;
+        });
+        if (!matchingOpps.length) return NextResponse.json([]);
+        const oppCoIds = new Set<string>(
+          (matchingOpps as any[]).map((o) => o.customer_company_id).filter(Boolean)
+        );
+        companies = companies.filter((c: any) => oppCoIds.has(c.id));
+        if (!companies.length) return NextResponse.json([]);
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+      }
+    }
+
     return NextResponse.json(
       companies.map((c: any) => ({
         id: c.id,
