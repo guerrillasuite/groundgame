@@ -113,19 +113,30 @@ export default async function SurveyPage() {
                 }}
               >
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                     <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{survey.title}</h2>
-                    <span style={{
-                      padding: "4px 12px",
-                      borderRadius: 12,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      background: survey.active ? "rgba(34,197,94,0.15)" : "rgba(107,114,128,0.15)",
-                      color: survey.active ? "#16a34a" : "var(--gg-text-dim, #6b7280)",
-                      border: `1px solid ${survey.active ? "rgba(34,197,94,0.3)" : "rgba(107,114,128,0.3)"}`,
-                    }}>
-                      {survey.active ? "Active" : "Inactive"}
-                    </span>
+                    {(() => {
+                      const channels: string[] = Array.isArray(survey.active_channels) && survey.active_channels.length > 0
+                        ? survey.active_channels
+                        : (survey.active ? ["embedded","hosted","doors","dials","texts"] : []);
+                      if (channels.length === 0) return (
+                        <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: "rgba(107,114,128,0.15)", color: "var(--gg-text-dim, #6b7280)", border: "1px solid rgba(107,114,128,0.3)" }}>
+                          Inactive
+                        </span>
+                      );
+                      const all = ["embedded","hosted","doors","dials","texts"];
+                      if (all.every(c => channels.includes(c))) return (
+                        <span style={{ padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: "rgba(34,197,94,0.15)", color: "#16a34a", border: "1px solid rgba(34,197,94,0.3)" }}>
+                          Active · All
+                        </span>
+                      );
+                      const labels: Record<string, string> = { embedded: "Embedded", hosted: "Hosted", doors: "Doors", dials: "Dials", texts: "Texts" };
+                      return channels.map(c => (
+                        <span key={c} style={{ padding: "4px 10px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: "rgba(34,197,94,0.12)", color: "#16a34a", border: "1px solid rgba(34,197,94,0.25)" }}>
+                          {labels[c] ?? c}
+                        </span>
+                      ));
+                    })()}
                     {isWspq && (
                       <span style={{ padding: "4px 12px", borderRadius: 12, fontSize: 11, fontWeight: 600, background: "rgba(234,179,8,0.15)", color: "#d97706", border: "1px solid rgba(234,179,8,0.3)" }}>
                         Political Quiz

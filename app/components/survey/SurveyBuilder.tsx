@@ -110,7 +110,7 @@ export default function SurveyBuilder({
   const [description, setDescription] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [footerText, setFooterText] = useState("");
-  const [active, setActive] = useState(true);
+  const [activeChannels, setActiveChannels] = useState<Set<string>>(new Set(["embedded","hosted","doors","dials","texts"]));
   const [publicSlug, setPublicSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
 
@@ -150,7 +150,10 @@ export default function SurveyBuilder({
         setDescription(s.description ?? "");
         setWebsiteUrl(s.website_url ?? "");
         setFooterText(s.footer_text ?? "");
-        setActive(Boolean(s.active));
+        const channels = Array.isArray(s.active_channels) && s.active_channels.length > 0
+          ? s.active_channels
+          : (s.active ? ["embedded","hosted","doors","dials","texts"] : []);
+        setActiveChannels(new Set(channels));
         setPublicSlug(s.public_slug ?? s.id ?? "");
 
         const qs: LocalQuestion[] = (data.questions ?? []).map((q: any) => ({
@@ -179,9 +182,11 @@ export default function SurveyBuilder({
       .finally(() => setLoading(false));
   }, [surveyId]);
 
-  // Load user assignments when active is toggled on (for existing surveys)
+  const isActive = activeChannels.size > 0;
+
+  // Load user assignments when survey has any active channel (for existing surveys)
   useEffect(() => {
-    if (!active || !surveyId || usersFetched) return;
+    if (!isActive || !surveyId || usersFetched) return;
     setUsersLoading(true);
     setUsersFetched(true);
     Promise.all([
@@ -194,11 +199,11 @@ export default function SurveyBuilder({
       })
       .catch(() => {})
       .finally(() => setUsersLoading(false));
-  }, [active, surveyId, usersFetched]);
+  }, [isActive, surveyId, usersFetched]);
 
-  // Fetch users when active is first toggled on for a new survey
+  // Fetch users when first activated for a new survey
   useEffect(() => {
-    if (!active || usersFetched || crmUsers.length > 0) return;
+    if (!isActive || usersFetched || crmUsers.length > 0) return;
     setUsersLoading(true);
     setUsersFetched(true);
     fetch("/api/crm/users")
@@ -206,7 +211,7 @@ export default function SurveyBuilder({
       .then((users) => setCrmUsers(Array.isArray(users) ? users : []))
       .catch(() => {})
       .finally(() => setUsersLoading(false));
-  }, [active, usersFetched, crmUsers.length]);
+  }, [isActive, usersFetched, crmUsers.length]);
 
   // ── Question helpers ──────────────────────────────────────────────────────
   function addQuestion() {
@@ -399,7 +404,7 @@ export default function SurveyBuilder({
             title, description,
             website_url: websiteUrl || null,
             footer_text: footerText || null,
-            active,
+            active_channels: [...activeChannels],
             public_slug: publicSlug.trim() || null,
           }),
         });
@@ -586,21 +591,58 @@ export default function SurveyBuilder({
           />
         </div>
 
-        {/* Active toggle */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={(e) => setActive(e.target.checked)}
-              style={{ width: 16, height: 16, cursor: "pointer" }}
-            />
-            <strong>Active</strong> — visible to field apps
-          </label>
+        {/* Active channel toggles */}
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, opacity: 0.7 }}>Active in</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {(["embedded","hosted","doors","dials","texts","all"] as const).map((ch) => {
+              const isAll = ch === "all";
+              const checked = isAll
+                ? ["embedded","hosted","doors","dials","texts"].every(c => activeChannels.has(c))
+                : activeChannels.has(ch);
+              const label: Record<string, string> = { embedded: "Embedded", hosted: "Hosted", doors: "Doors", dials: "Dials", texts: "Texts", all: "All" };
+              return (
+                <label
+                  key={ch}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+                    padding: "5px 12px", borderRadius: 20, fontSize: 13,
+                    border: `1px solid ${checked ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
+                    background: checked ? "rgba(37,99,235,0.08)" : "transparent",
+                    fontWeight: checked ? 600 : 400,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    style={{ width: 13, height: 13, cursor: "pointer" }}
+                    onChange={(e) => {
+                      const next = new Set(activeChannels);
+                      if (isAll) {
+                        if (e.target.checked) {
+                          ["embedded","hosted","doors","dials","texts"].forEach(c => next.add(c));
+                        } else {
+                          next.clear();
+                        }
+                      } else {
+                        if (e.target.checked) next.add(ch);
+                        else next.delete(ch);
+                      }
+                      setActiveChannels(next);
+                    }}
+                  />
+                  {label[ch]}
+                </label>
+              );
+            })}
+          </div>
+          {activeChannels.size === 0 && (
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>Survey is inactive — not visible anywhere.</p>
+          )}
         </div>
 
         {/* User assignment (when active, existing surveys) */}
-        {active && surveyId && (
+        {isActive && surveyId && (
           <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", paddingTop: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
               <Users size={14} style={{ opacity: 0.5 }} />

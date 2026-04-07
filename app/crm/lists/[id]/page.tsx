@@ -422,12 +422,21 @@ export default async function ListDetail({
   const hasLocationIds = locationIds.length > 0;
   const hasCompanyIds = companyIds.length > 0;
 
+  // Map list mode → active_channels key so we only show surveys enabled for that deployment
+  const modeToChannel: Record<string, string> = { door: "doors", call: "dials", text: "texts" };
+  const listChannel = modeToChannel[modeLower] ?? null;
+  const eligibleSurveys = allSurveys.filter((s) => {
+    if (!listChannel) return true; // unknown mode — show all
+    if (!s.active_channels || s.active_channels.length === 0) return s.active; // fallback for unset
+    return s.active_channels.includes(listChannel as any);
+  });
+
   const surveyPanel = (
     <SurveyAssignmentPanel
       listId={params.id}
       currentSurveyId={(meta as ListMeta).survey_id ?? null}
       currentCaptureMode={(meta as ListMeta).call_capture_mode ?? null}
-      surveys={allSurveys.map((s) => ({ id: s.id, title: s.title }))}
+      surveys={eligibleSurveys.map((s) => ({ id: s.id, title: s.title }))}
     />
   );
 

@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
 export async function PUT(request: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
-    const { title, description, website_url, footer_text, active, public_slug } = await request.json();
+    const { title, description, website_url, footer_text, active_channels, public_slug } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
@@ -31,7 +31,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
         description,
         website_url,
         footer_text,
-        active: Boolean(active),
+        active_channels: Array.isArray(active_channels) ? active_channels : [],
         public_slug: public_slug?.trim() || undefined,
       });
     } catch (err: any) {

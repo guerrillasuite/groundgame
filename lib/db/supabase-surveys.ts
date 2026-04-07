@@ -32,6 +32,8 @@ function getAdminClient() {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+export type ActiveChannel = "embedded" | "hosted" | "doors" | "dials" | "texts";
+
 export type Survey = {
   id: string;
   public_slug: string | null;
@@ -41,6 +43,7 @@ export type Survey = {
   website_url: string | null;
   footer_text: string | null;
   active: boolean;
+  active_channels: ActiveChannel[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -165,7 +168,7 @@ export async function updateSurvey(
     description?: string;
     website_url?: string;
     footer_text?: string;
-    active: boolean;
+    active_channels: ActiveChannel[];
     public_slug?: string;
   }
 ): Promise<void> {
@@ -175,7 +178,9 @@ export async function updateSurvey(
     description: params.description ?? null,
     website_url: params.website_url ?? null,
     footer_text: params.footer_text ?? null,
-    active: params.active,
+    active_channels: params.active_channels,
+    // Derive legacy `active` from channels for backward compat (e.g. crm dashboard query)
+    active: params.active_channels.length > 0,
     updated_at: new Date().toISOString(),
   };
   if (params.public_slug !== undefined) update.public_slug = params.public_slug || null;

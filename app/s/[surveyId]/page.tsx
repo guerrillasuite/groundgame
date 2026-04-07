@@ -11,10 +11,11 @@ function makeSb() {
 
 async function fetchSurveyByIdOrSlug(surveyId: string) {
   const sb = makeSb();
+  const cols = "id, tenant_id, title, website_url, footer_text, active_channels";
   // Try by ID first
   let { data: survey } = await sb
     .from("surveys")
-    .select("id, tenant_id, title, website_url, footer_text")
+    .select(cols)
     .eq("id", surveyId)
     .eq("active", true)
     .maybeSingle();
@@ -22,11 +23,16 @@ async function fetchSurveyByIdOrSlug(surveyId: string) {
   if (!survey) {
     const { data: bySlug } = await sb
       .from("surveys")
-      .select("id, tenant_id, title, website_url, footer_text")
+      .select(cols)
       .eq("public_slug", surveyId)
       .eq("active", true)
       .maybeSingle();
     survey = bySlug;
+  }
+  // If survey has channel restrictions and "hosted" is not included, treat as unavailable
+  if (survey) {
+    const channels: string[] | null = survey.active_channels;
+    if (channels && channels.length > 0 && !channels.includes("hosted")) return null;
   }
   return survey;
 }
