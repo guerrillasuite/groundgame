@@ -26,12 +26,15 @@ type QuestionType =
 
 type DisplayFormat = "list" | "dropdown" | null;
 
+type CrmField = "first_name" | "last_name" | "email" | "phone" | "phone_cell" | "phone_landline";
+
 type LocalQuestion = {
   id: string;
   question_text: string;
   question_type: QuestionType;
   options: string[];
   display_format: DisplayFormat;
+  crm_field: CrmField | null;
   required: boolean;
   order_index: number;
   isNew: boolean;
@@ -43,6 +46,7 @@ type PaginationMode = "one_at_a_time" | "all_at_once" | "pages";
 type ViewConfig = {
   pagination: PaginationMode;
   page_groups: string[][] | null; // arrays of question IDs per page
+  columns: 1 | 2;
 };
 
 type CrmUser = { id: string; name: string; email: string };
@@ -54,11 +58,11 @@ const CHOICE_TYPES: QuestionType[] = [
 ];
 
 const DEFAULT_VIEW_CONFIGS: Record<ViewType, ViewConfig> = {
-  embedded: { pagination: "one_at_a_time", page_groups: null },
-  hosted:   { pagination: "one_at_a_time", page_groups: null },
-  door:     { pagination: "one_at_a_time", page_groups: null },
-  call:     { pagination: "one_at_a_time", page_groups: null },
-  text:     { pagination: "all_at_once",   page_groups: null },
+  embedded: { pagination: "one_at_a_time", page_groups: null, columns: 1 },
+  hosted:   { pagination: "one_at_a_time", page_groups: null, columns: 1 },
+  door:     { pagination: "one_at_a_time", page_groups: null, columns: 1 },
+  call:     { pagination: "one_at_a_time", page_groups: null, columns: 1 },
+  text:     { pagination: "all_at_once",   page_groups: null, columns: 1 },
 };
 
 const VIEW_LABELS: Record<ViewType, string> = {
@@ -80,6 +84,7 @@ function blankQuestion(order_index: number): LocalQuestion {
     question_type: "multiple_choice",
     options: ["", ""],
     display_format: null,
+    crm_field: null,
     required: true,
     order_index,
     isNew: true,
@@ -165,6 +170,7 @@ export default function SurveyBuilder({
           question_type: q.question_type as QuestionType,
           options: q.options ?? [],
           display_format: q.display_format ?? null,
+          crm_field: q.crm_field ?? null,
           required: Boolean(q.required),
           order_index: q.order_index,
           isNew: false,
@@ -177,6 +183,7 @@ export default function SurveyBuilder({
           cfgs[vc.view_type as ViewType] = {
             pagination: vc.pagination,
             page_groups: vc.page_groups ?? null,
+            columns: (vc.columns as 1 | 2) ?? 1,
           };
         }
         setViewConfigs(cfgs);
@@ -450,6 +457,7 @@ export default function SurveyBuilder({
           question_type: q.question_type,
           options: q.options.filter((o) => o.trim()),
           display_format: q.display_format ?? null,
+          crm_field: q.crm_field ?? null,
           required: q.required,
           order_index: q.order_index,
         };
@@ -483,6 +491,7 @@ export default function SurveyBuilder({
             view_type: vt,
             pagination: cfg.pagination,
             page_groups: cfg.page_groups ?? null,
+            columns: cfg.columns ?? 1,
           })),
         }),
       });
@@ -951,6 +960,29 @@ export default function SurveyBuilder({
                     </label>
                   </div>
 
+                  {/* CRM field mapping */}
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <label style={labelStyle}>Map to CRM field <span style={{ fontWeight: 400, opacity: 0.55 }}>(optional)</span></label>
+                    <select
+                      value={q.crm_field ?? ""}
+                      onChange={(e) => updateQuestion(q.id, { crm_field: (e.target.value || null) as CrmField | null })}
+                      style={{ ...inputStyle, cursor: "pointer" }}
+                    >
+                      <option value="">(No mapping)</option>
+                      <option value="first_name">First Name</option>
+                      <option value="last_name">Last Name</option>
+                      <option value="email">Email</option>
+                      <option value="phone">Phone (primary)</option>
+                      <option value="phone_cell">Phone (cell)</option>
+                      <option value="phone_landline">Phone (landline)</option>
+                    </select>
+                    {q.crm_field && (
+                      <p style={{ margin: 0, fontSize: 12, opacity: 0.55 }}>
+                        Answers will be used to find or create a CRM contact record via the standard dedupe logic.
+                      </p>
+                    )}
+                  </div>
+
                   {/* Options editor for choice types (not yes/no) */}
                   {hasOptions && q.question_type !== "yes_no" && (
                     <div style={{ display: "grid", gap: 8 }}>
@@ -1129,6 +1161,38 @@ export default function SurveyBuilder({
                   ))}
                 </div>
               </div>
+
+              {/* Side-by-side columns — only for embedded/hosted, and only when showing multiple questions */}
+              {(activeViewTab === "embedded" || activeViewTab === "hosted") && cfg.pagination !== "one_at_a_time" && (
+                <div style={{ paddingTop: 12, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                  <label style={{ ...labelStyle, marginBottom: 8, display: "block" }}>
+                    Column layout
+                  </label>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {([1, 2] as const).map((n) => (
+                      <label key={n} style={{
+                        display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14,
+                        padding: "8px 16px", borderRadius: 8, border: `2px solid ${cfg.columns === n ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
+                        background: cfg.columns === n ? "color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent)" : "transparent",
+                        fontWeight: cfg.columns === n ? 600 : 400, color: "var(--gg-text, inherit)",
+                        transition: "all 0.1s",
+                      }}>
+                        <input
+                          type="radio"
+                          name={`columns-${activeViewTab}`}
+                          checked={cfg.columns === n}
+                          onChange={() => updateViewConfig(activeViewTab, { columns: n })}
+                          style={{ display: "none" }}
+                        />
+                        {n === 1 ? "Single column" : "Two columns (side by side)"}
+                      </label>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: 12, opacity: 0.5, color: "var(--gg-text, inherit)", margin: "6px 0 0" }}>
+                    Two columns places questions in a 2-up grid — best for short questions like name, email, and phone.
+                  </p>
+                </div>
+              )}
 
               {/* Custom pages editor */}
               {cfg.pagination === "pages" && (

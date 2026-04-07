@@ -34,6 +34,7 @@ interface SurveyPanelProps {
   postSubmitQuestions?: Question[] | null;
   isKiosk: boolean;
   branding?: Branding;
+  viewConfig?: { pagination?: string; columns?: 1 | 2 };
 }
 
 // ── WSPQ scoring ───────────────────────────────────────────────────────────────
@@ -197,6 +198,7 @@ export default function SurveyPanel({
   postSubmitQuestions,
   isKiosk,
   branding,
+  viewConfig,
 }: SurveyPanelProps) {
   const isWspq = surveyId.startsWith("wspq-");
 
@@ -389,7 +391,144 @@ export default function SurveyPanel({
     { value: "disagree", label: "Disagree",       color: "#dc2626" },
   ];
 
-  // ── Phase: Quiz ─────────────────────────────────────────────────────────────
+  // ── Phase: Quiz (all-at-once mode) ──────────────────────────────────────────
+  if (phase === "quiz" && viewConfig?.pagination === "all_at_once" && !isWspq) {
+    const cols = viewConfig?.columns ?? 1;
+    const allAnswered = questions.every(q => !q.required || answers[q.id]);
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minHeight: "100vh", padding: "32px 16px", background: bgColor }}>
+        {logoUrl && <img src={logoUrl} alt="" style={{ height: 40, marginBottom: 20, objectFit: "contain", maxWidth: 160 }} />}
+        <div style={{ ...card, maxWidth: cols === 2 ? 840 : 520, width: "100%" }}>
+          <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 20px", textTransform: "uppercase" }}>{title}</p>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            setSubmitting(true);
+            try {
+              await submitMainSurvey();
+              setPhase(hasPostSubmit ? "results" : "thankyou");
+            } catch { /* proceed */ } finally { setSubmitting(false); }
+          }}>
+            <div style={cols === 2
+              ? { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }
+              : { display: "flex", flexDirection: "column", gap: 20, marginBottom: 24 }
+            }>
+              {questions.map((q) => {
+                const qType = q.question_type ?? "text_short";
+                const val = answers[q.id] ?? "";
+                const isDropdown = q.display_format === "dropdown";
+                const isMulti = ["multiple_select", "multiple_select_with_other"].includes(qType);
+                const multiVals: string[] = (() => { try { return val ? JSON.parse(val) : []; } catch { return []; } })();
+                const choiceOpts = q.options ?? [];
+
+                return (
+                  <div key={q.id}>
+                    <p style={{ color: textColor, fontSize: 14, fontWeight: 600, margin: "0 0 8px" }}>
+                      {q.question_text}
+                      {q.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
+                    </p>
+
+                    {["multiple_choice", "multiple_choice_with_other"].includes(qType) && (
+                      isDropdown ? (
+                        <select value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} style={{ ...input, fontSize: 15 }}>
+                          <option value="">— Select —</option>
+                          {choiceOpts.map(o => <option key={o} value={o}>{o}</option>)}
+                          {qType === "multiple_choice_with_other" && <option value="other">Other…</option>}
+                        </select>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {choiceOpts.map(o => {
+                            const isSel = val === o;
+                            return (
+                              <button key={o} type="button" onClick={() => setAnswers({ ...answers, [q.id]: o })}
+                                style={{ ...btn(isSel ? primaryColor : (isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.04)"), isSel ? btnTextColor(primaryColor) : textColor), border: `2px solid ${isSel ? primaryColor : borderColor}`, padding: "10px 14px", fontSize: 14 }}>
+                                {o}
+                              </button>
+                            );
+                          })}
+                          {qType === "multiple_choice_with_other" && (
+                            <button type="button" onClick={() => setAnswers({ ...answers, [q.id]: "other" })}
+                              style={{ ...btn(val === "other" ? primaryColor : (isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.04)"), val === "other" ? btnTextColor(primaryColor) : textColor), border: `2px solid ${borderColor}`, padding: "10px 14px", fontSize: 14 }}>
+                              Other…
+                            </button>
+                          )}
+                        </div>
+                      )
+                    )}
+
+                    {isMulti && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {choiceOpts.map(o => {
+                          const checked = multiVals.includes(o);
+                          return (
+                            <label key={o} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 14px", borderRadius: 10, border: `2px solid ${checked ? primaryColor : borderColor}`, background: checked ? `${primaryColor}15` : "transparent" }}>
+                              <input type="checkbox" checked={checked} onChange={() => {
+                                const next = checked ? multiVals.filter(v => v !== o) : [...multiVals, o];
+                                setAnswers({ ...answers, [q.id]: JSON.stringify(next) });
+                              }} style={{ width: 16, height: 16 }} />
+                              <span style={{ fontSize: 14, color: textColor }}>{o}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {qType === "yes_no" && (
+                      <div style={{ display: "flex", gap: 10 }}>
+                        {["Yes", "No"].map(o => {
+                          const isSel = val === o;
+                          return (
+                            <button key={o} type="button" onClick={() => setAnswers({ ...answers, [q.id]: o })}
+                              style={{ flex: 1, padding: "12px", borderRadius: 10, fontSize: 15, fontWeight: 700, border: `2px solid ${isSel ? primaryColor : borderColor}`, background: isSel ? `${primaryColor}20` : "transparent", color: textColor, cursor: "pointer" }}>
+                              {o}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {qType === "rating" && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {Array.from({ length: parseInt(q.options?.[0] ?? "5") }, (_, i) => i + 1).map(n => {
+                          const isSel = val === String(n);
+                          return (
+                            <button key={n} type="button" onClick={() => setAnswers({ ...answers, [q.id]: String(n) })}
+                              style={{ width: 40, height: 40, borderRadius: 8, fontSize: 15, fontWeight: 700, border: `2px solid ${isSel ? primaryColor : borderColor}`, background: isSel ? `${primaryColor}20` : "transparent", color: textColor, cursor: "pointer" }}>
+                              {n}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {OPEN_TYPES.includes(qType) && (
+                      qType === "text" ? (
+                        <textarea rows={3} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder="Your answer…" style={{ ...input, resize: "vertical" }} />
+                      ) : (
+                        <input
+                          type={qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "date" ? "date" : "text"}
+                          value={val}
+                          onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })}
+                          placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"}
+                          style={input}
+                        />
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <button type="submit" disabled={submitting || !allAnswered} style={btn(primaryColor)}>
+              {submitting ? "Submitting…" : "Submit →"}
+            </button>
+          </form>
+        </div>
+        {footerText && <SurveyFooter text={footerText} textColor={mutedText} />}
+      </div>
+    );
+  }
+
+  // ── Phase: Quiz (one at a time) ──────────────────────────────────────────────
   if (phase === "quiz") {
     const progress = (Object.keys(answers).length / totalQuestions) * 100;
     const qType = currentQuestion?.question_type ?? "multiple_choice";

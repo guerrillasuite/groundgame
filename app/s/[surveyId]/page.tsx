@@ -59,14 +59,19 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
 
   const qCols = "id, question_text, question_type, order_index, options, display_format";
 
-  // Fetch questions, tenant branding, and post-submit form questions in parallel
-  const [{ data: questions }, { data: tenant }, { data: postSubmitQuestions }] = await Promise.all([
+  // Fetch questions, tenant branding, post-submit questions, and hosted view config in parallel
+  const [{ data: questions }, { data: tenant }, { data: postSubmitQuestions }, { data: viewConfigRow }] = await Promise.all([
     sb.from("questions").select(qCols).eq("survey_id", survey.id).order("order_index", { ascending: true }),
     sb.from("tenants").select("branding").eq("id", survey.tenant_id).maybeSingle(),
     survey.post_submit_survey_id
       ? sb.from("questions").select(qCols).eq("survey_id", survey.post_submit_survey_id).order("order_index", { ascending: true })
       : Promise.resolve({ data: null }),
+    sb.from("survey_view_configs").select("pagination, columns").eq("survey_id", survey.id).eq("view_type", "hosted").maybeSingle(),
   ]);
+
+  const viewConfig = viewConfigRow
+    ? { pagination: viewConfigRow.pagination as string, columns: (viewConfigRow.columns ?? 1) as 1 | 2 }
+    : undefined;
 
   const branding = tenant?.branding
     ? { ...BASE_BRANDING, ...tenant.branding }
@@ -86,6 +91,7 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
       postSubmitQuestions={postSubmitQuestions ? postSubmitQuestions.map(mapQ) : null}
       isKiosk={kiosk === "1"}
       branding={branding ? { primaryColor: branding.primaryColor, bgColor: branding.bgColor, textColor: branding.textColor, logoUrl: branding.logoUrl } : undefined}
+      viewConfig={viewConfig}
     />
   );
 }

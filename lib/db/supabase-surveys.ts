@@ -49,6 +49,8 @@ export type Survey = {
   updated_at: string;
 };
 
+export type CrmField = "first_name" | "last_name" | "email" | "phone" | "phone_cell" | "phone_landline";
+
 export type Question = {
   id: string;
   survey_id: string;
@@ -56,6 +58,7 @@ export type Question = {
   question_type: string;
   options: string[] | null; // stored as JSONB in Postgres
   display_format: "list" | "dropdown" | null;
+  crm_field: CrmField | null;
   required: boolean;
   order_index: number;
   created_at: string;
@@ -69,6 +72,7 @@ export type ViewConfig = {
   view_type: ViewType;
   pagination: PaginationMode;
   page_groups: string[][] | null; // arrays of question IDs per page
+  columns: 1 | 2;
   enabled: boolean;
 };
 
@@ -207,6 +211,7 @@ export async function createQuestion(
     question_type: string;
     options: string[] | null;
     display_format?: "list" | "dropdown" | null;
+    crm_field?: CrmField | null;
     required: boolean;
     order_index: number;
   }
@@ -219,6 +224,7 @@ export async function createQuestion(
     question_type: params.question_type,
     options: params.options?.length ? params.options : null,
     display_format: params.display_format ?? null,
+    crm_field: params.crm_field ?? null,
     required: params.required,
     order_index: params.order_index,
   });
@@ -232,6 +238,7 @@ export async function updateQuestion(
     question_type: string;
     options: string[] | null;
     display_format?: "list" | "dropdown" | null;
+    crm_field?: CrmField | null;
     required: boolean;
     order_index: number;
   }
@@ -244,6 +251,7 @@ export async function updateQuestion(
       question_type: params.question_type,
       options: params.options?.length ? params.options : null,
       display_format: params.display_format ?? null,
+      crm_field: params.crm_field ?? null,
       required: params.required,
       order_index: params.order_index,
     })
@@ -437,7 +445,7 @@ export async function getViewConfigs(surveyId: string): Promise<ViewConfig[]> {
 
 export async function upsertViewConfigs(
   surveyId: string,
-  configs: Array<{ view_type: ViewType; pagination: PaginationMode; page_groups?: string[][] | null }>
+  configs: Array<{ view_type: ViewType; pagination: PaginationMode; page_groups?: string[][] | null; columns?: 1 | 2 }>
 ): Promise<void> {
   const sb = getAdminClient();
   for (const cfg of configs) {
@@ -446,6 +454,7 @@ export async function upsertViewConfigs(
       view_type: cfg.view_type,
       pagination: cfg.pagination,
       page_groups: cfg.page_groups ?? null,
+      columns: cfg.columns ?? 1,
       enabled: true,
     }, { onConflict: "survey_id,view_type" });
   }

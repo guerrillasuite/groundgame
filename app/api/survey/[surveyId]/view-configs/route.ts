@@ -19,7 +19,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
     const { configs } = await req.json() as {
-      configs: Array<{ view_type: ViewType; pagination: PaginationMode; page_groups?: string[][] | null }>;
+      configs: Array<{ view_type: ViewType; pagination: PaginationMode; page_groups?: string[][] | null; columns?: 1 | 2 }>;
     };
     if (!Array.isArray(configs)) {
       return NextResponse.json({ error: "configs must be an array" }, { status: 400 });
