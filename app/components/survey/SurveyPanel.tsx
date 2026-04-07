@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Phase = "quiz" | "results" | "post_submit" | "thankyou";
+type Phase = "quiz" | "results" | "thankyou";
 type QuizResult = "libertarian" | "progressive" | "conservative" | "authoritarian" | "moderate";
 
 interface Question {
@@ -221,10 +221,8 @@ export default function SurveyPanel({
   const [submitting, setSubmitting] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [shareToast, setShareToast] = useState(false);
-  // Post-submit form state
-  const [psIdx, setPsIdx] = useState(0);
+  // Post-submit form state (always rendered inline on results page, all at once)
   const [psAnswers, setPsAnswers] = useState<Record<string, string>>({});
-  const [psOpenAnswer, setPsOpenAnswer] = useState("");
   const hasPostSubmit = !!(postSubmitQuestions && postSubmitQuestions.length > 0);
 
   const totalQuestions = questions.length;
@@ -245,7 +243,7 @@ export default function SurveyPanel({
 
   const resetSurvey = useCallback(() => {
     setPhase("quiz"); setCurrent(0); setAnswers({});
-    setOpenAnswer(""); setPsIdx(0); setPsAnswers({}); setPsOpenAnswer("");
+    setOpenAnswer(""); setPsAnswers({});
     setCountdown(null); setShareToast(false);
   }, []);
 
@@ -310,22 +308,6 @@ export default function SurveyPanel({
       }
     } catch { /* don't block */ } finally {
       setSubmitting(false);
-    }
-  }
-
-  // ── Submit post-submit form answers ─────────────────────────────────────────
-  async function submitPostSubmit() {
-    if (!postSubmitSurveyId) { setPhase("thankyou"); return; }
-    setSubmitting(true);
-    try {
-      await fetch("/api/survey/panel-submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ survey_id: postSubmitSurveyId, tenant_id: tenantId, answers: psAnswers }),
-      });
-    } catch { /* don't block */ } finally {
-      setSubmitting(false);
-      setPhase("thankyou");
     }
   }
 
@@ -618,23 +600,81 @@ export default function SurveyPanel({
             </>
           )}
 
-          <div style={{ borderTop: `1px solid ${borderColor}`, paddingTop: 24, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ borderTop: `1px solid ${borderColor}`, paddingTop: 24 }}>
             {hasPostSubmit ? (
-              <>
-                <button
-                  disabled={submitting}
-                  onClick={async () => { await submitMainSurvey(); setPhase("post_submit"); }}
-                  style={btn(submitColor)}
-                >
-                  {submitting ? "Saving…" : "Continue →"}
+              // Post-submit form inline — all questions at once
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setSubmitting(true);
+                try {
+                  // Submit main survey + post-submit form in parallel
+                  await Promise.all([
+                    submitMainSurvey(),
+                    fetch("/api/survey/panel-submit", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ survey_id: postSubmitSurveyId, tenant_id: tenantId, answers: psAnswers }),
+                    }),
+                  ]);
+                } catch { /* don't block */ } finally {
+                  setSubmitting(false);
+                  setPhase("thankyou");
+                }
+              }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+                  {postSubmitQuestions!.map((psQ) => {
+                    const psType = psQ.question_type ?? "text_short";
+                    const psVal = psAnswers[psQ.id] ?? "";
+                    const isOpen = ["text", "text_short", "number", "email", "phone", "date"].includes(psType);
+                    const isChoice = ["multiple_choice", "multiple_choice_with_other", "yes_no"].includes(psType);
+                    const psOptions = psQ.options ?? [];
+                    const choiceList = psType === "yes_no" ? ["Yes", "No"] : psOptions;
+
+                    return (
+                      <div key={psQ.id}>
+                        <p style={{ color: textColor, fontSize: 14, fontWeight: 600, margin: "0 0 8px" }}>
+                          {psQ.question_text}
+                          {psQ.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
+                        </p>
+                        {isOpen && (
+                          psType === "text" ? (
+                            <textarea rows={2} style={{ ...input, resize: "vertical" }} placeholder="Your answer…"
+                              value={psVal} onChange={e => setPsAnswers({ ...psAnswers, [psQ.id]: e.target.value })} />
+                          ) : (
+                            <input
+                              type={psType === "number" ? "number" : psType === "email" ? "email" : psType === "phone" ? "tel" : psType === "date" ? "date" : "text"}
+                              style={input}
+                              placeholder={psType === "email" ? "email@example.com" : psType === "phone" ? "(555) 555-5555" : ""}
+                              value={psVal}
+                              onChange={e => setPsAnswers({ ...psAnswers, [psQ.id]: e.target.value })}
+                            />
+                          )
+                        )}
+                        {isChoice && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {choiceList.map((opt) => {
+                              const isSel = psVal === opt;
+                              return (
+                                <button key={opt} type="button"
+                                  onClick={() => setPsAnswers({ ...psAnswers, [psQ.id]: opt })}
+                                  style={{ ...btn(isSel ? submitColor : (isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.04)"), isSel ? btnTextColor(submitColor) : textColor), border: isSel ? `2px solid ${submitColor}` : `2px solid ${borderColor}`, padding: "10px 16px", fontSize: 15 }}>
+                                  {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button type="submit" disabled={submitting} style={btn(submitColor)}>
+                  {submitting ? "Saving…" : "Save my Results"}
                 </button>
-                <button
-                  onClick={async () => { await submitMainSurvey(); setPhase("thankyou"); }}
-                  style={ghostBtn}
-                >
+                <button type="button" onClick={async () => { await submitMainSurvey(); setPhase("thankyou"); }} style={{ ...ghostBtn, marginTop: 10 }}>
                   Skip
                 </button>
-              </>
+              </form>
             ) : (
               <button
                 disabled={submitting}
@@ -647,119 +687,6 @@ export default function SurveyPanel({
           </div>
         </div>
         {footerText && <SurveyFooter text={footerText} />}
-      </div>
-    );
-  }
-
-  // ── Phase: Post-Submit Form ─────────────────────────────────────────────────
-  if (phase === "post_submit" && postSubmitQuestions && postSubmitQuestions.length > 0) {
-    const psQ = postSubmitQuestions[psIdx];
-    const psTotal = postSubmitQuestions.length;
-    const psIsLast = psIdx === psTotal - 1;
-    const psType = psQ?.question_type ?? "text_short";
-    const psIsOpen = ["text", "text_short", "number", "email", "phone", "date"].includes(psType);
-    const psVal = psAnswers[psQ?.id] ?? "";
-    const psCanNext = psQ?.required ? Boolean(psIsOpen ? psOpenAnswer.trim() : psVal) : true;
-
-    function psSelectAnswer(val: string) {
-      const next = { ...psAnswers, [psQ.id]: val };
-      setPsAnswers(next);
-      if (!psIsLast) { setPsIdx(psIdx + 1); setPsOpenAnswer(""); }
-    }
-
-    async function psAdvance() {
-      const val = psIsOpen ? psOpenAnswer.trim() : psVal;
-      const next = { ...psAnswers, [psQ.id]: val };
-      setPsAnswers(next);
-      setPsOpenAnswer("");
-      if (psIsLast) {
-        setSubmitting(true);
-        try {
-          await fetch("/api/survey/panel-submit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ survey_id: postSubmitSurveyId, tenant_id: tenantId, answers: next }),
-          });
-        } catch { /* don't block */ } finally {
-          setSubmitting(false);
-          setPhase("thankyou");
-        }
-      } else {
-        setPsIdx(psIdx + 1);
-      }
-    }
-
-    const psOptions = (psQ?.options ?? []).map((o: string) => ({ value: o, label: o, color: primaryColor }));
-    const psProgress = (psIdx / psTotal) * 100;
-
-    return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px 16px", background: bgColor }}>
-        {logoUrl && <img src={logoUrl} alt="" style={{ height: 40, marginBottom: 20, objectFit: "contain", maxWidth: 160 }} />}
-        <div style={card}>
-          <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 4px", textTransform: "uppercase" }}>
-            One more thing…
-          </p>
-          <div style={{ height: 4, background: borderColor, borderRadius: 2, margin: "8px 0 20px" }}>
-            <div style={{ height: "100%", width: `${psProgress}%`, background: primaryColor, borderRadius: 2, transition: "width 0.3s" }} />
-          </div>
-          <span style={{ color: mutedText, fontSize: 13, display: "block", marginBottom: 16 }}>
-            {psIdx + 1} of {psTotal}
-          </span>
-          <p style={{ fontSize: 20, fontWeight: 600, color: textColor, lineHeight: 1.45, margin: "0 0 24px" }}>
-            {psQ?.question_text}
-            {psQ?.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
-          </p>
-
-          {/* Single-choice options */}
-          {["multiple_choice", "multiple_choice_with_other", "yes_no"].includes(psType) && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-              {(psType === "yes_no" ? [{ value: "Yes", label: "Yes", color: primaryColor }, { value: "No", label: "No", color: primaryColor }] : psOptions).map(({ value, label, color }) => {
-                const isSel = psAnswers[psQ?.id] === value;
-                return (
-                  <button key={value} onClick={() => psSelectAnswer(value)} style={{ ...btn(isSel ? color : (isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.04)"), isSel ? btnTextColor(color) : textColor), border: isSel ? `2px solid ${color}` : `2px solid ${borderColor}` }}>
-                    {label}
-                  </button>
-                );
-              })}
-              {psType === "multiple_choice_with_other" && (
-                <button onClick={() => psSelectAnswer("other")} style={{ ...btn(psAnswers[psQ?.id] === "other" ? primaryColor : (isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.04)"), psAnswers[psQ?.id] === "other" ? btnTextColor(primaryColor) : textColor), border: `2px solid ${borderColor}` }}>Other</button>
-              )}
-            </div>
-          )}
-
-          {/* Open-ended */}
-          {psIsOpen && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-              {psType === "text" ? (
-                <textarea rows={3} style={{ ...input, resize: "vertical" }} placeholder="Your answer…" value={psOpenAnswer} onChange={e => setPsOpenAnswer(e.target.value)} />
-              ) : (
-                <input
-                  type={psType === "number" ? "number" : psType === "email" ? "email" : psType === "phone" ? "tel" : psType === "date" ? "date" : "text"}
-                  style={input} placeholder={psType === "email" ? "email@example.com" : psType === "phone" ? "(555) 555-5555" : "Your answer…"}
-                  value={psOpenAnswer} onChange={e => setPsOpenAnswer(e.target.value)}
-                />
-              )}
-              <button onClick={psAdvance} disabled={!psCanNext || submitting} style={btn(primaryColor)}>
-                {submitting ? "Saving…" : psIsLast ? "Done ✓" : "Next →"}
-              </button>
-            </div>
-          )}
-
-          {/* Back / Next for choice types */}
-          {!psIsOpen && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {psIsLast && psVal && (
-                <button onClick={psAdvance} disabled={submitting} style={btn(primaryColor)}>
-                  {submitting ? "Saving…" : "Done ✓"}
-                </button>
-              )}
-              {psIdx > 0 && (
-                <button onClick={() => setPsIdx(psIdx - 1)} style={ghostBtn}>← Back</button>
-              )}
-            </div>
-          )}
-        </div>
-        {footerText && <SurveyFooter text={footerText} textColor={mutedText} />}
       </div>
     );
   }
