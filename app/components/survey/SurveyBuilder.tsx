@@ -110,6 +110,8 @@ export default function SurveyBuilder({
   const [description, setDescription] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [footerText, setFooterText] = useState("");
+  const [postSubmitSurveyId, setPostSubmitSurveyId] = useState<string>("");
+  const [embeddableSurveys, setEmbeddableSurveys] = useState<{ id: string; title: string }[]>([]);
   const [activeChannels, setActiveChannels] = useState<Set<string>>(new Set(["embedded","hosted","doors","dials","texts"]));
   const [publicSlug, setPublicSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
@@ -155,6 +157,7 @@ export default function SurveyBuilder({
           : (s.active ? ["embedded","hosted","doors","dials","texts"] : []);
         setActiveChannels(new Set(channels));
         setPublicSlug(s.public_slug ?? s.id ?? "");
+        setPostSubmitSurveyId(s.post_submit_survey_id ?? "");
 
         const qs: LocalQuestion[] = (data.questions ?? []).map((q: any) => ({
           id: q.id,
@@ -212,6 +215,18 @@ export default function SurveyBuilder({
       .catch(() => {})
       .finally(() => setUsersLoading(false));
   }, [isActive, usersFetched, crmUsers.length]);
+
+  // Load embeddable surveys for post-submit picker (once, when Advanced Options opens)
+  useEffect(() => {
+    if (!showAdvanced || embeddableSurveys.length > 0) return;
+    fetch("/api/survey?channel=embedded")
+      .then((r) => r.json())
+      .then((list: { id: string; title: string }[]) => {
+        // Exclude the current survey itself
+        setEmbeddableSurveys(list.filter((s) => s.id !== surveyId));
+      })
+      .catch(() => {});
+  }, [showAdvanced, surveyId, embeddableSurveys.length]);
 
   // ── Question helpers ──────────────────────────────────────────────────────
   function addQuestion() {
@@ -406,6 +421,7 @@ export default function SurveyBuilder({
             footer_text: footerText || null,
             active_channels: [...activeChannels],
             public_slug: publicSlug.trim() || null,
+            post_submit_survey_id: postSubmitSurveyId || null,
           }),
         });
         const data = await res.json();
@@ -759,6 +775,24 @@ export default function SurveyBuilder({
                   placeholder="Paid for by…"
                   style={inputStyle}
                 />
+              </div>
+
+              {/* Post-submit embedded form */}
+              <div style={{ display: "grid", gap: 6 }}>
+                <label style={labelStyle}>Post-submit form (optional)</label>
+                <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                  After completing this survey, show another embeddable form (e.g. a contact form). Only surveys active for the Embedded channel appear here.
+                </p>
+                <select
+                  value={postSubmitSurveyId}
+                  onChange={(e) => setPostSubmitSurveyId(e.target.value)}
+                  style={{ ...inputStyle, cursor: "pointer" }}
+                >
+                  <option value="">(None)</option>
+                  {embeddableSurveys.map((s) => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Branding (FieldPack+) */}

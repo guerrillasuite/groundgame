@@ -11,7 +11,7 @@ function makeSb() {
 
 async function fetchSurveyByIdOrSlug(surveyId: string) {
   const sb = makeSb();
-  const cols = "id, tenant_id, title, website_url, footer_text, active_channels";
+  const cols = "id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id";
   // Try by ID first
   let { data: survey } = await sb
     .from("surveys")
@@ -57,21 +57,22 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
     );
   }
 
-  // Fetch questions and tenant branding in parallel
-  const [{ data: questions }, { data: tenant }] = await Promise.all([
-    sb.from("questions")
-      .select("id, question_text, question_type, order_index, options, display_format")
-      .eq("survey_id", survey.id)
-      .order("order_index", { ascending: true }),
-    sb.from("tenants")
-      .select("branding")
-      .eq("id", survey.tenant_id)
-      .maybeSingle(),
+  const qCols = "id, question_text, question_type, order_index, options, display_format";
+
+  // Fetch questions, tenant branding, and post-submit form questions in parallel
+  const [{ data: questions }, { data: tenant }, { data: postSubmitQuestions }] = await Promise.all([
+    sb.from("questions").select(qCols).eq("survey_id", survey.id).order("order_index", { ascending: true }),
+    sb.from("tenants").select("branding").eq("id", survey.tenant_id).maybeSingle(),
+    survey.post_submit_survey_id
+      ? sb.from("questions").select(qCols).eq("survey_id", survey.post_submit_survey_id).order("order_index", { ascending: true })
+      : Promise.resolve({ data: null }),
   ]);
 
   const branding = tenant?.branding
     ? { ...BASE_BRANDING, ...tenant.branding }
     : undefined;
+
+  const mapQ = (q: any) => ({ ...q, question_type: q.question_type ?? "multiple_choice", display_format: q.display_format ?? null });
 
   return (
     <SurveyPanel
@@ -80,11 +81,9 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
       title={survey.title}
       websiteUrl={survey.website_url ?? null}
       footerText={survey.footer_text ?? null}
-      questions={(questions ?? []).map((q: any) => ({
-        ...q,
-        question_type: q.question_type ?? "multiple_choice",
-        display_format: q.display_format ?? null,
-      }))}
+      questions={(questions ?? []).map(mapQ)}
+      postSubmitSurveyId={survey.post_submit_survey_id ?? null}
+      postSubmitQuestions={postSubmitQuestions ? postSubmitQuestions.map(mapQ) : null}
       isKiosk={kiosk === "1"}
       branding={branding ? { primaryColor: branding.primaryColor, bgColor: branding.bgColor, textColor: branding.textColor, logoUrl: branding.logoUrl } : undefined}
     />

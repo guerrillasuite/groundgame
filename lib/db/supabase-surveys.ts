@@ -44,6 +44,7 @@ export type Survey = {
   footer_text: string | null;
   active: boolean;
   active_channels: ActiveChannel[] | null;
+  post_submit_survey_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -170,6 +171,7 @@ export async function updateSurvey(
     footer_text?: string;
     active_channels: ActiveChannel[];
     public_slug?: string;
+    post_submit_survey_id?: string | null;
   }
 ): Promise<void> {
   const sb = getAdminClient();
@@ -184,6 +186,7 @@ export async function updateSurvey(
     updated_at: new Date().toISOString(),
   };
   if (params.public_slug !== undefined) update.public_slug = params.public_slug || null;
+  if ("post_submit_survey_id" in params) update.post_submit_survey_id = params.post_submit_survey_id ?? null;
   const { error } = await sb.from("surveys").update(update).eq("id", surveyId);
   if (error) throw error;
 }

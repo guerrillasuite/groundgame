@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
 export async function PUT(request: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
-    const { title, description, website_url, footer_text, active_channels, public_slug } = await request.json();
+    const { title, description, website_url, footer_text, active_channels, public_slug, post_submit_survey_id } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
@@ -33,6 +33,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
         footer_text,
         active_channels: Array.isArray(active_channels) ? active_channels : [],
         public_slug: public_slug?.trim() || undefined,
+        post_submit_survey_id: post_submit_survey_id || null,
       });
     } catch (err: any) {
       // Unique constraint violation on public_slug

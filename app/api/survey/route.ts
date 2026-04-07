@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSurvey, getSurveys } from "@/lib/db/supabase-surveys";
 import { getTenant } from "@/lib/tenant";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const tenant = await getTenant();
   const surveys = await getSurveys(tenant.id);
-  return NextResponse.json(surveys.map((s) => ({ id: s.id, title: s.title })));
+  const channel = request.nextUrl.searchParams.get("channel");
+  const filtered = channel
+    ? surveys.filter((s) => {
+        const ch = s.active_channels;
+        if (!ch || ch.length === 0) return s.active; // fallback for unset
+        return ch.includes(channel as any);
+      })
+    : surveys;
+  return NextResponse.json(filtered.map((s) => ({ id: s.id, title: s.title })));
 }
 
 function slugify(text: string): string {
