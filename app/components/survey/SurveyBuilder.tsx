@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   ChevronUp, ChevronDown, Trash2, Plus, Copy,
@@ -749,7 +750,6 @@ export default function SurveyBuilder({
                     }}
                   />
                   Storefront
-                  {checked && <span style={{ fontSize: 11, opacity: 0.7, fontWeight: 400 }}>— Take Order / Make Sale</span>}
                 </label>
               );
             })()}
@@ -958,10 +958,10 @@ export default function SurveyBuilder({
 
                     {/* Op intake channels */}
                     <div>
-                      <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Use this survey as default Op Intake form for</label>
+                      <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Use this survey as default intake form for</label>
                       <p style={{ margin: "0 0 6px", fontSize: 12, opacity: 0.6 }}>After an opportunity is created in a field session, this form will be shown to capture details.</p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"]].map(([ch, label]) => (
+                        {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"]].map(([ch, label]) => (
                           <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
                             <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
                               const next = new Set(opIntakeChannels);
@@ -1885,23 +1885,38 @@ function CrmFieldPicker({
   onChange: (val: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [activeTable, setActiveTable] = useState<string | null>(null); // null = record type list
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSchema, setAdvancedSchema] = useState<Record<string, SchemaEntry[]>>({});
   const [advancedLoading, setAdvancedLoading] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close on click outside
   useEffect(() => {
     if (!open) return;
     function handler(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  function openPicker() {
+    if (open) { setOpen(false); return; }
+    if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+    // Pre-select the active table based on current value
+    if (value) {
+      const { table } = normalizeCrmFieldClient(value);
+      setActiveTable(table);
+    } else {
+      setActiveTable(null);
+    }
+    setOpen(true);
+  }
 
   function loadAdvanced() {
     if (advancedLoading || Object.keys(advancedSchema).length > 0) return;
@@ -1919,57 +1934,128 @@ function CrmFieldPicker({
   }
 
   const displaySchema = showAdvanced && Object.keys(advancedSchema).length > 0 ? advancedSchema : null;
+  const TABLE_ORDER = ["people", "locations", "opportunities", "households", "companies"];
 
-  function fieldMatchesSearch(label: string, column: string) {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return label.toLowerCase().includes(s) || column.toLowerCase().includes(s);
-  }
-
-  function renderGroups(tableKey: string) {
-    const entries: SchemaEntry[] = (displaySchema ?? COMMON_FIELDS)[tableKey] ?? [];
-    // Skip join fields from advanced schema (they belong to a different table and can't be written directly)
-    const filtered = entries.filter((f) => !f.is_join && fieldMatchesSearch(f.label, f.column));
-    if (!filtered.length) return null;
-    return (
-      <div key={tableKey}>
-        <div style={{ fontSize: 10, fontWeight: 700, padding: "6px 12px 3px", opacity: 0.45, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          {TABLE_LABELS[tableKey]}
-        </div>
-        {filtered.map((f) => {
-          const fieldVal = `${tableKey}.${f.column}`;
-          const isSelected = value
-            ? (() => {
-                const norm = normalizeCrmFieldClient(value);
-                return norm.table === tableKey && norm.column === f.column;
-              })()
-            : false;
-          return (
+  const dropdownContent = open && rect && (
+    <div
+      ref={dropdownRef}
+      style={{
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: Math.max(rect.width, 240),
+        zIndex: 9999,
+        background: "var(--gg-card, white)",
+        border: "1px solid var(--gg-border, #e5e7eb)",
+        borderRadius: 10,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        maxHeight: 320,
+      }}
+    >
+      {activeTable === null ? (
+        // ── Level 1: Record type list ──
+        <>
+          {value && (
             <button
-              key={f.column}
               type="button"
-              onMouseDown={(e) => { e.preventDefault(); onChange(isSelected ? null : fieldVal); setOpen(false); setSearch(""); }}
-              style={{
-                display: "block", width: "100%", textAlign: "left",
-                padding: "7px 12px", border: "none", cursor: "pointer", fontSize: 13,
-                background: isSelected ? "rgba(37,99,235,0.1)" : "transparent",
-                color: isSelected ? "var(--gg-primary, #2563eb)" : "var(--gg-text, inherit)",
-                fontWeight: isSelected ? 600 : 400,
-              }}
+              onMouseDown={(e) => { e.preventDefault(); onChange(null); setOpen(false); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", border: "none", borderBottom: "1px solid var(--gg-border, #e5e7eb)", cursor: "pointer", fontSize: 13, opacity: 0.55, background: "transparent", color: "var(--gg-text, inherit)" }}
             >
-              {f.label}
+              ✕ Remove mapping
             </button>
-          );
-        })}
-      </div>
-    );
-  }
+          )}
+          {TABLE_ORDER.map((tKey) => {
+            const norm = value ? normalizeCrmFieldClient(value) : null;
+            const hasSelection = norm?.table === tKey;
+            const selLabel = hasSelection
+              ? ((displaySchema ?? COMMON_FIELDS)[tKey] ?? []).find((f) => f.column === norm!.column)?.label ?? norm!.column
+              : null;
+            return (
+              <button
+                key={tKey}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); setActiveTable(tKey); }}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  width: "100%", textAlign: "left", padding: "10px 14px",
+                  border: "none", borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+                  cursor: "pointer", fontSize: 13, background: "transparent",
+                  color: "var(--gg-text, inherit)",
+                }}
+              >
+                <span style={{ fontWeight: hasSelection ? 600 : 500, color: hasSelection ? "var(--gg-primary, #2563eb)" : "inherit" }}>
+                  {TABLE_LABELS[tKey]}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {selLabel && <span style={{ fontSize: 11, opacity: 0.55 }}>{selLabel}</span>}
+                  <ChevronRight size={13} style={{ opacity: 0.35 }} />
+                </span>
+              </button>
+            );
+          })}
+          <div style={{ padding: "8px 14px" }}>
+            {!showAdvanced ? (
+              <button type="button" onMouseDown={(e) => { e.preventDefault(); setShowAdvanced(true); loadAdvanced(); }}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--gg-primary, #2563eb)", padding: 0, fontWeight: 600 }}>
+                Advanced fields ▸{advancedLoading ? " Loading…" : ""}
+              </button>
+            ) : (
+              <button type="button" onMouseDown={(e) => { e.preventDefault(); setShowAdvanced(false); }}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--gg-text-dim, #6b7280)", padding: 0 }}>
+                ← Common fields
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        // ── Level 2: Field list for chosen record type ──
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--gg-border, #e5e7eb)", background: "var(--gg-filter-bg, rgba(37,99,235,0.03))" }}>
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); setActiveTable(null); }}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--gg-primary, #2563eb)", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+              ← <span style={{ fontWeight: 700 }}>{TABLE_LABELS[activeTable]}</span>
+            </button>
+          </div>
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {((displaySchema ?? COMMON_FIELDS)[activeTable] ?? [])
+              .filter((f) => !f.is_join)
+              .map((f) => {
+                const fieldVal = `${activeTable}.${f.column}`;
+                const isSelected = value
+                  ? (() => { const n = normalizeCrmFieldClient(value); return n.table === activeTable && n.column === f.column; })()
+                  : false;
+                return (
+                  <button key={f.column} type="button"
+                    onMouseDown={(e) => { e.preventDefault(); onChange(isSelected ? null : fieldVal); setOpen(false); setActiveTable(null); }}
+                    style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      padding: "8px 14px", border: "none", borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+                      cursor: "pointer", fontSize: 13,
+                      background: isSelected ? "rgba(37,99,235,0.08)" : "transparent",
+                      color: isSelected ? "var(--gg-primary, #2563eb)" : "var(--gg-text, inherit)",
+                      fontWeight: isSelected ? 600 : 400,
+                    }}
+                  >
+                    {f.label}
+                    {isSelected && <span style={{ float: "right", opacity: 0.6 }}>✓</span>}
+                  </button>
+                );
+              })}
+          </div>
+        </>
+      )}
+    </div>
+  );
 
   return (
-    <div ref={containerRef} style={{ position: "relative" }}>
+    <>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={openPicker}
         style={{
           ...inputStyle,
           display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1982,62 +2068,8 @@ function CrmFieldPicker({
         </span>
         <ChevronRight size={13} style={{ flexShrink: 0, opacity: 0.4, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.12s" }} />
       </button>
-
-      {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100,
-          background: "var(--gg-card, white)", border: "1px solid var(--gg-border, #e5e7eb)",
-          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden",
-          maxHeight: 320, display: "flex", flexDirection: "column",
-        }}>
-          {/* Search */}
-          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search fields…"
-              style={{ ...inputStyle, fontSize: 13 }}
-            />
-          </div>
-          {/* Clear option */}
-          {value && (
-            <button
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); onChange(null); setOpen(false); }}
-              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 12px", border: "none", cursor: "pointer", fontSize: 13, opacity: 0.5, background: "transparent", color: "var(--gg-text, inherit)" }}
-            >
-              ✕ Remove mapping
-            </button>
-          )}
-          {/* Field groups */}
-          <div style={{ overflowY: "auto", flex: 1 }}>
-            {["people", "locations", "opportunities", "households", "companies"].map(renderGroups)}
-          </div>
-          {/* Advanced toggle */}
-          <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", padding: "8px 12px" }}>
-            {!showAdvanced ? (
-              <button
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); setShowAdvanced(true); loadAdvanced(); }}
-                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--gg-primary, #2563eb)", padding: 0, fontWeight: 600 }}
-              >
-                Advanced Field Mapping ▸
-                {advancedLoading && " Loading…"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); setShowAdvanced(false); }}
-                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--gg-text-dim, #6b7280)", padding: 0 }}
-              >
-                ← Common fields
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      {typeof document !== "undefined" && createPortal(dropdownContent, document.body)}
+    </>
   );
 }
 
