@@ -147,6 +147,9 @@ export default function SurveyBuilder({
   const [publicSlug, setPublicSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
 
+  // Auto pre-filled fields
+  const [autoFields, setAutoFields] = useState<{ id: string; crm_field: string; value: string }[]>([]);
+
   // Storefront / order form
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
   const [limitProducts, setLimitProducts] = useState(false);
@@ -211,6 +214,8 @@ export default function SurveyBuilder({
         setOpIntakeChannels(new Set(s.op_intake_channels ?? []));
         setPaymentEnabled(Boolean(s.payment_enabled));
         setDeliveryEnabled(Boolean(s.delivery_enabled));
+        const af = Array.isArray(s.auto_fields) ? s.auto_fields : [];
+        setAutoFields(af.map((f: any) => ({ id: newTmpId(), crm_field: f.crm_field ?? "", value: f.value ?? "" })));
         const orderProds: string[] | null = s.order_products ?? null;
         if (orderProds && orderProds.length > 0) {
           setLimitProducts(true);
@@ -494,6 +499,7 @@ export default function SurveyBuilder({
             storefront_mode: activeChannels.has("storefront") ? "take_order" : null,
             delivery_enabled: deliveryEnabled,
             order_products: limitProducts && selectedProductIds.size > 0 ? [...selectedProductIds] : null,
+            auto_fields: autoFields.filter(f => f.crm_field && f.value.trim()).map(({ crm_field, value }) => ({ crm_field, value: value.trim() })),
           }),
         });
         const data = await res.json();
@@ -942,6 +948,47 @@ export default function SurveyBuilder({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* ── Auto Pre-filled Fields ── */}
+              <div style={{ display: "grid", gap: 10, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                <div>
+                  <div style={{ ...labelStyle, display: "block", marginBottom: 2 }}>Auto Pre-filled Fields</div>
+                  <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                    Values set automatically on every submission — not shown to the respondent.
+                    Use this to tag all responses from this form (e.g. Contact Type = Volunteer).
+                  </p>
+                </div>
+                {autoFields.map((af, idx) => (
+                  <div key={af.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "center" }}>
+                    <CrmFieldPicker
+                      value={af.crm_field || null}
+                      onChange={(val) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, crm_field: val ?? "" } : f))}
+                    />
+                    <input
+                      type="text"
+                      value={af.value}
+                      onChange={(e) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, value: e.target.value } : f))}
+                      placeholder="Value"
+                      style={{ ...inputStyle, fontSize: 13 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAutoFields(prev => prev.filter((_, i) => i !== idx))}
+                      style={{ border: "none", background: "none", cursor: "pointer", padding: 4, opacity: 0.4, color: "#dc2626", lineHeight: 1 }}
+                      title="Remove"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setAutoFields(prev => [...prev, { id: newTmpId(), crm_field: "", value: "" }])}
+                  style={{ ...ghostBtnStyle, padding: "6px 12px", width: "fit-content" }}
+                >
+                  <Plus size={13} /> Add field
+                </button>
               </div>
 
               {/* ── Payment Gate ── */}
@@ -1868,6 +1915,20 @@ function CrmFieldPicker({
   const [rect, setRect] = useState<DOMRect | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
+  // Keep dropdown anchored to trigger even when page scrolls
+  useEffect(() => {
+    if (!open) return;
+    function update() {
+      if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+    }
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
   function openPicker() {
     if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
     if (value) {
@@ -1986,19 +2047,18 @@ function CrmFieldPicker({
                     </button>
                   );
                 })}
-                <div style={{ padding: "8px 14px" }}>
-                  {!showAdvanced ? (
-                    <button type="button" onClick={() => { setShowAdvanced(true); loadAdvanced(); }}
-                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--gg-primary, #2563eb)", padding: 0, fontWeight: 600 }}>
-                      Advanced fields ▸{advancedLoading ? " Loading…" : ""}
-                    </button>
-                  ) : (
-                    <button type="button" onClick={() => setShowAdvanced(false)}
-                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--gg-text-dim, #6b7280)", padding: 0 }}>
-                      ← Common fields
-                    </button>
-                  )}
-                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", cursor: "pointer", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+                  <input
+                    type="checkbox"
+                    checked={showAdvanced}
+                    style={{ width: 13, height: 13, cursor: "pointer" }}
+                    onChange={(e) => {
+                      setShowAdvanced(e.target.checked);
+                      if (e.target.checked) loadAdvanced();
+                    }}
+                  />
+                  Show advanced fields{advancedLoading ? " — Loading…" : ""}
+                </label>
               </>
             ) : (
               // ── Level 2: Field list for chosen record type ──

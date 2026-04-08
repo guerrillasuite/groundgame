@@ -223,6 +223,7 @@ export async function updateSurvey(
     storefront_mode?: "take_order" | null;
     delivery_enabled?: boolean;
     order_products?: string[] | null;
+    auto_fields?: { crm_field: string; value: string }[] | null;
   }
 ): Promise<void> {
   const sb = getAdminClient();
@@ -244,6 +245,7 @@ export async function updateSurvey(
   if ("storefront_mode" in params) update.storefront_mode = params.storefront_mode ?? null;
   if ("delivery_enabled" in params) update.delivery_enabled = params.delivery_enabled ?? false;
   if ("order_products" in params) update.order_products = params.order_products ?? null;
+  if ("auto_fields" in params) update.auto_fields = params.auto_fields?.length ? params.auto_fields : null;
   const { error } = await sb.from("surveys").update(update).eq("id", surveyId);
   if (error) throw error;
 }

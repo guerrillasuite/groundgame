@@ -179,12 +179,19 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
 
-  // ── Fetch survey meta (title + opportunity trigger + payment flag) ─────────
+  // ── Fetch survey meta (title + opportunity trigger + payment flag + auto_fields) ─
   const { data: surveyRow } = await sb
     .from("surveys")
-    .select("title, opp_trigger, payment_enabled")
+    .select("title, opp_trigger, payment_enabled, auto_fields")
     .eq("id", survey_id)
     .maybeSingle();
+
+  // ── Apply auto pre-filled fields to table buckets ─────────────────────────
+  for (const af of (surveyRow?.auto_fields as { crm_field: string; value: string }[] | null) ?? []) {
+    if (!af.crm_field || !af.value?.trim()) continue;
+    const { table, column } = normalizeCrmField(af.crm_field);
+    if (tableFields[table]) tableFields[table][column] = af.value.trim();
+  }
 
   // ── Record stop in CRM activity ───────────────────────────────────────────
   await sb.from("stops").insert({
