@@ -70,10 +70,23 @@ const FALLBACK_SCHEMA: Record<string, ColumnDef[]> = {
     { column: "postal_code", label: "Zip Code",     data_type: "text",  is_join: true  },
   ],
   households: [
-    { column: "name",        label: "Household Name", data_type: "text", is_join: false },
-    { column: "city",        label: "City",           data_type: "text", is_join: true  },
-    { column: "state",       label: "State",          data_type: "text", is_join: true  },
-    { column: "postal_code", label: "Zip Code",       data_type: "text", is_join: true  },
+    { column: "name",                label: "Household Name",     data_type: "text",     is_join: false },
+    { column: "total_persons",       label: "Total Persons",      data_type: "smallint", is_join: false },
+    { column: "adults_count",        label: "Adults Count",       data_type: "smallint", is_join: false },
+    { column: "children_count",      label: "Children Count",     data_type: "smallint", is_join: false },
+    { column: "household_voter_count", label: "Voter Count",      data_type: "smallint", is_join: false },
+    { column: "household_parties",   label: "Parties",            data_type: "text",     is_join: false },
+    { column: "has_senior",          label: "Has Senior",         data_type: "boolean",  is_join: false },
+    { column: "has_young_adult",     label: "Has Young Adult",    data_type: "boolean",  is_join: false },
+    { column: "has_children",        label: "Has Children",       data_type: "boolean",  is_join: false },
+    { column: "home_owner",          label: "Home Owner",         data_type: "boolean",  is_join: false },
+    { column: "home_dwelling_type",  label: "Dwelling Type",      data_type: "text",     is_join: false },
+    { column: "home_estimated_value",label: "Est. Home Value",    data_type: "integer",  is_join: false },
+    { column: "home_sqft",           label: "Sq Ft",              data_type: "integer",  is_join: false },
+    { column: "home_bedrooms",       label: "Bedrooms",           data_type: "smallint", is_join: false },
+    { column: "city",                label: "City",               data_type: "text",     is_join: true  },
+    { column: "state",               label: "State",              data_type: "text",     is_join: true  },
+    { column: "postal_code",         label: "Zip Code",           data_type: "text",     is_join: true  },
   ],
   locations: [
     { column: "address_line1", label: "Street Address", data_type: "text", is_join: false },
@@ -576,7 +589,7 @@ export default function CreateListWizard() {
               {/* ── People target ── */}
               {target === "people" && (
                 <>
-                  <FilterSection title="People" filters={primaryFilters} schema={schemas.people ?? []} onChange={setPrimaryFilters} defaultOpen />
+                  <FilterSection title="People" filters={primaryFilters} schema={schemas.people ?? []} onChange={setPrimaryFilters} defaultOpen hideJoined />
                   <FilterSection title="Location" filters={locFilters} schema={schemas.locations ?? []} onChange={setLocFilters} />
                   <FilterSection title="Household" filters={hhFilters} schema={schemas.households ?? []} onChange={setHhFilters} hideJoined />
                   <FilterSection
