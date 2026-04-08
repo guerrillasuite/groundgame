@@ -227,13 +227,24 @@ export async function POST(req: NextRequest) {
       else if (trigger.operator === "contains") shouldCreate = answerVal.includes(condVal);
     }
     if (shouldCreate) {
-      const { data: personRow } = await sb.from("people").select("first_name, last_name, email").eq("id", personId).maybeSingle();
-      const personName = [personRow?.first_name, personRow?.last_name].filter(Boolean).join(" ") || personRow?.email || "Unknown";
-      const rawTitle = (trigger.title_template as string | undefined) ?? "{{survey}} — {{name}}";
+      const { data: personRow } = await sb.from("people").select("first_name, last_name, email, phone, phone_cell").eq("id", personId).maybeSingle();
+      const firstName = personRow?.first_name ?? "";
+      const lastName  = personRow?.last_name  ?? "";
+      const personName = [firstName, lastName].filter(Boolean).join(" ") || personRow?.email || "Unknown";
+      const rawTitle = (trigger.title_template as string | undefined) ?? "{{last_name}} — {{date}}";
+      const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const oppTitle = rawTitle
-        .replace("{{survey}}", surveyRow?.title ?? survey_id)
-        .replace("{{name}}", personName)
-        .replace("{{email}}", personRow?.email ?? "");
+        .replace(/\{\{survey\}\}/g,     surveyRow?.title ?? survey_id)
+        .replace(/\{\{name\}\}/g,       personName)
+        .replace(/\{\{first_name\}\}/g, firstName)
+        .replace(/\{\{last_name\}\}/g,  lastName || "Unknown")
+        .replace(/\{\{email\}\}/g,      personRow?.email ?? "")
+        .replace(/\{\{phone\}\}/g,      personRow?.phone ?? personRow?.phone_cell ?? "")
+        .replace(/\{\{date\}\}/g,       today)
+        .replace(/\{\{channel\}\}/g,    "survey")
+        .replace(/\{\{amount\}\}/g,     tableFields.opportunities?.amount_cents ? `$${(Number(tableFields.opportunities.amount_cents) / 100).toFixed(2)}` : "")
+        .replace(/\{\{company\}\}/g,    tableFields.companies?.name ?? "")
+        .trim().replace(/\s*—\s*$/, "").replace(/^\s*—\s*/, ""); // strip dangling dashes from empty vars
 
       let stage: string = trigger.stage ?? null;
       if (!stage) {

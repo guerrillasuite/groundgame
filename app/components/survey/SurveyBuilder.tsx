@@ -135,7 +135,7 @@ export default function SurveyBuilder({
   const [oppValue, setOppValue] = useState("");
   const [oppContactType, setOppContactType] = useState("");
   const [oppStage, setOppStage] = useState("");
-  const [oppTitleTemplate, setOppTitleTemplate] = useState("{{survey}} — {{name}}");
+  const [oppTitleTemplate, setOppTitleTemplate] = useState("{{last_name}} — {{date}}");
   const [contactTypes, setContactTypes] = useState<{ key: string; label: string }[]>([]);
   const [oppStages, setOppStages] = useState<{ key: string; label: string }[]>([]);
 
@@ -206,7 +206,7 @@ export default function SurveyBuilder({
           setOppValue(ot.value ?? "");
           setOppContactType(ot.contact_type ?? "");
           setOppStage(ot.stage ?? "");
-          setOppTitleTemplate(ot.title_template ?? "{{survey}} — {{name}}");
+          setOppTitleTemplate(ot.title_template ?? "{{last_name}} — {{date}}");
         }
         setOpIntakeChannels(new Set(s.op_intake_channels ?? []));
         setPaymentEnabled(Boolean(s.payment_enabled));
@@ -487,7 +487,7 @@ export default function SurveyBuilder({
               value: oppMode === "condition" ? oppValue : null,
               contact_type: oppContactType || null,
               stage: oppStage || null,
-              title_template: oppTitleTemplate || "{{survey}} — {{name}}",
+              title_template: oppTitleTemplate || "{{last_name}} — {{date}}",
             } : null,
             op_intake_channels: [...opIntakeChannels],
             payment_enabled: paymentEnabled,
@@ -679,12 +679,20 @@ export default function SurveyBuilder({
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, opacity: 0.7 }}>Active in</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {(["embedded","hosted","doors","dials","texts","all"] as const).map((ch) => {
+            {([
+              { key: "all",        label: "All" },
+              { key: "embedded",   label: "Embedded" },
+              { key: "hosted",     label: "Hosted" },
+              { key: "doors",      label: "Doors" },
+              { key: "dials",      label: "Dials" },
+              { key: "texts",      label: "Texts" },
+              { key: "storefront", label: "Storefront" },
+            ] as const).map(({ key: ch, label }) => {
               const isAll = ch === "all";
+              const allKeys = ["embedded","hosted","doors","dials","texts","storefront"] as const;
               const checked = isAll
-                ? ["embedded","hosted","doors","dials","texts"].every(c => activeChannels.has(c))
+                ? allKeys.every(c => activeChannels.has(c))
                 : activeChannels.has(ch);
-              const label: Record<string, string> = { embedded: "Embedded", hosted: "Hosted", doors: "Doors", dials: "Dials", texts: "Texts", all: "All" };
               return (
                 <label
                   key={ch}
@@ -703,11 +711,8 @@ export default function SurveyBuilder({
                     onChange={(e) => {
                       const next = new Set(activeChannels);
                       if (isAll) {
-                        if (e.target.checked) {
-                          ["embedded","hosted","doors","dials","texts"].forEach(c => next.add(c));
-                        } else {
-                          next.clear();
-                        }
+                        if (e.target.checked) allKeys.forEach(c => next.add(c));
+                        else next.clear();
                       } else {
                         if (e.target.checked) next.add(ch);
                         else next.delete(ch);
@@ -715,38 +720,10 @@ export default function SurveyBuilder({
                       setActiveChannels(next);
                     }}
                   />
-                  {label[ch]}
+                  {label}
                 </label>
               );
             })}
-            {/* Storefront channel */}
-            {(() => {
-              const checked = activeChannels.has("storefront");
-              return (
-                <label
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
-                    padding: "5px 12px", borderRadius: 20, fontSize: 13,
-                    border: `1px solid ${checked ? "#7c3aed" : "var(--gg-border, #e5e7eb)"}`,
-                    background: checked ? "rgba(124,58,237,0.08)" : "transparent",
-                    fontWeight: checked ? 600 : 400,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    style={{ width: 13, height: 13, cursor: "pointer" }}
-                    onChange={(e) => {
-                      const next = new Set(activeChannels);
-                      if (e.target.checked) next.add("storefront");
-                      else next.delete("storefront");
-                      setActiveChannels(next);
-                    }}
-                  />
-                  Storefront
-                </label>
-              );
-            })()}
           </div>
           {activeChannels.size === 0 && (
             <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>Survey is inactive — not visible anywhere.</p>
@@ -944,11 +921,7 @@ export default function SurveyBuilder({
                     </div>
 
                     {/* Title template */}
-                    <div>
-                      <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Opportunity title template</label>
-                      <input value={oppTitleTemplate} onChange={(e) => setOppTitleTemplate(e.target.value)} style={{ ...inputStyle, fontSize: 13 }} placeholder="{{survey}} — {{name}}" />
-                      <p style={{ margin: "4px 0 0", fontSize: 11, opacity: 0.5 }}>Variables: {"{{survey}}"} · {"{{name}}"} · {"{{email}}"}</p>
-                    </div>
+                    <OppTitleTemplateEditor value={oppTitleTemplate} onChange={setOppTitleTemplate} />
 
                     {/* Op intake channels */}
                     <div>
@@ -2069,6 +2042,76 @@ function CrmFieldPicker({
         document.body
       )}
     </>
+  );
+}
+
+// ── Opportunity Title Template Editor ────────────────────────────────────────
+
+const OPP_TEMPLATE_VARS: { token: string; label: string }[] = [
+  { token: "{{last_name}}",     label: "Last Name" },
+  { token: "{{first_name}}",    label: "First Name" },
+  { token: "{{name}}",          label: "Full Name" },
+  { token: "{{date}}",          label: "Date" },
+  { token: "{{email}}",         label: "Email" },
+  { token: "{{survey}}",        label: "Survey Name" },
+  { token: "{{amount}}",        label: "Amount" },
+  { token: "{{company}}",       label: "Company" },
+  { token: "{{phone}}",         label: "Phone" },
+  { token: "{{channel}}",       label: "Channel" },
+];
+
+function OppTitleTemplateEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function insertToken(token: string) {
+    const el = inputRef.current;
+    if (!el) { onChange(value + token); return; }
+    const start = el.selectionStart ?? value.length;
+    const end   = el.selectionEnd   ?? value.length;
+    const next  = value.slice(0, start) + token + value.slice(end);
+    onChange(next);
+    // Restore cursor after React re-render
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + token.length, start + token.length);
+    });
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <label style={{ ...labelStyle, display: "block" }}>Opportunity title template</label>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ ...inputStyle, fontSize: 13 }}
+        placeholder="{{last_name}} — {{date}}"
+      />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        {OPP_TEMPLATE_VARS.map(({ token, label }) => {
+          const active = value.includes(token);
+          return (
+            <button
+              key={token}
+              type="button"
+              onClick={() => insertToken(token)}
+              title={`Insert ${token}`}
+              style={{
+                padding: "3px 9px", borderRadius: 12, fontSize: 11, fontWeight: 600,
+                cursor: "pointer", border: "1px solid var(--gg-border, #e5e7eb)",
+                background: active ? "rgba(37,99,235,0.1)" : "transparent",
+                color: active ? "var(--gg-primary, #2563eb)" : "var(--gg-text-dim, #6b7280)",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <p style={{ margin: 0, fontSize: 11, opacity: 0.45 }}>
+        Click a tag to insert it at your cursor. Edit the text freely.
+      </p>
+    </div>
   );
 }
 
