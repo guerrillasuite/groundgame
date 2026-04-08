@@ -34,6 +34,17 @@ function getAdminClient() {
 
 export type ActiveChannel = "embedded" | "hosted" | "doors" | "dials" | "texts";
 
+export type OppTrigger = {
+  enabled: boolean;
+  mode: "always" | "condition";
+  question_id?: string;
+  operator?: "equals" | "not_equals" | "contains";
+  value?: string;
+  contact_type?: string | null;
+  stage?: string;
+  title_template?: string;
+};
+
 export type Survey = {
   id: string;
   public_slug: string | null;
@@ -45,6 +56,9 @@ export type Survey = {
   active: boolean;
   active_channels: ActiveChannel[] | null;
   post_submit_survey_id: string | null;
+  opp_trigger: OppTrigger | null;
+  op_intake_channels: string[];
+  payment_enabled: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -71,8 +85,8 @@ export type ViewConfig = {
   survey_id: string;
   view_type: ViewType;
   pagination: PaginationMode;
-  page_groups: string[][] | null; // arrays of question IDs per page
-  columns: 1 | 2;
+  // page_groups: pages × rows × questionIds. Each row has 1 or 2 question IDs (2 = side-by-side).
+  page_groups: string[][][] | null;
   enabled: boolean;
 };
 
@@ -176,6 +190,9 @@ export async function updateSurvey(
     active_channels: ActiveChannel[];
     public_slug?: string;
     post_submit_survey_id?: string | null;
+    opp_trigger?: OppTrigger | null;
+    op_intake_channels?: string[];
+    payment_enabled?: boolean;
   }
 ): Promise<void> {
   const sb = getAdminClient();
@@ -191,6 +208,9 @@ export async function updateSurvey(
   };
   if (params.public_slug !== undefined) update.public_slug = params.public_slug || null;
   if ("post_submit_survey_id" in params) update.post_submit_survey_id = params.post_submit_survey_id ?? null;
+  if ("opp_trigger" in params) update.opp_trigger = params.opp_trigger ?? null;
+  if ("op_intake_channels" in params) update.op_intake_channels = params.op_intake_channels ?? [];
+  if ("payment_enabled" in params) update.payment_enabled = params.payment_enabled ?? false;
   const { error } = await sb.from("surveys").update(update).eq("id", surveyId);
   if (error) throw error;
 }
@@ -445,7 +465,7 @@ export async function getViewConfigs(surveyId: string): Promise<ViewConfig[]> {
 
 export async function upsertViewConfigs(
   surveyId: string,
-  configs: Array<{ view_type: ViewType; pagination: PaginationMode; page_groups?: string[][] | null; columns?: 1 | 2 }>
+  configs: Array<{ view_type: ViewType; pagination: PaginationMode; page_groups?: string[][][] | null }>
 ): Promise<void> {
   const sb = getAdminClient();
   for (const cfg of configs) {
@@ -454,7 +474,6 @@ export async function upsertViewConfigs(
       view_type: cfg.view_type,
       pagination: cfg.pagination,
       page_groups: cfg.page_groups ?? null,
-      columns: cfg.columns ?? 1,
       enabled: true,
     }, { onConflict: "survey_id,view_type" });
   }

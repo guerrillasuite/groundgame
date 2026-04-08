@@ -427,8 +427,9 @@ export default async function ListDetail({
   const listChannel = modeToChannel[modeLower] ?? null;
   const eligibleSurveys = allSurveys.filter((s) => {
     if (!listChannel) return true; // unknown mode — show all
-    if (!s.active_channels || s.active_channels.length === 0) return s.active; // fallback for unset
-    return s.active_channels.includes(listChannel as any);
+    const ch = s.active_channels;
+    if (!ch || ch.length === 0) return false; // require explicit channel opt-in
+    return ch.includes(listChannel as any);
   });
 
   const surveyPanel = (

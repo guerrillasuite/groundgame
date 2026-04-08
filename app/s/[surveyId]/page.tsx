@@ -66,11 +66,11 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
     survey.post_submit_survey_id
       ? sb.from("questions").select(qCols).eq("survey_id", survey.post_submit_survey_id).order("order_index", { ascending: true })
       : Promise.resolve({ data: null }),
-    sb.from("survey_view_configs").select("pagination, columns").eq("survey_id", survey.id).eq("view_type", "hosted").maybeSingle(),
+    sb.from("survey_view_configs").select("pagination, page_groups").eq("survey_id", survey.id).eq("view_type", "hosted").maybeSingle(),
   ]);
 
   const viewConfig = viewConfigRow
-    ? { pagination: viewConfigRow.pagination as string, columns: (viewConfigRow.columns ?? 1) as 1 | 2 }
+    ? { pagination: viewConfigRow.pagination as string, page_groups: (viewConfigRow.page_groups ?? null) as string[][][] | null }
     : undefined;
 
   const branding = tenant?.branding

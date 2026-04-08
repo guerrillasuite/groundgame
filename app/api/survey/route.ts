@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const filtered = channel
     ? surveys.filter((s) => {
         const ch = s.active_channels;
-        if (!ch || ch.length === 0) return s.active; // fallback for unset
+        if (!ch || ch.length === 0) return false; // require explicit channel opt-in
         return ch.includes(channel as any);
       })
     : surveys;

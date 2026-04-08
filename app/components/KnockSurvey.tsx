@@ -26,7 +26,7 @@ export default function KnockSurvey({
   surveyId: string;
   contactId: string;
   viewType?: "door" | "call" | "text";
-  onDone: () => void;
+  onDone: (opportunityId?: string) => void;
 }) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [viewConfig, setViewConfig] = useState<ViewConfig>({ pagination: "one_at_a_time", page_groups: null });
@@ -120,7 +120,36 @@ export default function KnockSurvey({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ crm_contact_id: contactId, survey_id: surveyId }),
     }).catch(() => {});
-    onDone();
+
+    // Collect all current answers for trigger evaluation
+    const allAnswers: Record<string, string> = {};
+    for (const q of questions) {
+      if (["multiple_select", "multiple_select_with_other"].includes(q.question_type)) {
+        const sels = multiSelections.get(q.id);
+        if (sels?.size) allAnswers[q.id] = JSON.stringify([...sels]);
+      } else if (["text", "text_short", "number", "email", "phone", "date"].includes(q.question_type)) {
+        const v = textInputs.get(q.id);
+        if (v) allAnswers[q.id] = v;
+      } else {
+        const v = answers.get(q.id);
+        if (v) allAnswers[q.id] = v;
+      }
+    }
+
+    let opportunityId: string | undefined;
+    try {
+      const res = await fetch("/api/survey/evaluate-trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ survey_id: surveyId, contact_id: contactId, answers: allAnswers }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        opportunityId = data.opportunity_id ?? undefined;
+      }
+    } catch { /* ignore */ }
+
+    onDone(opportunityId);
   }
 
   // ── "All at once" mode ────────────────────────────────────────────────────

@@ -45,8 +45,8 @@ type PaginationMode = "one_at_a_time" | "all_at_once" | "pages";
 
 type ViewConfig = {
   pagination: PaginationMode;
-  page_groups: string[][] | null; // arrays of question IDs per page
-  columns: 1 | 2;
+  // page_groups: pages × rows × questionIds. Each row has 1–2 IDs (2 = side-by-side).
+  page_groups: string[][][] | null;
 };
 
 type CrmUser = { id: string; name: string; email: string };
@@ -58,11 +58,11 @@ const CHOICE_TYPES: QuestionType[] = [
 ];
 
 const DEFAULT_VIEW_CONFIGS: Record<ViewType, ViewConfig> = {
-  embedded: { pagination: "one_at_a_time", page_groups: null, columns: 1 },
-  hosted:   { pagination: "one_at_a_time", page_groups: null, columns: 1 },
-  door:     { pagination: "one_at_a_time", page_groups: null, columns: 1 },
-  call:     { pagination: "one_at_a_time", page_groups: null, columns: 1 },
-  text:     { pagination: "all_at_once",   page_groups: null, columns: 1 },
+  embedded: { pagination: "one_at_a_time", page_groups: null },
+  hosted:   { pagination: "one_at_a_time", page_groups: null },
+  door:     { pagination: "one_at_a_time", page_groups: null },
+  call:     { pagination: "one_at_a_time", page_groups: null },
+  text:     { pagination: "all_at_once",   page_groups: null },
 };
 
 const VIEW_LABELS: Record<ViewType, string> = {
@@ -118,6 +118,24 @@ export default function SurveyBuilder({
   const [postSubmitSurveyId, setPostSubmitSurveyId] = useState<string>("");
   const [embeddableSurveys, setEmbeddableSurveys] = useState<{ id: string; title: string }[]>([]);
   const [activeChannels, setActiveChannels] = useState<Set<string>>(new Set(["embedded","hosted","doors","dials","texts"]));
+
+  // Opportunity trigger
+  const [oppEnabled, setOppEnabled] = useState(false);
+  const [oppMode, setOppMode] = useState<"always" | "condition">("always");
+  const [oppQuestionId, setOppQuestionId] = useState("");
+  const [oppOperator, setOppOperator] = useState<"equals" | "not_equals" | "contains">("equals");
+  const [oppValue, setOppValue] = useState("");
+  const [oppContactType, setOppContactType] = useState("");
+  const [oppStage, setOppStage] = useState("");
+  const [oppTitleTemplate, setOppTitleTemplate] = useState("{{survey}} — {{name}}");
+  const [contactTypes, setContactTypes] = useState<{ key: string; label: string }[]>([]);
+  const [oppStages, setOppStages] = useState<{ key: string; label: string }[]>([]);
+
+  // Op intake channels
+  const [opIntakeChannels, setOpIntakeChannels] = useState<Set<string>>(new Set());
+
+  // Payment
+  const [paymentEnabled, setPaymentEnabled] = useState(false);
   const [publicSlug, setPublicSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
 
@@ -163,6 +181,20 @@ export default function SurveyBuilder({
         setActiveChannels(new Set(channels));
         setPublicSlug(s.public_slug ?? s.id ?? "");
         setPostSubmitSurveyId(s.post_submit_survey_id ?? "");
+        // Opp trigger
+        const ot = s.opp_trigger as any;
+        if (ot?.enabled) {
+          setOppEnabled(true);
+          setOppMode(ot.mode ?? "always");
+          setOppQuestionId(ot.question_id ?? "");
+          setOppOperator(ot.operator ?? "equals");
+          setOppValue(ot.value ?? "");
+          setOppContactType(ot.contact_type ?? "");
+          setOppStage(ot.stage ?? "");
+          setOppTitleTemplate(ot.title_template ?? "{{survey}} — {{name}}");
+        }
+        setOpIntakeChannels(new Set(s.op_intake_channels ?? []));
+        setPaymentEnabled(Boolean(s.payment_enabled));
 
         const qs: LocalQuestion[] = (data.questions ?? []).map((q: any) => ({
           id: q.id,
@@ -182,8 +214,7 @@ export default function SurveyBuilder({
         for (const vc of data.viewConfigs ?? []) {
           cfgs[vc.view_type as ViewType] = {
             pagination: vc.pagination,
-            page_groups: vc.page_groups ?? null,
-            columns: (vc.columns as 1 | 2) ?? 1,
+            page_groups: (vc.page_groups as string[][][] | null) ?? null,
           };
         }
         setViewConfigs(cfgs);
@@ -223,17 +254,34 @@ export default function SurveyBuilder({
       .finally(() => setUsersLoading(false));
   }, [isActive, usersFetched, crmUsers.length]);
 
-  // Load embeddable surveys for post-submit picker (once, when Advanced Options opens)
+  // Load embeddable surveys + contact types when Advanced Options opens
   useEffect(() => {
-    if (!showAdvanced || embeddableSurveys.length > 0) return;
-    fetch("/api/survey?channel=embedded")
+    if (!showAdvanced) return;
+    if (embeddableSurveys.length === 0) {
+      fetch("/api/survey?channel=embedded")
+        .then((r) => r.json())
+        .then((list: { id: string; title: string }[]) => setEmbeddableSurveys(list.filter((s) => s.id !== surveyId)))
+        .catch(() => {});
+    }
+    if (contactTypes.length === 0) {
+      fetch("/api/crm/settings/contact-types")
+        .then((r) => r.json())
+        .then((data: any) => setContactTypes(Array.isArray(data) ? data : (data.types ?? [])))
+        .catch(() => {});
+    }
+  }, [showAdvanced, surveyId]);
+
+  // Load stages when oppContactType changes
+  useEffect(() => {
+    if (!oppEnabled) return;
+    const url = oppContactType
+      ? `/api/crm/opportunities/stages?contact_type=${encodeURIComponent(oppContactType)}`
+      : "/api/crm/opportunities/stages";
+    fetch(url)
       .then((r) => r.json())
-      .then((list: { id: string; title: string }[]) => {
-        // Exclude the current survey itself
-        setEmbeddableSurveys(list.filter((s) => s.id !== surveyId));
-      })
+      .then((data: any) => setOppStages(Array.isArray(data) ? data : (data.stages ?? [])))
       .catch(() => {});
-  }, [showAdvanced, surveyId, embeddableSurveys.length]);
+  }, [oppEnabled, oppContactType]);
 
   // ── Question helpers ──────────────────────────────────────────────────────
   function addQuestion() {
@@ -256,19 +304,7 @@ export default function SurveyBuilder({
     if (!id.startsWith("tmp-")) {
       setDeletedIds((prev) => [...prev, id]);
     }
-    // Remove from view config page_groups
-    setViewConfigs((prev) => {
-      const next = { ...prev };
-      for (const vt of Object.keys(next) as ViewType[]) {
-        if (next[vt].page_groups) {
-          next[vt] = {
-            ...next[vt],
-            page_groups: next[vt].page_groups!.map((pg) => pg.filter((qId) => qId !== id)).filter((pg) => pg.length > 0),
-          };
-        }
-      }
-      return next;
-    });
+    removeQFromPageGroups(id);
     if (expandedId === id) setExpandedId(null);
   }
 
@@ -342,15 +378,15 @@ export default function SurveyBuilder({
     setViewConfigs((prev) => ({ ...prev, [vt]: { ...prev[vt], ...patch } }));
   }
 
+  /** Convert flat question list to initial page_groups (1 page, each question in its own row) */
   function initPageGroups(vt: ViewType) {
-    // Start with all questions in page 1
-    updateViewConfig(vt, { page_groups: [questions.map((q) => q.id)] });
+    updateViewConfig(vt, { page_groups: [questions.map((q) => [q.id])] });
   }
 
   function addPage(vt: ViewType) {
     setViewConfigs((prev) => {
       const cfg = prev[vt];
-      const groups = cfg.page_groups ?? [questions.map((q) => q.id)];
+      const groups = cfg.page_groups ?? [questions.map((q) => [q.id])];
       return { ...prev, [vt]: { ...cfg, page_groups: [...groups, []] } };
     });
   }
@@ -359,9 +395,8 @@ export default function SurveyBuilder({
     setViewConfigs((prev) => {
       const cfg = prev[vt];
       if (!cfg.page_groups || cfg.page_groups.length <= 1) return prev;
-      const groups = [...cfg.page_groups];
+      const groups = cfg.page_groups.map((page) => page.map((row) => [...row]));
       const removed = groups.splice(pageIdx, 1)[0];
-      // Move removed questions to the previous page (or first page)
       const targetIdx = Math.max(0, pageIdx - 1);
       if (groups[targetIdx]) {
         groups[targetIdx] = [...groups[targetIdx], ...removed];
@@ -370,33 +405,26 @@ export default function SurveyBuilder({
     });
   }
 
-  function moveQuestionPage(vt: ViewType, qId: string, direction: "up" | "down") {
-    setViewConfigs((prev) => {
-      const cfg = prev[vt];
-      if (!cfg.page_groups) return prev;
-      const groups = cfg.page_groups.map((g) => [...g]);
-      let fromPage = -1;
-      let fromIdx = -1;
-      for (let i = 0; i < groups.length; i++) {
-        const j = groups[i].indexOf(qId);
-        if (j >= 0) { fromPage = i; fromIdx = j; break; }
-      }
-      if (fromPage < 0) return prev;
-      const toPage = direction === "up" ? fromPage - 1 : fromPage + 1;
-      if (toPage < 0 || toPage >= groups.length) return prev;
-      groups[fromPage].splice(fromIdx, 1);
-      groups[toPage].push(qId);
-      return { ...prev, [vt]: { ...cfg, page_groups: groups } };
-    });
+  /** Update layout for a single view — used by FormLayoutEditor */
+  function setPageGroups(vt: ViewType, groups: string[][][]) {
+    setViewConfigs((prev) => ({ ...prev, [vt]: { ...prev[vt], page_groups: groups } }));
   }
 
-  function getQuestionPage(vt: ViewType, qId: string): number {
-    const groups = viewConfigs[vt].page_groups;
-    if (!groups) return 0;
-    for (let i = 0; i < groups.length; i++) {
-      if (groups[i].includes(qId)) return i;
-    }
-    return groups.length - 1;
+  /** Remove deleted question from all view config page_groups */
+  function removeQFromPageGroups(qId: string) {
+    setViewConfigs((prev) => {
+      const next = { ...prev };
+      for (const vt of Object.keys(next) as ViewType[]) {
+        if (!next[vt].page_groups) continue;
+        next[vt] = {
+          ...next[vt],
+          page_groups: next[vt].page_groups!.map((page) =>
+            page.map((row) => row.filter((id) => id !== qId)).filter((row) => row.length > 0)
+          ).filter((page) => page.length > 0),
+        };
+      }
+      return next;
+    });
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────
@@ -429,6 +457,18 @@ export default function SurveyBuilder({
             active_channels: [...activeChannels],
             public_slug: publicSlug.trim() || null,
             post_submit_survey_id: postSubmitSurveyId || null,
+            opp_trigger: oppEnabled ? {
+              enabled: true,
+              mode: oppMode,
+              question_id: oppMode === "condition" ? oppQuestionId || null : null,
+              operator: oppMode === "condition" ? oppOperator : null,
+              value: oppMode === "condition" ? oppValue : null,
+              contact_type: oppContactType || null,
+              stage: oppStage || null,
+              title_template: oppTitleTemplate || "{{survey}} — {{name}}",
+            } : null,
+            op_intake_channels: [...opIntakeChannels],
+            payment_enabled: paymentEnabled,
           }),
         });
         const data = await res.json();
@@ -491,7 +531,6 @@ export default function SurveyBuilder({
             view_type: vt,
             pagination: cfg.pagination,
             page_groups: cfg.page_groups ?? null,
-            columns: cfg.columns ?? 1,
           })),
         }),
       });
@@ -802,6 +841,99 @@ export default function SurveyBuilder({
                     <option key={s.id} value={s.id}>{s.title}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* ── Opportunity Creation Trigger ── */}
+              <div style={{ display: "grid", gap: 8, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={oppEnabled} onChange={(e) => setOppEnabled(e.target.checked)} />
+                  Opportunity Creation Trigger
+                </label>
+                {oppEnabled && (
+                  <div style={{ display: "grid", gap: 10, paddingLeft: 4 }}>
+                    {/* Mode */}
+                    <div style={{ display: "flex", gap: 16 }}>
+                      {(["always", "condition"] as const).map((m) => (
+                        <label key={m} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                          <input type="radio" name="opp-mode" checked={oppMode === m} onChange={() => setOppMode(m)} />
+                          {m === "always" ? "Always" : "When condition met"}
+                        </label>
+                      ))}
+                    </div>
+
+                    {/* Condition row */}
+                    {oppMode === "condition" && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
+                        <select value={oppQuestionId} onChange={(e) => setOppQuestionId(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                          <option value="">(Select question)</option>
+                          {questions.map((q) => <option key={q.id} value={q.id}>{(q.question_text || "Untitled").slice(0, 50)}</option>)}
+                        </select>
+                        <select value={oppOperator} onChange={(e) => setOppOperator(e.target.value as any)} style={{ ...inputStyle, fontSize: 13, width: "auto" }}>
+                          <option value="equals">equals</option>
+                          <option value="not_equals">≠</option>
+                          <option value="contains">contains</option>
+                        </select>
+                        <input value={oppValue} onChange={(e) => setOppValue(e.target.value)} placeholder="value to match" style={{ ...inputStyle, fontSize: 13 }} />
+                      </div>
+                    )}
+
+                    {/* Pipeline + Stage */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <div>
+                        <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Pipeline (optional)</label>
+                        <select value={oppContactType} onChange={(e) => setOppContactType(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                          <option value="">(Default)</option>
+                          {contactTypes.map((ct) => <option key={ct.key} value={ct.key}>{ct.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Stage</label>
+                        <select value={oppStage} onChange={(e) => setOppStage(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                          <option value="">(First stage)</option>
+                          {oppStages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Title template */}
+                    <div>
+                      <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Opportunity title template</label>
+                      <input value={oppTitleTemplate} onChange={(e) => setOppTitleTemplate(e.target.value)} style={{ ...inputStyle, fontSize: 13 }} placeholder="{{survey}} — {{name}}" />
+                      <p style={{ margin: "4px 0 0", fontSize: 11, opacity: 0.5 }}>Variables: {"{{survey}}"} · {"{{name}}"} · {"{{email}}"}</p>
+                    </div>
+
+                    {/* Op intake channels */}
+                    <div>
+                      <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Use this survey as default Op Intake form for</label>
+                      <p style={{ margin: "0 0 6px", fontSize: 12, opacity: 0.6 }}>After an opportunity is created in a field session, this form will be shown to capture details.</p>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"]].map(([ch, label]) => (
+                          <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
+                            <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
+                              const next = new Set(opIntakeChannels);
+                              if (e.target.checked) next.add(ch); else next.delete(ch);
+                              setOpIntakeChannels(next);
+                            }} style={{ display: "none" }} />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Payment Gate ── */}
+              <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={paymentEnabled} onChange={(e) => setPaymentEnabled(e.target.checked)} />
+                  Require payment after submission
+                </label>
+                {paymentEnabled && (
+                  <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                    After submitting, respondents will be directed to a payment page. Payment processor configuration is set up separately.
+                  </p>
+                )}
               </div>
 
               {/* Branding (FieldPack+) */}
@@ -1126,6 +1258,7 @@ export default function SurveyBuilder({
 
             {/* Tab content */}
             <div style={{ padding: 20, display: "grid", gap: 16 }}>
+              {/* Pagination mode selector */}
               <div>
                 <label style={{ ...labelStyle, marginBottom: 8, display: "block" }}>
                   How are questions presented in the {VIEW_LABELS[activeViewTab].toLowerCase()} view?
@@ -1138,7 +1271,7 @@ export default function SurveyBuilder({
                         name={`pagination-${activeViewTab}`}
                         checked={cfg.pagination === mode}
                         onChange={() => {
-                          if (mode === "pages" && !cfg.page_groups) {
+                          if ((mode === "pages" || mode === "all_at_once") && !cfg.page_groups) {
                             initPageGroups(activeViewTab);
                           }
                           updateViewConfig(activeViewTab, { pagination: mode });
@@ -1153,8 +1286,8 @@ export default function SurveyBuilder({
                         </div>
                         <div style={{ fontSize: 12, opacity: 0.5, color: "var(--gg-text, inherit)" }}>
                           {mode === "one_at_a_time" && "Each question shown individually — respondent taps Next to advance"}
-                          {mode === "all_at_once" && "All questions visible in a single scrollable form"}
-                          {mode === "pages" && "Group questions into pages — e.g. 5+5 for a 10-question survey"}
+                          {mode === "all_at_once" && "All questions visible in a single scrollable form — drag to arrange side-by-side"}
+                          {mode === "pages" && "Group questions into pages — drag to arrange within and across pages"}
                         </div>
                       </div>
                     </label>
@@ -1162,49 +1295,33 @@ export default function SurveyBuilder({
                 </div>
               </div>
 
-              {/* Side-by-side columns — only for embedded/hosted, and only when showing multiple questions */}
-              {(activeViewTab === "embedded" || activeViewTab === "hosted") && cfg.pagination !== "one_at_a_time" && (
-                <div style={{ paddingTop: 12, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                  <label style={{ ...labelStyle, marginBottom: 8, display: "block" }}>
-                    Column layout
-                  </label>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    {([1, 2] as const).map((n) => (
-                      <label key={n} style={{
-                        display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14,
-                        padding: "8px 16px", borderRadius: 8, border: `2px solid ${cfg.columns === n ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
-                        background: cfg.columns === n ? "color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent)" : "transparent",
-                        fontWeight: cfg.columns === n ? 600 : 400, color: "var(--gg-text, inherit)",
-                        transition: "all 0.1s",
-                      }}>
-                        <input
-                          type="radio"
-                          name={`columns-${activeViewTab}`}
-                          checked={cfg.columns === n}
-                          onChange={() => updateViewConfig(activeViewTab, { columns: n })}
-                          style={{ display: "none" }}
-                        />
-                        {n === 1 ? "Single column" : "Two columns (side by side)"}
-                      </label>
-                    ))}
-                  </div>
-                  <p style={{ fontSize: 12, opacity: 0.5, color: "var(--gg-text, inherit)", margin: "6px 0 0" }}>
-                    Two columns places questions in a 2-up grid — best for short questions like name, email, and phone.
-                  </p>
-                </div>
-              )}
-
-              {/* Custom pages editor */}
-              {cfg.pagination === "pages" && (
-                <PageGroupsEditor
+              {/* Form layout editor — shown for all_at_once and pages */}
+              {cfg.pagination !== "one_at_a_time" && questions.length > 0 && (
+                <FormLayoutEditor
                   questions={questions}
-                  pageGroups={cfg.page_groups ?? [questions.map((q) => q.id)]}
+                  pageGroups={cfg.page_groups ?? questions.map((q) => [[q.id]])}
+                  pagination={cfg.pagination}
+                  onChange={(groups) => setPageGroups(activeViewTab, groups)}
                   onAddPage={() => addPage(activeViewTab)}
                   onRemovePage={(i) => removePage(activeViewTab, i)}
-                  onMoveQuestion={(qId, dir) => moveQuestionPage(activeViewTab, qId, dir)}
-                  getQuestionPage={(qId) => getQuestionPage(activeViewTab, qId)}
-                  totalPages={(cfg.page_groups ?? [questions.map((q) => q.id)]).length}
                 />
+              )}
+
+              {/* Read-only preview for one_at_a_time */}
+              {cfg.pagination === "one_at_a_time" && questions.length > 0 && (
+                <div style={{ paddingTop: 4 }}>
+                  <label style={{ ...labelStyle, marginBottom: 8, display: "block" }}>Question order preview</label>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {questions.map((q, i) => (
+                      <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", background: "var(--gg-filter-bg, rgba(37,99,235,0.03))" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.4, minWidth: 20, color: "var(--gg-text, inherit)" }}>{i + 1}</span>
+                        <span style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--gg-text, inherit)" }}>{q.question_text || "Untitled question"}</span>
+                        <span style={{ fontSize: 11, opacity: 0.4, color: "var(--gg-text, inherit)" }}>{q.question_type}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: 12, opacity: 0.5, margin: "8px 0 0", color: "var(--gg-text, inherit)" }}>Reorder by dragging questions in the list above.</p>
+                </div>
               )}
             </div>
           </div>
@@ -1232,93 +1349,235 @@ export default function SurveyBuilder({
   );
 }
 
-// ── Page Groups Editor ────────────────────────────────────────────────────────
+// ── Form Layout Editor (DnD) ──────────────────────────────────────────────────
+// page_groups is pages × rows × questionIds. Each row can have 1 or 2 IDs.
+// Drag a card between rows to reorder; drag onto another card to pair side-by-side.
 
-function PageGroupsEditor({
+type DragInfo = { qId: string; pageIdx: number; rowIdx: number; slotIdx: number };
+
+function cardHeight(qType: string, optionCount: number): number {
+  if (qType === "text") return 72;
+  if (["multiple_choice", "multiple_select", "multiple_choice_with_other", "multiple_select_with_other"].includes(qType)) {
+    return optionCount >= 4 ? 56 : 44;
+  }
+  if (qType === "yes_no" || qType === "rating") return 44;
+  return 36; // text_short, email, phone, number, date
+}
+
+function FormLayoutEditor({
   questions,
   pageGroups,
+  pagination,
+  onChange,
   onAddPage,
   onRemovePage,
-  onMoveQuestion,
-  getQuestionPage,
-  totalPages,
 }: {
   questions: LocalQuestion[];
-  pageGroups: string[][];
+  pageGroups: string[][][];
+  pagination: PaginationMode;
+  onChange: (groups: string[][][]) => void;
   onAddPage: () => void;
   onRemovePage: (pageIdx: number) => void;
-  onMoveQuestion: (qId: string, dir: "up" | "down") => void;
-  getQuestionPage: (qId: string) => number;
-  totalPages: number;
 }) {
-  // Build map of qId → question for quick lookup
+  const [dragging, setDragging] = useState<DragInfo | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ pageIdx: number; rowIdx: number; side: "above" | "below" | "left" | "right" } | null>(null);
   const qMap = new Map(questions.map((q) => [q.id, q]));
 
+  // Ensure all questions are in page_groups (append missing ones as solo rows to last page)
+  const normalizedGroups: string[][][] = pageGroups.length > 0 ? pageGroups.map(p => p.map(r => [...r])) : [[]];
+  const inGroups = new Set(normalizedGroups.flat(2));
+  const missing = questions.filter(q => !inGroups.has(q.id));
+  if (missing.length > 0) {
+    normalizedGroups[normalizedGroups.length - 1].push(...missing.map(q => [q.id]));
+  }
+
+  function applyDrop(target: NonNullable<typeof dropTarget>) {
+    if (!dragging) return;
+    const groups = normalizedGroups.map(p => p.map(r => [...r]));
+
+    // Remove dragged question from its current position
+    const srcPage = groups[dragging.pageIdx];
+    if (!srcPage) return;
+    const srcRow = srcPage[dragging.rowIdx];
+    if (!srcRow) return;
+    srcRow.splice(dragging.slotIdx, 1);
+    if (srcRow.length === 0) srcPage.splice(dragging.rowIdx, 1);
+
+    const { pageIdx, rowIdx, side } = target;
+    const tPage = groups[pageIdx];
+    if (!tPage) return;
+
+    if (side === "left" || side === "right") {
+      // Pair with existing card in this row (max 2)
+      const tRow = tPage[rowIdx];
+      if (tRow && tRow.length < 2) {
+        if (side === "left") tRow.unshift(dragging.qId);
+        else tRow.push(dragging.qId);
+      } else {
+        // Row full — insert as new row above/below
+        tPage.splice(rowIdx + (side === "right" ? 1 : 0), 0, [dragging.qId]);
+      }
+    } else {
+      // Insert as new solo row above or below rowIdx
+      const insertAt = side === "above" ? rowIdx : rowIdx + 1;
+      tPage.splice(insertAt, 0, [dragging.qId]);
+    }
+
+    onChange(groups.filter(p => p.length > 0));
+  }
+
+  function onDragStart(e: React.DragEvent, info: DragInfo) {
+    e.dataTransfer.effectAllowed = "move";
+    setDragging(info);
+  }
+
+  function onDragOver(e: React.DragEvent, target: NonNullable<typeof dropTarget>) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropTarget(target);
+  }
+
+  function onDrop(e: React.DragEvent, target: NonNullable<typeof dropTarget>) {
+    e.preventDefault();
+    applyDrop(target);
+    setDragging(null);
+    setDropTarget(null);
+  }
+
+  function onDragEnd() {
+    setDragging(null);
+    setDropTarget(null);
+  }
+
+  const isDropTarget = (p: number, r: number, s: "above" | "below" | "left" | "right") =>
+    dropTarget?.pageIdx === p && dropTarget.rowIdx === r && dropTarget.side === s;
+
+  const dropZoneLine = (p: number, r: number, side: "above" | "below"): React.CSSProperties => ({
+    height: 4, borderRadius: 2, margin: side === "above" ? "0 0 4px" : "4px 0 0",
+    background: isDropTarget(p, r, side) ? "var(--gg-primary, #2563eb)" : "transparent",
+    transition: "background 0.1s",
+  });
+
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {pageGroups.map((group, pageIdx) => (
-        <div
-          key={pageIdx}
-          style={{ border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 10, overflow: "hidden" }}
-        >
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "8px 14px",
-            background: "var(--gg-filter-bg, rgba(37,99,235,0.04))",
-          }}>
-            <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--gg-text, inherit)" }}>
-              Page {pageIdx + 1} — {group.length} question{group.length !== 1 ? "s" : ""}
+    <div style={{ display: "grid", gap: 16 }}>
+      {normalizedGroups.map((page, pageIdx) => (
+        <div key={pageIdx} style={{ border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 10, overflow: "hidden" }}>
+          {/* Page header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "var(--gg-filter-bg, rgba(37,99,235,0.04))" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.55, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--gg-text, inherit)" }}>
+              {pagination === "pages" ? `Page ${pageIdx + 1} — ` : ""}{page.flat().length} question{page.flat().length !== 1 ? "s" : ""}
             </span>
-            {totalPages > 1 && (
-              <button
-                type="button"
-                onClick={() => onRemovePage(pageIdx)}
-                style={{ border: "none", background: "none", cursor: "pointer", fontSize: 12, opacity: 0.5, color: "#dc2626" }}
-                title="Remove page (questions move to previous page)"
-              >
+            {pagination === "pages" && normalizedGroups.length > 1 && (
+              <button type="button" onClick={() => onRemovePage(pageIdx)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 12, opacity: 0.5, color: "#dc2626" }}>
                 Remove page
               </button>
             )}
           </div>
-          {group.length === 0 ? (
-            <div style={{ padding: "16px 14px", fontSize: 13, opacity: 0.4, textAlign: "center", color: "var(--gg-text, inherit)" }}>
-              No questions on this page
-            </div>
-          ) : (
-            <div style={{ padding: "8px 14px", display: "grid", gap: 6 }}>
-              {group.map((qId) => {
-                const q = qMap.get(qId);
-                const pageIdx2 = getQuestionPage(qId);
-                return (
-                  <div key={qId} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: q ? 1 : 0.4, color: "var(--gg-text, inherit)" }}>
-                      {q ? (q.question_text || "Untitled question") : `(deleted: ${qId})`}
-                    </span>
-                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                      <IconBtn title="Move to previous page" disabled={pageIdx2 === 0} onClick={() => onMoveQuestion(qId, "up")}><ChevronUp size={12} /></IconBtn>
-                      <IconBtn title="Move to next page" disabled={pageIdx2 === totalPages - 1} onClick={() => onMoveQuestion(qId, "down")}><ChevronDown size={12} /></IconBtn>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+
+          {/* Rows */}
+          <div style={{ padding: "10px 14px", display: "grid", gap: 2 }}
+            onDragOver={(e) => { e.preventDefault(); }}
+          >
+            {page.length === 0 && (
+              <div style={{ padding: "20px 0", fontSize: 13, opacity: 0.4, textAlign: "center", color: "var(--gg-text, inherit)" }}>
+                Drag questions here
+              </div>
+            )}
+            {page.map((row, rowIdx) => (
+              <div key={rowIdx}>
+                {/* Drop zone above */}
+                <div
+                  style={dropZoneLine(pageIdx, rowIdx, "above")}
+                  onDragOver={(e) => onDragOver(e, { pageIdx, rowIdx, side: "above" })}
+                  onDrop={(e) => onDrop(e, { pageIdx, rowIdx, side: "above" })}
+                />
+
+                {/* Row of 1 or 2 cards */}
+                <div style={{ display: "flex", gap: 6 }}>
+                  {row.map((qId, slotIdx) => {
+                    const q = qMap.get(qId);
+                    const h = cardHeight(q?.question_type ?? "text_short", q?.options?.length ?? 0);
+                    const isDraggingThis = dragging?.qId === qId;
+                    return (
+                      <div
+                        key={qId}
+                        style={{ flex: 1, position: "relative" }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const side = x < rect.width / 2 ? "left" : "right";
+                          if (row.length < 2 || (row.length === 2 && side === (slotIdx === 0 ? "left" : "right"))) {
+                            // only highlight side if it would pair, not if row is already full on that side
+                          }
+                          onDragOver(e, { pageIdx, rowIdx, side });
+                        }}
+                        onDrop={(e) => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const side: "left" | "right" = x < rect.width / 2 ? "left" : "right";
+                          onDrop(e, { pageIdx, rowIdx, side });
+                        }}
+                      >
+                        {/* Left pair drop indicator */}
+                        {isDropTarget(pageIdx, rowIdx, "left") && slotIdx === 0 && row.length < 2 && (
+                          <div style={{ position: "absolute", left: -3, top: 0, bottom: 0, width: 3, borderRadius: 2, background: "var(--gg-primary, #2563eb)", zIndex: 2 }} />
+                        )}
+                        {/* Right pair drop indicator */}
+                        {isDropTarget(pageIdx, rowIdx, "right") && slotIdx === row.length - 1 && row.length < 2 && (
+                          <div style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 3, borderRadius: 2, background: "var(--gg-primary, #2563eb)", zIndex: 2 }} />
+                        )}
+                        <div
+                          draggable
+                          onDragStart={(e) => onDragStart(e, { qId, pageIdx, rowIdx, slotIdx })}
+                          onDragEnd={onDragEnd}
+                          style={{
+                            height: h,
+                            borderRadius: 8,
+                            border: `1.5px solid ${isDraggingThis ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
+                            background: isDraggingThis ? "color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent)" : "var(--gg-filter-bg, rgba(37,99,235,0.02))",
+                            display: "flex", alignItems: "center", gap: 8, padding: "0 10px",
+                            cursor: "grab", opacity: isDraggingThis ? 0.5 : 1,
+                            transition: "border-color 0.1s, background 0.1s",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <span style={{ fontSize: 11, opacity: 0.3, userSelect: "none", flexShrink: 0 }}>⠿</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--gg-text, inherit)" }}>
+                            {q ? (q.question_text?.slice(0, 40) || "Untitled") : qId}
+                          </span>
+                          <span style={{ fontSize: 10, opacity: 0.35, flexShrink: 0, color: "var(--gg-text, inherit)" }}>
+                            {q?.question_type?.replace(/_/g, " ")}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Drop zone below (only on last row to avoid double zones) */}
+                {rowIdx === page.length - 1 && (
+                  <div
+                    style={dropZoneLine(pageIdx, rowIdx, "below")}
+                    onDragOver={(e) => onDragOver(e, { pageIdx, rowIdx, side: "below" })}
+                    onDrop={(e) => onDrop(e, { pageIdx, rowIdx, side: "below" })}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       ))}
 
-      <button
-        type="button"
-        onClick={onAddPage}
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-          padding: "10px", borderRadius: 8,
-          border: "1px dashed var(--gg-border, #e5e7eb)",
-          background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 600,
-          color: "var(--gg-text-dim, #6b7280)",
-        }}
-      >
-        <Plus size={14} /> Add Page
-      </button>
+      {pagination === "pages" && (
+        <button
+          type="button"
+          onClick={onAddPage}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", borderRadius: 8, border: "1px dashed var(--gg-border, #e5e7eb)", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--gg-text-dim, #6b7280)" }}
+        >
+          <Plus size={14} /> Add Page
+        </button>
+      )}
     </div>
   );
 }

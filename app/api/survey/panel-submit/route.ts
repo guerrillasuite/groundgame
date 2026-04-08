@@ -161,10 +161,10 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
 
-  // Fetch survey title for stop notes
+  // Fetch survey meta (title + opportunity trigger + payment flag)
   const { data: surveyRow } = await sb
     .from("surveys")
-    .select("title")
+    .select("title, opp_trigger, payment_enabled")
     .eq("id", survey_id)
     .maybeSingle();
 
@@ -195,5 +195,53 @@ export async function POST(req: NextRequest) {
     await sb.from("responses").upsert(responseRows, { onConflict: "crm_contact_id,survey_id,question_id" });
   }
 
-  return NextResponse.json({ person_id: personId });
+  // ── Opportunity trigger ───────────────────────────────────────────────────
+  let opportunityId: string | null = null;
+  const trigger = surveyRow?.opp_trigger as Record<string, any> | null;
+  if (trigger?.enabled) {
+    let shouldCreate = trigger.mode === "always";
+    if (trigger.mode === "condition" && trigger.question_id) {
+      const answerVal = String(answers[trigger.question_id] ?? "").toLowerCase();
+      const condVal = String(trigger.value ?? "").toLowerCase();
+      if (trigger.operator === "equals") shouldCreate = answerVal === condVal;
+      else if (trigger.operator === "not_equals") shouldCreate = answerVal !== condVal;
+      else if (trigger.operator === "contains") shouldCreate = answerVal.includes(condVal);
+    }
+    if (shouldCreate) {
+      // Resolve person name/email for title template
+      const { data: personRow } = await sb.from("people").select("first_name, last_name, email").eq("id", personId).maybeSingle();
+      const personName = [personRow?.first_name, personRow?.last_name].filter(Boolean).join(" ") || personRow?.email || "Unknown";
+      const rawTitle = (trigger.title_template as string | undefined) ?? "{{survey}} — {{name}}";
+      const oppTitle = rawTitle
+        .replace("{{survey}}", surveyRow?.title ?? survey_id)
+        .replace("{{name}}", personName)
+        .replace("{{email}}", personRow?.email ?? "");
+
+      // Resolve default stage if not set
+      let stage: string = trigger.stage ?? null;
+      if (!stage) {
+        const stageQ = sb.from("opportunity_stages").select("key").eq("tenant_id", tenant.id).order("order_index", { ascending: true }).limit(1);
+        const { data: firstStage } = trigger.contact_type
+          ? await stageQ.eq("contact_type_key", trigger.contact_type)
+          : await stageQ.is("contact_type_key", null);
+        stage = (firstStage as any)?.key ?? "new";
+      }
+
+      const { data: opp } = await sb.from("opportunities").insert({
+        tenant_id: tenant.id,
+        title: oppTitle,
+        stage,
+        contact_type: trigger.contact_type ?? null,
+        contact_person_id: personId,
+        source: "survey",
+      }).select("id").single();
+      opportunityId = (opp as any)?.id ?? null;
+    }
+  }
+
+  return NextResponse.json({
+    person_id: personId,
+    opportunity_id: opportunityId,
+    payment_required: Boolean(surveyRow?.payment_enabled),
+  });
 }

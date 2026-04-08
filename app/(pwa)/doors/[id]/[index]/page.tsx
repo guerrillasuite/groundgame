@@ -84,6 +84,11 @@ export default function KnockStep() {
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveyDone, setSurveyDone] = useState(false);
 
+  // Op intake form state (shown after survey triggers an opportunity)
+  const [intakeSurveyId, setIntakeSurveyId] = useState<string | null>(null);
+  const [showIntake, setShowIntake] = useState(false);
+  const [intakeDone, setIntakeDone] = useState(false);
+
   // Opportunity form (for callCaptureMode === 'opportunity')
   const [oppTitle, setOppTitle] = useState('');
   const [oppStage, setOppStage] = useState('');
@@ -603,8 +608,41 @@ export default function KnockStep() {
           <KnockSurvey
             surveyId={surveyId}
             contactId={target?.primary_person_id ?? `anon-${target?.item_id}`}
-            onDone={() => { setShowSurvey(false); setSurveyDone(true); }}
+            onDone={async (opportunityId) => {
+              setShowSurvey(false);
+              setSurveyDone(true);
+              if (opportunityId) {
+                // Check if tenant has an op intake form for doors
+                try {
+                  const res = await fetch("/api/survey/intake?channel=door");
+                  const data = await res.json();
+                  if (data.survey?.id) {
+                    setIntakeSurveyId(data.survey.id);
+                    setIntakeDone(false);
+                    setShowIntake(true);
+                  }
+                } catch { /* ignore */ }
+              }
+            }}
           />
+        )}
+
+        {/* Op intake form — shown after survey triggers an opportunity */}
+        {showIntake && !intakeDone && intakeSurveyId && (
+          <div style={{ position: "relative" }}>
+            <KnockSurvey
+              surveyId={intakeSurveyId}
+              contactId={target?.primary_person_id ?? `anon-${target?.item_id}`}
+              onDone={() => { setShowIntake(false); setIntakeDone(true); }}
+            />
+            <button
+              type="button"
+              onClick={() => { setShowIntake(false); setIntakeDone(true); }}
+              style={{ position: "absolute", top: 24, right: 24, background: "none", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 13, cursor: "pointer", padding: "4px 8px" }}
+            >
+              Skip →
+            </button>
+          </div>
         )}
 
         {/* Opportunity form — shown when callCaptureMode=opportunity and contact was made */}
@@ -776,8 +814,8 @@ export default function KnockStep() {
             type="button"
             className="btn action-submit"
             onClick={submitAndNext}
-            disabled={!result || saving || (result === "contact_made" && !!surveyId && callCaptureMode === 'survey' && !surveyDone)}
-            aria-disabled={!result || saving || (result === "contact_made" && !!surveyId && callCaptureMode === 'survey' && !surveyDone)}
+            disabled={!result || saving || (result === "contact_made" && !!surveyId && callCaptureMode === 'survey' && !surveyDone) || (showIntake && !intakeDone)}
+            aria-disabled={!result || saving || (result === "contact_made" && !!surveyId && callCaptureMode === 'survey' && !surveyDone) || (showIntake && !intakeDone)}
           >
             {saving ? "Saving…" : "Save & Next"}
           </button>
