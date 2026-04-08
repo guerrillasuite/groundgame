@@ -10,7 +10,21 @@ type Question = {
   display_format: string | null;
   required: boolean;
   order_index: number;
+  conditions?: {
+    show_if: { question_id: string; operator: "equals" | "not_equals" | "contains"; value: string };
+  } | null;
 };
+
+function isQuestionVisible(q: Question, answers: Map<string, string>): boolean {
+  const c = q.conditions?.show_if;
+  if (!c?.question_id) return true;
+  const actual = String(answers.get(c.question_id) ?? "").toLowerCase();
+  const target = String(c.value ?? "").toLowerCase();
+  if (c.operator === "equals")     return actual === target;
+  if (c.operator === "not_equals") return actual !== target;
+  if (c.operator === "contains")   return actual.includes(target);
+  return true;
+}
 
 type ViewConfig = {
   pagination: "one_at_a_time" | "all_at_once" | "pages";
@@ -69,30 +83,35 @@ export default function KnockSurvey({
   // ── Determine question sequence based on view config ──────────────────────
   // Build ordered question list for this view
   function getOrderedQuestions(): Question[] {
-    if (viewConfig.pagination !== "pages" || !viewConfig.page_groups) return questions;
-    // Flatten page_groups in order, filtering to valid question IDs
-    const qMap = new Map(questions.map((q) => [q.id, q]));
-    const ordered: Question[] = [];
-    for (const group of viewConfig.page_groups) {
-      for (const qId of group) {
-        const q = qMap.get(qId);
-        if (q) ordered.push(q);
+    let ordered: Question[];
+    if (viewConfig.pagination !== "pages" || !viewConfig.page_groups) {
+      ordered = questions;
+    } else {
+      // Flatten page_groups in order, filtering to valid question IDs
+      const qMap = new Map(questions.map((q) => [q.id, q]));
+      ordered = [];
+      for (const group of viewConfig.page_groups) {
+        for (const qId of group) {
+          const q = qMap.get(qId);
+          if (q) ordered.push(q);
+        }
+      }
+      // Append any questions not in page_groups (safety net)
+      const seen = new Set(ordered.map((q) => q.id));
+      for (const q of questions) {
+        if (!seen.has(q.id)) ordered.push(q);
       }
     }
-    // Append any questions not in page_groups (safety net)
-    const seen = new Set(ordered.map((q) => q.id));
-    for (const q of questions) {
-      if (!seen.has(q.id)) ordered.push(q);
-    }
-    return ordered;
+    // Filter invisible questions based on current answers
+    return ordered.filter((q) => isQuestionVisible(q, answers));
   }
 
   // For "pages" mode: get the questions on each page
   function getPages(): Question[][] {
-    if (!viewConfig.page_groups) return [questions];
+    if (!viewConfig.page_groups) return [questions.filter((q) => isQuestionVisible(q, answers))];
     const qMap = new Map(questions.map((q) => [q.id, q]));
     return viewConfig.page_groups.map((group) =>
-      group.map((qId) => qMap.get(qId)).filter(Boolean) as Question[]
+      group.map((qId) => qMap.get(qId)).filter((q): q is Question => q != null && isQuestionVisible(q, answers))
     ).filter((g) => g.length > 0);
   }
 
@@ -235,8 +254,10 @@ export default function KnockSurvey({
   }
 
   // ── "One at a time" mode (default) ────────────────────────────────────────
-  const q = orderedQs[qIdx];
-  const isLast = qIdx === orderedQs.length - 1;
+  // Clamp qIdx to valid range after filtering
+  const safeIdx = Math.min(qIdx, orderedQs.length - 1);
+  const q = orderedQs[safeIdx];
+  const isLast = safeIdx === orderedQs.length - 1;
 
   function getAnswerValue(question: Question): string {
     if (["multiple_select", "multiple_select_with_other"].includes(question.question_type)) {
@@ -259,15 +280,15 @@ export default function KnockSurvey({
     if (isLast) {
       await completeSurvey();
     } else {
-      setQIdx(qIdx + 1);
+      setQIdx(safeIdx + 1);
     }
   }
 
   return (
     <SurveyCard>
       <SurveyTopBar
-        label={`Q ${qIdx + 1} of ${orderedQs.length}`}
-        progress={qIdx / orderedQs.length}
+        label={`Q ${safeIdx + 1} of ${orderedQs.length}`}
+        progress={safeIdx / orderedQs.length}
         onRefuse={onDone}
       />
       <QuestionRenderer
@@ -283,8 +304,8 @@ export default function KnockSurvey({
         <button
           type="button"
           className="press-card plain action-skip"
-          onClick={() => { if (qIdx > 0) setQIdx(qIdx - 1); }}
-          disabled={qIdx === 0}
+          onClick={() => { if (safeIdx > 0) setQIdx(safeIdx - 1); }}
+          disabled={safeIdx === 0}
         >
           ← Back
         </button>
@@ -335,7 +356,8 @@ function AllAtOnce({
     await completeSurvey();
   }
 
-  const allRequired = questions.filter((q) => q.required);
+  const visibleQs = questions.filter((q) => isQuestionVisible(q, answers));
+  const allRequired = visibleQs.filter((q) => q.required);
   const allAnswered = allRequired.every((q) => {
     if (["multiple_select", "multiple_select_with_other"].includes(q.question_type)) {
       return (multiSelections.get(q.id)?.size ?? 0) > 0;
@@ -354,7 +376,7 @@ function AllAtOnce({
         onRefuse={onDone}
       />
       <div style={{ display: "grid", gap: 16 }}>
-        {questions.map((q) => (
+        {visibleQs.map((q) => (
           <QuestionRenderer
             key={q.id}
             q={q}

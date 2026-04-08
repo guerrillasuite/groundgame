@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
 export async function PUT(request: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
-    const { title, description, website_url, footer_text, active_channels, public_slug, post_submit_survey_id, opp_trigger, op_intake_channels, payment_enabled } = await request.json();
+    const { title, description, website_url, footer_text, active_channels, public_slug, post_submit_survey_id, opp_trigger, op_intake_channels, payment_enabled, storefront_mode, delivery_enabled, order_products } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
@@ -37,6 +37,9 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
         opp_trigger: opp_trigger ?? null,
         op_intake_channels: Array.isArray(op_intake_channels) ? op_intake_channels : [],
         payment_enabled: Boolean(payment_enabled),
+        storefront_mode: storefront_mode ?? null,
+        delivery_enabled: Boolean(delivery_enabled),
+        order_products: Array.isArray(order_products) ? order_products : null,
       });
     } catch (err: any) {
       // Unique constraint violation on public_slug

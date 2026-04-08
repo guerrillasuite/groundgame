@@ -6,7 +6,7 @@ type Ctx = { params: Promise<{ surveyId: string }> };
 export async function POST(request: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
-    const { question_text, question_type, options, display_format, crm_field, required, order_index } =
+    const { question_text, question_type, options, display_format, crm_field, required, order_index, conditions } =
       await request.json();
 
     if (!question_text?.trim() || !question_type) {
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       crm_field: crm_field ?? null,
       required: Boolean(required),
       order_index: order_index ?? 999,
+      conditions: conditions ?? null,
     });
 
     return NextResponse.json({ question_id }, { status: 201 });

@@ -6,7 +6,7 @@ type Ctx = { params: Promise<{ surveyId: string; questionId: string }> };
 export async function PUT(request: NextRequest, { params }: Ctx) {
   const { questionId } = await params;
   try {
-    const { question_text, question_type, options, display_format, crm_field, required, order_index } =
+    const { question_text, question_type, options, display_format, crm_field, required, order_index, conditions } =
       await request.json();
 
     if (!question_text?.trim() || !question_type) {
@@ -24,6 +24,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
       crm_field: crm_field ?? null,
       required: Boolean(required),
       order_index: order_index ?? 999,
+      conditions: conditions ?? null,
     });
 
     return NextResponse.json({ ok: true });

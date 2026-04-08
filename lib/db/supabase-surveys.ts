@@ -32,7 +32,7 @@ function getAdminClient() {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type ActiveChannel = "embedded" | "hosted" | "doors" | "dials" | "texts";
+export type ActiveChannel = "embedded" | "hosted" | "doors" | "dials" | "texts" | "storefront";
 
 export type OppTrigger = {
   enabled: boolean;
@@ -59,11 +59,37 @@ export type Survey = {
   opp_trigger: OppTrigger | null;
   op_intake_channels: string[];
   payment_enabled: boolean;
+  // Storefront / order form fields
+  storefront_mode: "take_order" | null;
+  delivery_enabled: boolean;
+  order_products: string[] | null; // null = all active; array = curated product IDs
   created_at: string;
   updated_at: string;
 };
 
-export type CrmField = "first_name" | "last_name" | "email" | "phone" | "phone_cell" | "phone_landline";
+// CrmField: namespaced "table.column" format (e.g. "people.first_name", "locations.city").
+// Legacy bare values like "first_name" are treated as "people.*" for backward compat.
+export type CrmField = string;
+
+/**
+ * Normalize a crm_field value to { table, column } format.
+ * Legacy bare values like "first_name" map to { table: "people", column: "first_name" }.
+ */
+export function normalizeCrmField(raw: string): { table: string; column: string } {
+  const idx = raw.indexOf(".");
+  if (idx >= 0) {
+    return { table: raw.slice(0, idx), column: raw.slice(idx + 1) };
+  }
+  return { table: "people", column: raw };
+}
+
+export type QuestionCondition = {
+  show_if: {
+    question_id: string;
+    operator: "equals" | "not_equals" | "contains";
+    value: string;
+  };
+} | null;
 
 export type Question = {
   id: string;
@@ -75,6 +101,7 @@ export type Question = {
   crm_field: CrmField | null;
   required: boolean;
   order_index: number;
+  conditions: QuestionCondition;
   created_at: string;
 };
 
@@ -193,6 +220,9 @@ export async function updateSurvey(
     opp_trigger?: OppTrigger | null;
     op_intake_channels?: string[];
     payment_enabled?: boolean;
+    storefront_mode?: "take_order" | null;
+    delivery_enabled?: boolean;
+    order_products?: string[] | null;
   }
 ): Promise<void> {
   const sb = getAdminClient();
@@ -211,6 +241,9 @@ export async function updateSurvey(
   if ("opp_trigger" in params) update.opp_trigger = params.opp_trigger ?? null;
   if ("op_intake_channels" in params) update.op_intake_channels = params.op_intake_channels ?? [];
   if ("payment_enabled" in params) update.payment_enabled = params.payment_enabled ?? false;
+  if ("storefront_mode" in params) update.storefront_mode = params.storefront_mode ?? null;
+  if ("delivery_enabled" in params) update.delivery_enabled = params.delivery_enabled ?? false;
+  if ("order_products" in params) update.order_products = params.order_products ?? null;
   const { error } = await sb.from("surveys").update(update).eq("id", surveyId);
   if (error) throw error;
 }
@@ -234,6 +267,7 @@ export async function createQuestion(
     crm_field?: CrmField | null;
     required: boolean;
     order_index: number;
+    conditions?: QuestionCondition;
   }
 ): Promise<void> {
   const sb = getAdminClient();
@@ -247,6 +281,7 @@ export async function createQuestion(
     crm_field: params.crm_field ?? null,
     required: params.required,
     order_index: params.order_index,
+    conditions: params.conditions ?? null,
   });
   if (error) throw error;
 }
@@ -261,6 +296,7 @@ export async function updateQuestion(
     crm_field?: CrmField | null;
     required: boolean;
     order_index: number;
+    conditions?: QuestionCondition;
   }
 ): Promise<void> {
   const sb = getAdminClient();
@@ -274,6 +310,7 @@ export async function updateQuestion(
       crm_field: params.crm_field ?? null,
       required: params.required,
       order_index: params.order_index,
+      conditions: params.conditions ?? null,
     })
     .eq("id", questionId);
   if (error) throw error;

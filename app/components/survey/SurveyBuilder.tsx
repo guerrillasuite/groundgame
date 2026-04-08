@@ -22,11 +22,16 @@ type QuestionType =
   | "rating"
   | "number"
   | "email"
-  | "phone";
+  | "phone"
+  | "product_picker";
 
 type DisplayFormat = "list" | "dropdown" | null;
 
-type CrmField = "first_name" | "last_name" | "email" | "phone" | "phone_cell" | "phone_landline";
+type CrmField = string; // "table.column" (e.g. "people.first_name") or legacy bare value
+
+type QuestionCondition = {
+  show_if: { question_id: string; operator: "equals" | "not_equals" | "contains"; value: string };
+} | null;
 
 type LocalQuestion = {
   id: string;
@@ -37,6 +42,7 @@ type LocalQuestion = {
   crm_field: CrmField | null;
   required: boolean;
   order_index: number;
+  conditions: QuestionCondition;
   isNew: boolean;
 };
 
@@ -87,6 +93,7 @@ function blankQuestion(order_index: number): LocalQuestion {
     crm_field: null,
     required: true,
     order_index,
+    conditions: null,
     isNew: true,
   };
 }
@@ -138,6 +145,13 @@ export default function SurveyBuilder({
   const [paymentEnabled, setPaymentEnabled] = useState(false);
   const [publicSlug, setPublicSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
+
+  // Storefront / order form
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [limitProducts, setLimitProducts] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [allProducts, setAllProducts] = useState<{ id: string; name: string; sku: string | null }[]>([]);
+  const [productsLoaded, setProductsLoaded] = useState(false);
 
   // Questions
   const [questions, setQuestions] = useState<LocalQuestion[]>([]);
@@ -195,6 +209,12 @@ export default function SurveyBuilder({
         }
         setOpIntakeChannels(new Set(s.op_intake_channels ?? []));
         setPaymentEnabled(Boolean(s.payment_enabled));
+        setDeliveryEnabled(Boolean(s.delivery_enabled));
+        const orderProds: string[] | null = s.order_products ?? null;
+        if (orderProds && orderProds.length > 0) {
+          setLimitProducts(true);
+          setSelectedProductIds(new Set(orderProds));
+        }
 
         const qs: LocalQuestion[] = (data.questions ?? []).map((q: any) => ({
           id: q.id,
@@ -205,6 +225,7 @@ export default function SurveyBuilder({
           crm_field: q.crm_field ?? null,
           required: Boolean(q.required),
           order_index: q.order_index,
+          conditions: q.conditions ?? null,
           isNew: false,
         }));
         setQuestions(qs);
@@ -469,6 +490,9 @@ export default function SurveyBuilder({
             } : null,
             op_intake_channels: [...opIntakeChannels],
             payment_enabled: paymentEnabled,
+            storefront_mode: activeChannels.has("storefront") ? "take_order" : null,
+            delivery_enabled: deliveryEnabled,
+            order_products: limitProducts && selectedProductIds.size > 0 ? [...selectedProductIds] : null,
           }),
         });
         const data = await res.json();
@@ -500,6 +524,7 @@ export default function SurveyBuilder({
           crm_field: q.crm_field ?? null,
           required: q.required,
           order_index: q.order_index,
+          conditions: q.conditions ?? null,
         };
 
         if (q.isNew) {
@@ -699,6 +724,35 @@ export default function SurveyBuilder({
                 </label>
               );
             })}
+            {/* Storefront channel */}
+            {(() => {
+              const checked = activeChannels.has("storefront");
+              return (
+                <label
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+                    padding: "5px 12px", borderRadius: 20, fontSize: 13,
+                    border: `1px solid ${checked ? "#7c3aed" : "var(--gg-border, #e5e7eb)"}`,
+                    background: checked ? "rgba(124,58,237,0.08)" : "transparent",
+                    fontWeight: checked ? 600 : 400,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    style={{ width: 13, height: 13, cursor: "pointer" }}
+                    onChange={(e) => {
+                      const next = new Set(activeChannels);
+                      if (e.target.checked) next.add("storefront");
+                      else next.delete("storefront");
+                      setActiveChannels(next);
+                    }}
+                  />
+                  Storefront
+                  {checked && <span style={{ fontSize: 11, opacity: 0.7, fontWeight: 400 }}>— Take Order / Make Sale</span>}
+                </label>
+              );
+            })()}
           </div>
           {activeChannels.size === 0 && (
             <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>Survey is inactive — not visible anywhere.</p>
@@ -936,6 +990,21 @@ export default function SurveyBuilder({
                 )}
               </div>
 
+              {/* ── Delivery (Storefront) ── */}
+              {activeChannels.has("storefront") && (
+                <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                  <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={deliveryEnabled} onChange={(e) => setDeliveryEnabled(e.target.checked)} />
+                    Enable Delivery option
+                  </label>
+                  {deliveryEnabled && (
+                    <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                      Respondents can choose Pickup or Delivery. When Delivery is selected, an address form is shown and required before submit.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Branding (FieldPack+) */}
               {!hasSurveyBranding && (
                 <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px dashed var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.6 }}>
@@ -985,6 +1054,11 @@ export default function SurveyBuilder({
                 <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6, background: "var(--gg-filter-bg, rgba(37,99,235,0.06))", whiteSpace: "nowrap", flexShrink: 0, color: "var(--gg-text, inherit)" }}>
                   {typeLabel}
                 </span>
+                {q.conditions?.show_if?.question_id && (
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(245,158,11,0.12)", color: "#b45309", whiteSpace: "nowrap", flexShrink: 0, letterSpacing: "0.04em" }}>
+                    IF
+                  </span>
+                )}
                 <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                   <IconBtn title="Move up" disabled={idx === 0} onClick={() => moveQuestion(q.id, -1)}><ChevronUp size={14} /></IconBtn>
                   <IconBtn title="Move down" disabled={idx === questions.length - 1} onClick={() => moveQuestion(q.id, 1)}><ChevronDown size={14} /></IconBtn>
@@ -1036,6 +1110,9 @@ export default function SurveyBuilder({
                           <option value="email">Email</option>
                           <option value="phone">Phone</option>
                           <option value="date">Date</option>
+                        </optgroup>
+                        <optgroup label="Storefront">
+                          <option value="product_picker">Product Picker</option>
                         </optgroup>
                       </select>
                     </div>
@@ -1093,27 +1170,76 @@ export default function SurveyBuilder({
                   </div>
 
                   {/* CRM field mapping */}
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <label style={labelStyle}>Map to CRM field <span style={{ fontWeight: 400, opacity: 0.55 }}>(optional)</span></label>
-                    <select
-                      value={q.crm_field ?? ""}
-                      onChange={(e) => updateQuestion(q.id, { crm_field: (e.target.value || null) as CrmField | null })}
-                      style={{ ...inputStyle, cursor: "pointer" }}
-                    >
-                      <option value="">(No mapping)</option>
-                      <option value="first_name">First Name</option>
-                      <option value="last_name">Last Name</option>
-                      <option value="email">Email</option>
-                      <option value="phone">Phone (primary)</option>
-                      <option value="phone_cell">Phone (cell)</option>
-                      <option value="phone_landline">Phone (landline)</option>
-                    </select>
-                    {q.crm_field && (
-                      <p style={{ margin: 0, fontSize: 12, opacity: 0.55 }}>
-                        Answers will be used to find or create a CRM contact record via the standard dedupe logic.
-                      </p>
-                    )}
-                  </div>
+                  {q.question_type !== "product_picker" && (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <label style={labelStyle}>Map to CRM field <span style={{ fontWeight: 400, opacity: 0.55 }}>(optional)</span></label>
+                      <CrmFieldPicker
+                        value={q.crm_field ?? null}
+                        onChange={(val) => updateQuestion(q.id, { crm_field: val })}
+                      />
+                    </div>
+                  )}
+
+                  {/* Product curation (for product_picker type) */}
+                  {q.question_type === "product_picker" && (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <label style={labelStyle}>Products to offer</label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={limitProducts}
+                          onChange={(e) => {
+                            setLimitProducts(e.target.checked);
+                            if (e.target.checked && !productsLoaded) {
+                              setProductsLoaded(true);
+                              fetch("/api/crm/products")
+                                .then((r) => r.json())
+                                .then((list) => setAllProducts(Array.isArray(list) ? list : []))
+                                .catch(() => {});
+                            }
+                          }}
+                          style={{ width: 15, height: 15 }}
+                        />
+                        Limit to specific products
+                        <span style={{ fontSize: 11, opacity: 0.5, fontWeight: 400 }}>(default: all active products)</span>
+                      </label>
+                      {limitProducts && (
+                        <div style={{ border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 8, overflow: "hidden" }}>
+                          {allProducts.length === 0 ? (
+                            <div style={{ padding: "12px 14px", fontSize: 13, opacity: 0.5 }}>Loading products…</div>
+                          ) : (
+                            allProducts.map((p) => {
+                              const sel = selectedProductIds.has(p.id);
+                              return (
+                                <label
+                                  key={p.id}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10, padding: "9px 14px",
+                                    fontSize: 13, cursor: "pointer",
+                                    borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+                                    background: sel ? "rgba(37,99,235,0.04)" : "transparent",
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={sel}
+                                    style={{ width: 14, height: 14, flexShrink: 0 }}
+                                    onChange={(e) => {
+                                      const next = new Set(selectedProductIds);
+                                      if (e.target.checked) next.add(p.id); else next.delete(p.id);
+                                      setSelectedProductIds(next);
+                                    }}
+                                  />
+                                  <span style={{ flex: 1, fontWeight: 500 }}>{p.name}</span>
+                                  {p.sku && <span style={{ fontSize: 11, opacity: 0.45 }}>SKU: {p.sku}</span>}
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Options editor for choice types (not yes/no) */}
                   {hasOptions && q.question_type !== "yes_no" && (
@@ -1189,6 +1315,66 @@ export default function SurveyBuilder({
                       {q.question_type === "email" && "Renders as an email input with validation"}
                       {q.question_type === "phone" && "Renders as a phone number input"}
                       {q.question_type === "date" && "Renders as a date picker"}
+                    </div>
+                  )}
+
+                  {/* Conditional display logic */}
+                  {idx > 0 && (
+                    <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", paddingTop: 12 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(q.conditions?.show_if?.question_id)}
+                          style={{ width: 14, height: 14 }}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              updateQuestion(q.id, {
+                                conditions: { show_if: { question_id: questions[0]?.id ?? "", operator: "equals", value: "" } },
+                              });
+                            } else {
+                              updateQuestion(q.id, { conditions: null });
+                            }
+                          }}
+                        />
+                        <span style={{ fontWeight: 600, opacity: 0.7 }}>Only show this question when…</span>
+                      </label>
+                      {q.conditions?.show_if && (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, marginTop: 8, alignItems: "center" }}>
+                          <select
+                            value={q.conditions.show_if.question_id}
+                            onChange={(e) => updateQuestion(q.id, {
+                              conditions: { show_if: { ...q.conditions!.show_if, question_id: e.target.value } },
+                            })}
+                            style={{ ...inputStyle, fontSize: 13 }}
+                          >
+                            <option value="">(Select question)</option>
+                            {questions.slice(0, idx).map((prev, pi) => (
+                              <option key={prev.id} value={prev.id}>
+                                Q{pi + 1}: {(prev.question_text || "Untitled").slice(0, 50)}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={q.conditions.show_if.operator}
+                            onChange={(e) => updateQuestion(q.id, {
+                              conditions: { show_if: { ...q.conditions!.show_if, operator: e.target.value as "equals" | "not_equals" | "contains" } },
+                            })}
+                            style={{ ...inputStyle, fontSize: 13, width: "auto" }}
+                          >
+                            <option value="equals">equals</option>
+                            <option value="not_equals">≠</option>
+                            <option value="contains">contains</option>
+                          </select>
+                          <input
+                            value={q.conditions.show_if.value}
+                            onChange={(e) => updateQuestion(q.id, {
+                              conditions: { show_if: { ...q.conditions!.show_if, value: e.target.value } },
+                            })}
+                            placeholder="value to match"
+                            style={{ ...inputStyle, fontSize: 13 }}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1619,7 +1805,241 @@ const QUESTION_TYPE_META: Record<string, { label: string }> = {
   number:                     { label: "Number" },
   email:                      { label: "Email" },
   phone:                      { label: "Phone" },
+  product_picker:             { label: "Product Picker" },
 };
+
+// ── CRM Field Picker ──────────────────────────────────────────────────────────
+
+type SchemaEntry = { column: string; label: string; table?: string; is_join?: boolean };
+
+const COMMON_FIELDS: Record<string, { column: string; label: string }[]> = {
+  people: [
+    { column: "first_name",     label: "First Name" },
+    { column: "last_name",      label: "Last Name" },
+    { column: "email",          label: "Email" },
+    { column: "phone",          label: "Phone (primary)" },
+    { column: "phone_cell",     label: "Phone (cell)" },
+    { column: "phone_landline", label: "Phone (landline)" },
+    { column: "birth_date",     label: "Date of Birth" },
+    { column: "gender",         label: "Gender" },
+    { column: "occupation",     label: "Occupation" },
+    { column: "notes",          label: "Notes" },
+  ],
+  locations: [
+    { column: "address_line1",  label: "Street Address" },
+    { column: "city",           label: "City" },
+    { column: "state",          label: "State" },
+    { column: "postal_code",    label: "ZIP Code" },
+    { column: "unit",           label: "Unit / Apt" },
+  ],
+  opportunities: [
+    { column: "title",          label: "Title" },
+    { column: "amount_cents",   label: "Amount (cents)" },
+    { column: "priority",       label: "Priority" },
+    { column: "notes",          label: "Notes" },
+  ],
+  households: [
+    { column: "name",           label: "Household Name" },
+  ],
+  companies: [
+    { column: "name",           label: "Company Name" },
+    { column: "phone",          label: "Phone" },
+    { column: "email",          label: "Email" },
+    { column: "industry",       label: "Industry" },
+  ],
+};
+
+const TABLE_LABELS: Record<string, string> = {
+  people: "People",
+  locations: "Location",
+  opportunities: "Opportunity",
+  households: "Household",
+  companies: "Company",
+};
+
+function normalizeCrmFieldClient(raw: string): { table: string; column: string } {
+  const idx = raw.indexOf(".");
+  return idx >= 0 ? { table: raw.slice(0, idx), column: raw.slice(idx + 1) } : { table: "people", column: raw };
+}
+
+function getFieldLabel(value: string | null, schema?: Record<string, SchemaEntry[]>): string {
+  if (!value) return "(No mapping)";
+  const { table, column } = normalizeCrmFieldClient(value);
+  const tableLabel = TABLE_LABELS[table] ?? table;
+  // Search common fields first
+  const common = COMMON_FIELDS[table]?.find((f) => f.column === column);
+  if (common) return `${tableLabel} › ${common.label}`;
+  // Search advanced schema
+  if (schema) {
+    const adv = schema[table]?.find((f) => f.column === column);
+    if (adv) return `${tableLabel} › ${adv.label}`;
+  }
+  return `${tableLabel} › ${column}`;
+}
+
+function CrmFieldPicker({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (val: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [advancedSchema, setAdvancedSchema] = useState<Record<string, SchemaEntry[]>>({});
+  const [advancedLoading, setAdvancedLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  function loadAdvanced() {
+    if (advancedLoading || Object.keys(advancedSchema).length > 0) return;
+    setAdvancedLoading(true);
+    Promise.all(
+      ["people", "locations", "opportunities", "households", "companies"].map((t) =>
+        fetch(`/api/crm/schema?table=${t}`)
+          .then((r) => r.json())
+          .then((cols: { column: string; label: string }[]) => [t, cols.map((c) => ({ ...c, table: t }))] as [string, SchemaEntry[]])
+      )
+    )
+      .then((entries) => setAdvancedSchema(Object.fromEntries(entries)))
+      .catch(() => {})
+      .finally(() => setAdvancedLoading(false));
+  }
+
+  const displaySchema = showAdvanced && Object.keys(advancedSchema).length > 0 ? advancedSchema : null;
+
+  function fieldMatchesSearch(label: string, column: string) {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return label.toLowerCase().includes(s) || column.toLowerCase().includes(s);
+  }
+
+  function renderGroups(tableKey: string) {
+    const entries: SchemaEntry[] = (displaySchema ?? COMMON_FIELDS)[tableKey] ?? [];
+    // Skip join fields from advanced schema (they belong to a different table and can't be written directly)
+    const filtered = entries.filter((f) => !f.is_join && fieldMatchesSearch(f.label, f.column));
+    if (!filtered.length) return null;
+    return (
+      <div key={tableKey}>
+        <div style={{ fontSize: 10, fontWeight: 700, padding: "6px 12px 3px", opacity: 0.45, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          {TABLE_LABELS[tableKey]}
+        </div>
+        {filtered.map((f) => {
+          const fieldVal = `${tableKey}.${f.column}`;
+          const isSelected = value
+            ? (() => {
+                const norm = normalizeCrmFieldClient(value);
+                return norm.table === tableKey && norm.column === f.column;
+              })()
+            : false;
+          return (
+            <button
+              key={f.column}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChange(isSelected ? null : fieldVal); setOpen(false); setSearch(""); }}
+              style={{
+                display: "block", width: "100%", textAlign: "left",
+                padding: "7px 12px", border: "none", cursor: "pointer", fontSize: 13,
+                background: isSelected ? "rgba(37,99,235,0.1)" : "transparent",
+                color: isSelected ? "var(--gg-primary, #2563eb)" : "var(--gg-text, inherit)",
+                fontWeight: isSelected ? 600 : 400,
+              }}
+            >
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        style={{
+          ...inputStyle,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          cursor: "pointer", textAlign: "left",
+          color: value ? "var(--gg-text, inherit)" : "rgba(0,0,0,0.35)",
+        }}
+      >
+        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {getFieldLabel(value, advancedSchema)}
+        </span>
+        <ChevronRight size={13} style={{ flexShrink: 0, opacity: 0.4, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.12s" }} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100,
+          background: "var(--gg-card, white)", border: "1px solid var(--gg-border, #e5e7eb)",
+          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", overflow: "hidden",
+          maxHeight: 320, display: "flex", flexDirection: "column",
+        }}>
+          {/* Search */}
+          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search fields…"
+              style={{ ...inputStyle, fontSize: 13 }}
+            />
+          </div>
+          {/* Clear option */}
+          {value && (
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChange(null); setOpen(false); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 12px", border: "none", cursor: "pointer", fontSize: 13, opacity: 0.5, background: "transparent", color: "var(--gg-text, inherit)" }}
+            >
+              ✕ Remove mapping
+            </button>
+          )}
+          {/* Field groups */}
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {["people", "locations", "opportunities", "households", "companies"].map(renderGroups)}
+          </div>
+          {/* Advanced toggle */}
+          <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", padding: "8px 12px" }}>
+            {!showAdvanced ? (
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); setShowAdvanced(true); loadAdvanced(); }}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--gg-primary, #2563eb)", padding: 0, fontWeight: 600 }}
+              >
+                Advanced Field Mapping ▸
+                {advancedLoading && " Loading…"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); setShowAdvanced(false); }}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--gg-text-dim, #6b7280)", padding: 0 }}
+              >
+                ← Common fields
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Small icon button ─────────────────────────────────────────────────────────
 

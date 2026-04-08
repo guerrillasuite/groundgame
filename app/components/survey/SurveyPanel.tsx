@@ -15,6 +15,9 @@ interface Question {
   options: string[] | null;
   display_format: string | null;
   required?: boolean;
+  conditions?: {
+    show_if: { question_id: string; operator: "equals" | "not_equals" | "contains"; value: string };
+  } | null;
 }
 
 interface Branding {
@@ -36,6 +39,8 @@ interface SurveyPanelProps {
   isKiosk: boolean;
   branding?: Branding;
   viewConfig?: { pagination?: string; page_groups?: string[][][] | null };
+  deliveryEnabled?: boolean;
+  orderProducts?: string[] | null;
 }
 
 // ── WSPQ scoring ───────────────────────────────────────────────────────────────
@@ -186,6 +191,19 @@ function NolanChart({
   );
 }
 
+// ── Conditional visibility ─────────────────────────────────────────────────────
+
+function isQuestionVisible(q: Question, answers: Record<string, string>): boolean {
+  const c = q.conditions?.show_if;
+  if (!c?.question_id) return true;
+  const actual = String(answers[c.question_id] ?? "").toLowerCase();
+  const target = String(c.value ?? "").toLowerCase();
+  if (c.operator === "equals")     return actual === target;
+  if (c.operator === "not_equals") return actual !== target;
+  if (c.operator === "contains")   return actual.includes(target);
+  return true;
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function SurveyPanel({
@@ -200,6 +218,8 @@ export default function SurveyPanel({
   isKiosk,
   branding,
   viewConfig,
+  deliveryEnabled,
+  orderProducts,
 }: SurveyPanelProps) {
   const isWspq = surveyId.startsWith("wspq-");
 
@@ -225,6 +245,11 @@ export default function SurveyPanel({
   const [countdown, setCountdown] = useState<number | null>(null);
   const [shareToast, setShareToast] = useState(false);
   const [opportunityId, setOpportunityId] = useState<string | null>(null);
+  // Delivery state
+  const [deliveryMode, setDeliveryMode] = useState<"pickup" | "delivery">("pickup");
+  const [deliveryAddr, setDeliveryAddr] = useState({ address_line1: "", city: "", state: "", postal_code: "" });
+  // Products state
+  const [formProducts, setFormProducts] = useState<{ id: string; name: string; sku: string | null }[]>([]);
   // Post-submit form state (always rendered inline on results page, all at once)
   const [psAnswers, setPsAnswers] = useState<Record<string, string>>({});
   const hasPostSubmit = !!(postSubmitQuestions && postSubmitQuestions.length > 0);
@@ -248,16 +273,35 @@ export default function SurveyPanel({
   const resetSurvey = useCallback(() => {
     setPhase("quiz"); setCurrent(0); setAnswers({});
     setOpenAnswer(""); setPsAnswers({});
+    setDeliveryMode("pickup");
+    setDeliveryAddr({ address_line1: "", city: "", state: "", postal_code: "" });
     setCountdown(null); setShareToast(false);
   }, []);
 
+  // Load products for product_picker questions
+  useEffect(() => {
+    if (!questions.some((q) => q.question_type === "product_picker")) return;
+    const url = orderProducts?.length
+      ? `/api/crm/products?ids=${orderProducts.join(",")}`
+      : "/api/crm/products";
+    fetch(url).then((r) => r.json()).then((list) => setFormProducts(Array.isArray(list) ? list : [])).catch(() => {});
+  }, [questions, orderProducts]);
+
   // ── Answer selection ────────────────────────────────────────────────────────
+  function nextVisibleIdx(from: number, updatedAnswers: Record<string, string>): number | "end" {
+    for (let i = from; i < questions.length; i++) {
+      if (isQuestionVisible(questions[i], updatedAnswers)) return i;
+    }
+    return "end";
+  }
+
   function selectAnswer(ans: string) {
     const updated = { ...answers, [currentQuestion.id]: ans };
     setAnswers(updated);
     setOpenAnswer(""); // reset open input for next question
-    if (current < totalQuestions - 1) {
-      setCurrent(current + 1);
+    const next = nextVisibleIdx(current + 1, updated);
+    if (next !== "end") {
+      setCurrent(next);
     } else {
       if (isWspq) {
         const { personal, economic } = computeScores(questions, updated);
@@ -276,8 +320,9 @@ export default function SurveyPanel({
     const updated = { ...answers, [currentQuestion.id]: val };
     setAnswers(updated);
     setOpenAnswer("");
-    if (current < totalQuestions - 1) {
-      setCurrent(current + 1);
+    const next = nextVisibleIdx(current + 1, updated);
+    if (next !== "end") {
+      setCurrent(next);
     } else {
       setPhase("results");
     }
@@ -306,10 +351,12 @@ export default function SurveyPanel({
         });
         return { payment_required: false, opportunity_id: null };
       } else {
+        const deliveryPayload = (deliveryEnabled && deliveryMode === "delivery" && deliveryAddr.address_line1.trim())
+          ? deliveryAddr : null;
         const res = await fetch("/api/survey/panel-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ survey_id: surveyId, tenant_id: tenantId, answers }),
+          body: JSON.stringify({ survey_id: surveyId, tenant_id: tenantId, answers, delivery: deliveryPayload }),
         });
         const data = await res.json().catch(() => ({}));
         if (data.opportunity_id) setOpportunityId(data.opportunity_id);
@@ -402,12 +449,23 @@ export default function SurveyPanel({
 
   // ── Phase: Quiz (all-at-once mode) ──────────────────────────────────────────
   if (phase === "quiz" && viewConfig?.pagination === "all_at_once" && !isWspq) {
-    const allAnswered = questions.every(q => !q.required || answers[q.id]);
+    const visibleQuestions = questions.filter((q) => isQuestionVisible(q, answers));
+    const allAnswered = visibleQuestions.every(q => {
+      if (!q.required) return true;
+      if (q.question_type === "product_picker") {
+        try { const items = JSON.parse(answers[q.id] || "[]"); return items.length > 0 && items.every((i: any) => i.product_id && i.qty >= 1); } catch { return false; }
+      }
+      return Boolean(answers[q.id]);
+    });
+    const deliveryValid = !deliveryEnabled || deliveryMode === "pickup" || deliveryAddr.address_line1.trim();
     const qMap = new Map(questions.map(q => [q.id, q]));
     const rawRows: string[][] = viewConfig?.page_groups?.[0] ?? questions.map(q => [q.id]);
-    const rows: Question[][] = rawRows.map(row => row.map(id => qMap.get(id)).filter(Boolean) as Question[]);
+    const visibleIds = new Set(visibleQuestions.map(q => q.id));
+    const rows: Question[][] = rawRows
+      .map(row => row.map(id => qMap.get(id)).filter((q): q is Question => q != null && visibleIds.has(q.id)))
+      .filter(row => row.length > 0);
     const inRows = new Set(rawRows.flat());
-    questions.filter(q => !inRows.has(q.id)).forEach(q => rows.push([q]));
+    visibleQuestions.filter(q => !inRows.has(q.id)).forEach(q => rows.push([q]));
     const hasTwoCol = rows.some(r => r.length === 2);
 
     return (
@@ -474,13 +532,52 @@ export default function SurveyPanel({
                             ? <textarea rows={3} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder="Your answer…" style={{ ...input, resize: "vertical" }} />
                             : <input type={qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "date" ? "date" : "text"} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"} style={input} />
                         )}
+                        {qType === "product_picker" && (
+                          <ProductPickerField
+                            questionId={q.id}
+                            products={formProducts}
+                            value={val}
+                            onChange={(v) => setAnswers({ ...answers, [q.id]: v })}
+                            primaryColor={primaryColor}
+                            textColor={textColor}
+                            borderColor={borderColor}
+                            isDark={isDark}
+                            input={input}
+                          />
+                        )}
                       </div>
                     );
                   })}
                 </div>
               ))}
             </div>
-            <button type="submit" disabled={submitting || !allAnswered} style={btn(primaryColor)}>
+
+            {/* Delivery toggle */}
+            {deliveryEnabled && (
+              <div style={{ marginBottom: 20, padding: "16px", borderRadius: 12, border: `1px solid ${borderColor}`, background: cardBg }}>
+                <p style={{ color: textColor, fontSize: 14, fontWeight: 600, margin: "0 0 10px" }}>Pickup or Delivery?</p>
+                <div style={{ display: "flex", gap: 10, marginBottom: deliveryMode === "delivery" ? 14 : 0 }}>
+                  {(["pickup", "delivery"] as const).map((m) => (
+                    <button key={m} type="button" onClick={() => setDeliveryMode(m)}
+                      style={{ flex: 1, padding: "10px", borderRadius: 8, fontSize: 14, fontWeight: 700, border: `2px solid ${deliveryMode === m ? primaryColor : borderColor}`, background: deliveryMode === m ? `${primaryColor}20` : "transparent", color: textColor, cursor: "pointer", textTransform: "capitalize" }}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                {deliveryMode === "delivery" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <input value={deliveryAddr.address_line1} onChange={(e) => setDeliveryAddr({ ...deliveryAddr, address_line1: e.target.value })} placeholder="Street address *" required style={input} />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input value={deliveryAddr.city} onChange={(e) => setDeliveryAddr({ ...deliveryAddr, city: e.target.value })} placeholder="City" style={{ ...input, flex: 1 }} />
+                      <input value={deliveryAddr.state} onChange={(e) => setDeliveryAddr({ ...deliveryAddr, state: e.target.value })} placeholder="State" style={{ ...input, width: 80, flex: "none" }} />
+                      <input value={deliveryAddr.postal_code} onChange={(e) => setDeliveryAddr({ ...deliveryAddr, postal_code: e.target.value })} placeholder="ZIP" style={{ ...input, width: 90, flex: "none" }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button type="submit" disabled={submitting || !allAnswered || !deliveryValid} style={btn(primaryColor)}>
               {submitting ? "Submitting…" : "Submit →"}
             </button>
           </form>
@@ -492,7 +589,12 @@ export default function SurveyPanel({
 
   // ── Phase: Quiz (one at a time) ──────────────────────────────────────────────
   if (phase === "quiz") {
-    const progress = (Object.keys(answers).length / totalQuestions) * 100;
+    // Skip invisible questions
+    const visibleQs = questions.filter((q) => isQuestionVisible(q, answers));
+    const visibleIdx = visibleQs.findIndex((q) => q.id === currentQuestion?.id);
+    const visibleTotal = visibleQs.length;
+
+    const progress = (Object.keys(answers).length / Math.max(visibleTotal, 1)) * 100;
     const qType = currentQuestion?.question_type ?? "multiple_choice";
     const isDropdown = currentQuestion?.display_format === "dropdown";
     const choiceOptions = isWspq
@@ -517,7 +619,7 @@ export default function SurveyPanel({
             <div style={{ height: "100%", width: `${progress}%`, background: primaryColor, borderRadius: 2, transition: "width 0.3s" }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <span style={{ color: mutedText, fontSize: 13 }}>Question {current + 1} of {totalQuestions}</span>
+            <span style={{ color: mutedText, fontSize: 13 }}>Question {Math.max(visibleIdx + 1, 1)} of {visibleTotal}</span>
             {isWspq && (
               <span style={{
                 fontSize: 11, fontWeight: 700, letterSpacing: 1, padding: "3px 8px", borderRadius: 4,
@@ -653,8 +755,13 @@ export default function SurveyPanel({
             </div>
           )}
 
-          {current > 0 && !isMultiSelect && !OPEN_TYPES.includes(qType) && (
-            <button onClick={() => setCurrent(current - 1)} style={{ ...ghostBtn, marginTop: 16 }}>
+          {visibleIdx > 0 && !isMultiSelect && !OPEN_TYPES.includes(qType) && (
+            <button onClick={() => {
+              // Go to previous visible question
+              for (let i = current - 1; i >= 0; i--) {
+                if (isQuestionVisible(questions[i], answers)) { setCurrent(i); break; }
+              }
+            }} style={{ ...ghostBtn, marginTop: 16 }}>
               ← Back
             </button>
           )}
@@ -870,6 +977,93 @@ export default function SurveyPanel({
         )}
       </div>
       {footerText && <SurveyFooter text={footerText} textColor={mutedText} />}
+    </div>
+  );
+}
+
+// ── Product Picker Field ───────────────────────────────────────────────────────
+
+function ProductPickerField({
+  questionId,
+  products,
+  value,
+  onChange,
+  primaryColor,
+  textColor,
+  borderColor,
+  isDark,
+  input: inputStyle,
+}: {
+  questionId: string;
+  products: { id: string; name: string; sku: string | null }[];
+  value: string;
+  onChange: (v: string) => void;
+  primaryColor: string;
+  textColor: string;
+  borderColor: string;
+  isDark: boolean;
+  input: React.CSSProperties;
+}) {
+  type Row = { key: string; product_id: string; qty: number };
+  let rows: Row[] = [];
+  try { rows = JSON.parse(value || "[]"); } catch { rows = []; }
+
+  function updateRows(next: Row[]) {
+    onChange(JSON.stringify(next.filter((r) => r.product_id || r.qty > 0)));
+  }
+
+  function addRow() {
+    updateRows([...rows, { key: Math.random().toString(36).slice(2), product_id: "", qty: 1 }]);
+  }
+
+  function removeRow(key: string) {
+    updateRows(rows.filter((r) => r.key !== key));
+  }
+
+  function updateRow(key: string, patch: Partial<Row>) {
+    updateRows(rows.map((r) => r.key === key ? { ...r, ...patch } : r));
+  }
+
+  if (products.length === 0) {
+    return <div style={{ fontSize: 13, opacity: 0.5, padding: "8px 0", color: textColor }}>Loading products…</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {rows.map((row) => (
+        <div key={row.key} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select
+            value={row.product_id}
+            onChange={(e) => updateRow(row.key, { product_id: e.target.value })}
+            style={{ ...inputStyle, flex: 1 }}
+          >
+            <option value="">— Select product —</option>
+            {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sku ? ` (${p.sku})` : ""}</option>)}
+          </select>
+          <input
+            type="number"
+            min={1}
+            value={row.qty}
+            onChange={(e) => updateRow(row.key, { qty: Math.max(1, parseInt(e.target.value) || 1) })}
+            style={{ ...inputStyle, width: 70, flex: "none" }}
+          />
+          <button type="button" onClick={() => removeRow(row.key)}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, opacity: 0.45, color: textColor, padding: "0 4px" }}>
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        style={{
+          display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8,
+          border: `1px solid ${borderColor}`, background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)",
+          cursor: "pointer", fontSize: 14, color: textColor, width: "fit-content", fontWeight: 500,
+        }}
+      >
+        + Add product
+      </button>
     </div>
   );
 }

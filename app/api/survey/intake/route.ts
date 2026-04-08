@@ -13,8 +13,12 @@ function makeSb(tenantId: string) {
 }
 
 /**
- * GET /api/survey/intake?channel=door|dials|texts
- * Returns the tenant's designated op intake survey + questions for the given channel.
+ * GET /api/survey/intake?channel=door|dials|texts|storefront
+ *
+ * For door/dials/texts: returns the tenant's designated op intake survey
+ *   (surveys where op_intake_channels contains the channel).
+ *
+ * For storefront: returns the survey with active_channels containing "storefront".
  */
 export async function GET(req: NextRequest) {
   const tenant = await getTenant();
@@ -25,19 +29,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "channel is required" }, { status: 400 });
   }
 
-  // Find a survey that:
-  // 1. Has this channel in op_intake_channels
-  // 2. Is active for the corresponding active_channels key
   const { data: surveys } = await sb
     .from("surveys")
-    .select("id, title, op_intake_channels, active_channels")
+    .select("id, title, op_intake_channels, active_channels, storefront_mode, delivery_enabled, payment_enabled, order_products")
     .eq("tenant_id", tenant.id)
     .eq("active", true);
 
-  const intakeSurvey = (surveys ?? []).find((s: any) => {
-    const intake: string[] = s.op_intake_channels ?? [];
-    return intake.includes(channel);
-  });
+  let intakeSurvey: any = null;
+
+  if (channel === "storefront") {
+    // Find survey with storefront in active_channels
+    intakeSurvey = (surveys ?? []).find((s: any) => {
+      const ch: string[] = s.active_channels ?? [];
+      return ch.includes("storefront");
+    });
+  } else {
+    // Find survey designated as intake form for this field channel
+    intakeSurvey = (surveys ?? []).find((s: any) => {
+      const intake: string[] = s.op_intake_channels ?? [];
+      return intake.includes(channel);
+    });
+  }
 
   if (!intakeSurvey) {
     return NextResponse.json({ survey: null });
@@ -45,13 +57,18 @@ export async function GET(req: NextRequest) {
 
   const { data: questions } = await sb
     .from("questions")
-    .select("id, question_text, question_type, options, display_format, required, order_index")
+    .select("id, question_text, question_type, options, display_format, required, order_index, crm_field, conditions")
     .eq("survey_id", intakeSurvey.id)
     .order("order_index", { ascending: true });
 
-  // Fetch view config for this channel's view type
-  const channelToViewType: Record<string, string> = { door: "door", dials: "call", texts: "text" };
-  const viewType = channelToViewType[channel] ?? "door";
+  // Map channel to view type
+  const channelToViewType: Record<string, string> = {
+    door: "door",
+    dials: "call",
+    texts: "text",
+    storefront: "embedded",
+  };
+  const viewType = channelToViewType[channel] ?? "embedded";
   const { data: viewConfig } = await sb
     .from("survey_view_configs")
     .select("pagination, page_groups")
@@ -63,6 +80,10 @@ export async function GET(req: NextRequest) {
     survey: {
       id: intakeSurvey.id,
       title: intakeSurvey.title,
+      storefront_mode: intakeSurvey.storefront_mode ?? null,
+      delivery_enabled: Boolean(intakeSurvey.delivery_enabled),
+      payment_enabled: Boolean(intakeSurvey.payment_enabled),
+      order_products: intakeSurvey.order_products ?? null,
     },
     questions: questions ?? [],
     viewConfig: viewConfig ?? null,
