@@ -934,7 +934,7 @@ export default function SurveyBuilder({
                       <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Use this survey as default intake form for</label>
                       <p style={{ margin: "0 0 6px", fontSize: 12, opacity: 0.6 }}>After an opportunity is created in a field session, this form will be shown to capture details.</p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"], ["take_survey", "Take Survey"]].map(([ch, label]) => (
+                        {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"], ["take_survey", "Take Survey"], ["storefront", "Storefront"]].map(([ch, label]) => (
                           <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
                             <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
                               const next = new Set(opIntakeChannels);

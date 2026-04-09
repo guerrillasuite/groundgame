@@ -59,6 +59,9 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
   if (f("crm")) {
     settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
   }
+  if (f("pwa_storefront")) {
+    settingsItems.push({ href: "/crm/settings/storefront", label: "Storefront Tabs" });
+  }
   if (isSuperAdmin) {
     settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });
   }

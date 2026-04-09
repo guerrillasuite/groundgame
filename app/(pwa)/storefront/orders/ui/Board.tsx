@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
@@ -35,8 +35,9 @@ export default function Board({
     return by;
   });
 
-  const [overStage, setOverStage] = useState<string | null>(null);
-  const dragIdRef = useRef<string | null>(null);
+  // Collapsed state — all expanded by default
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [moving, setMoving] = useState<string | null>(null);
   const [q, setQ] = useState("");
 
   const matches = (o: Order) => {
@@ -56,58 +57,37 @@ export default function Board({
     const out: Record<string, Order[]> = {};
     for (const st of stages) out[st.key] = (cols[st.key] || []).filter(matches);
     return out;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cols, stages, q]);
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const st of stages) c[st.key] = viewCols[st.key]?.length ?? 0;
-    return c;
-  }, [viewCols, stages]);
+  const currency = (c?: number | null) =>
+    typeof c === "number" ? `$${(c / 100).toFixed(2)}` : "$0.00";
 
-  const sums = useMemo(() => {
-    const s: Record<string, number> = {};
-    for (const st of stages) {
-      s[st.key] = (viewCols[st.key] || []).reduce((acc, o) => acc + (typeof o.amount_cents === "number" ? o.amount_cents : 0), 0);
-    }
-    return s;
-  }, [viewCols, stages]);
+  async function moveOrder(orderId: string, fromKey: string, toKey: string) {
+    if (fromKey === toKey) return;
+    setMoving(orderId);
 
-  const currency = (c?: number | null) => (typeof c === "number" ? `$${(c / 100).toFixed(2)}` : "$0.00");
-
-  function onDragStart(e: React.DragEvent, id: string) {
-    dragIdRef.current = id;
-    e.dataTransfer.setData("text/plain", id);
-  }
-  function onDragOver(e: React.DragEvent, stageKey: string) {
-    e.preventDefault();
-    if (overStage !== stageKey) setOverStage(stageKey);
-  }
-  async function onDrop(e: React.DragEvent, stageKey: string) {
-    e.preventDefault();
-    setOverStage(null);
-    const id = e.dataTransfer.getData("text/plain");
-    if (!id) return;
-
+    // Optimistic update
     setCols((prev) => {
       const next: Record<string, Order[]> = {};
       for (const k of Object.keys(prev)) next[k] = [...prev[k]];
-      let moved: Order | null = null;
-      for (const k of Object.keys(next)) {
-        const i = next[k].findIndex((o) => o.id === id);
-        if (i >= 0) { moved = { ...next[k][i], stage: stageKey }; next[k].splice(i, 1); break; }
-      }
-      if (moved) next[stageKey] = [moved, ...(next[stageKey] ?? [])];
+      const fromList = [...(next[fromKey] ?? [])];
+      const idx = fromList.findIndex((o) => o.id === orderId);
+      if (idx < 0) return prev;
+      const [moved] = fromList.splice(idx, 1);
+      next[fromKey] = fromList;
+      next[toKey] = [{ ...moved, stage: toKey }, ...(next[toKey] ?? [])];
       return next;
     });
 
     const { error } = await supabase.rpc("gg_update_opportunity_stage_v1", {
       p_tenant_id: tenantId,
-      p_order_id: id,
-      p_stage: stageKey,
+      p_order_id: orderId,
+      p_stage: toKey,
     });
     if (error) {
       console.error(error);
-      // revert
+      // Revert to server state
       const by: Record<string, Order[]> = {};
       stages.forEach((s) => (by[s.key] = []));
       (orders || []).forEach((o) => {
@@ -117,83 +97,79 @@ export default function Board({
       setCols(by);
       alert("Failed to update stage.");
     }
-    dragIdRef.current = null;
+    setMoving(null);
   }
+
+  const totalOrders = Object.values(cols).reduce((s, arr) => s + arr.length, 0);
 
   return (
     <div>
       <style jsx>{`
-        /* Search toolbar */
-        .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .toolbar {
+          display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+        }
         .search {
-          flex: 1; display: inline-flex; align-items: center; gap: 8px;
+          flex: 1; display: flex; align-items: center; gap: 8px;
           padding: 8px 12px; border-radius: 10px;
-          border: 1px solid rgb(var(--border-600));
-          background: rgb(var(--card-700));
+          border: 1px solid var(--gg-border, #e5e7eb);
+          background: transparent;
         }
-        .search input { flex: 1; background: transparent; border: 0; outline: none; color: inherit; min-width: 80px; }
-        .search .clear { padding: 3px 8px; border-radius: 6px; border: 1px solid rgb(var(--border-600)); background: rgb(var(--surface-800)); cursor: pointer; font-size: 12px; }
-
-        /* Board — horizontal on desktop, vertical on mobile */
-        .board {
-          display: grid;
-          grid-template-columns: repeat(${stages.length}, minmax(280px, 1fr));
-          gap: 14px;
-          align-items: start;
-          width: 100%;
+        .search input {
+          flex: 1; background: transparent; border: 0; outline: none;
+          color: inherit; font-size: 14px; min-width: 0;
         }
-        @media (max-width: 768px) {
-          .board { grid-template-columns: 1fr; }
+        .clear {
+          padding: 3px 8px; border-radius: 6px;
+          border: 1px solid var(--gg-border, #e5e7eb);
+          background: transparent; cursor: pointer; font-size: 12px; color: inherit;
         }
 
-        /* Column */
-        .col {
-          background: rgb(var(--card-700));
-          border: 1px solid rgb(var(--border-600));
-          border-radius: var(--radius);
-          display: flex; flex-direction: column;
-          box-shadow: 0 4px 12px rgba(59,130,246,.08);
+        .accordion { display: flex; flex-direction: column; gap: 8px; }
+
+        .stage-section {
+          border: 1px solid var(--gg-border, #e5e7eb);
+          border-radius: 12px; overflow: hidden;
         }
-        .col.drop { outline: 2px dashed rgba(59,130,246,.8); outline-offset: -4px; }
 
-        /* Column header */
-        .head {
-          padding: 10px 14px;
-          border-bottom: 1px solid rgb(var(--border-600));
-          border-top-left-radius: var(--radius);
-          border-top-right-radius: var(--radius);
-          background: rgb(var(--card-700));
+        .stage-hd {
+          display: flex; align-items: center; gap: 10px;
+          padding: 12px 14px; cursor: pointer; user-select: none;
+          background: rgba(0,0,0,0.02);
         }
-        .head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-        .stage-label { font-weight: 800; font-size: 14px; }
-        .stage-meta { font-size: 11px; opacity: 0.55; white-space: nowrap; }
+        .stage-hd:not(.is-collapsed) {
+          border-bottom: 1px solid var(--gg-border, #e5e7eb);
+        }
+        .stage-name { font-weight: 700; font-size: 14px; flex: 1; }
+        .stage-meta { font-size: 12px; opacity: 0.55; }
+        .chevron { font-size: 10px; opacity: 0.35; transition: transform 0.18s; }
+        .chevron.open { transform: rotate(90deg); }
 
-        /* Card list */
-        .body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .stage-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 
-        /* Card — auto height, content-driven */
         .kcard {
-          background: rgb(var(--surface-800));
-          border: 1px solid rgb(var(--border-600));
-          border-radius: 10px;
-          box-shadow: 0 4px 14px rgba(59,130,246,.12);
-          padding: 12px;
-          cursor: grab;
-          transition: border-color .12s, box-shadow .12s;
-          display: flex; flex-direction: column; gap: 6px;
+          border: 1px solid var(--gg-border, #e5e7eb);
+          border-radius: 10px; padding: 12px;
+          cursor: pointer; transition: border-color .12s;
+          display: flex; flex-direction: column; gap: 7px;
         }
-        .kcard:hover { border-color: rgba(255,255,255,.18); box-shadow: 0 8px 22px rgba(59,130,246,.2); }
-        .kcard:active { cursor: grabbing; }
+        .kcard:active { border-color: var(--gg-primary, #2563eb); }
 
-        .card-title { font-weight: 700; font-size: 14px; line-height: 1.2; }
+        .card-title { font-weight: 700; font-size: 14px; line-height: 1.3; }
         .card-items { display: flex; flex-direction: column; gap: 2px; }
         .card-item { font-size: 12px; opacity: 0.65; display: flex; gap: 6px; }
-        .card-item .qty { font-variant-numeric: tabular-nums; min-width: 22px; }
-        .card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
-        .card-total { font-weight: 800; font-variant-numeric: tabular-nums; font-size: 14px; }
-        .card-hint { font-size: 11px; opacity: 0.35; }
-
-        .empty { padding: 16px 10px; font-size: 13px; opacity: 0.4; text-align: center; }
+        .card-foot {
+          display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        }
+        .card-total { font-weight: 700; font-size: 13px; }
+        .stage-sel {
+          font-size: 12px; padding: 3px 6px; border-radius: 6px;
+          border: 1px solid var(--gg-border, #e5e7eb);
+          background: transparent; cursor: pointer; color: inherit;
+          max-width: 140px; flex-shrink: 0;
+        }
+        .empty {
+          padding: 12px 6px; font-size: 13px; opacity: 0.4; text-align: center;
+        }
       `}</style>
 
       {/* Search */}
@@ -205,70 +181,102 @@ export default function Board({
             placeholder="Search orders, items, SKU…"
             onChange={(e) => setQ(e.target.value)}
           />
-          {q && <button className="clear" type="button" onClick={() => setQ("")}>Clear</button>}
+          {q && (
+            <button className="clear" type="button" onClick={() => setQ("")}>
+              Clear
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="board">
+      <p style={{ fontSize: 13, opacity: 0.5, margin: "0 0 12px" }}>
+        {totalOrders} {totalOrders === 1 ? "order" : "orders"} total
+      </p>
+
+      <div className="accordion">
         {stages.map((stage) => {
           const list = viewCols[stage.key] || [];
-          const cnt  = counts[stage.key] || 0;
-          const sum  = sums[stage.key]   || 0;
-          const hot  = overStage === stage.key;
+          const isCollapsed = collapsed[stage.key] ?? false;
+          const sum = list.reduce(
+            (acc, o) => acc + (typeof o.amount_cents === "number" ? o.amount_cents : 0),
+            0
+          );
 
           return (
-            <div
-              key={stage.key}
-              className={`col ${hot ? "drop" : ""}`}
-              onDragOver={(e) => onDragOver(e, stage.key)}
-              onDrop={(e) => onDrop(e, stage.key)}
-            >
-              <div className="head">
-                <div className="head-row">
-                  <span className="stage-label">{stage.label}</span>
-                  <span className="stage-meta">
-                    {cnt} {cnt === 1 ? "order" : "orders"} · {currency(sum)}
-                  </span>
-                </div>
+            <div key={stage.key} className="stage-section">
+              {/* Stage header */}
+              <div
+                className={`stage-hd${isCollapsed ? " is-collapsed" : ""}`}
+                onClick={() =>
+                  setCollapsed((c) => ({ ...c, [stage.key]: !c[stage.key] }))
+                }
+              >
+                <span className="stage-name">{stage.label}</span>
+                <span className="stage-meta">
+                  {list.length} {list.length === 1 ? "order" : "orders"}
+                  {sum > 0 ? ` · ${currency(sum)}` : ""}
+                </span>
+                <span className={`chevron${isCollapsed ? "" : " open"}`}>▶</span>
               </div>
 
-              <div className="body">
-                {list.map((o) => {
-                  const items = Array.isArray(o.items) ? o.items : [];
-                  const show  = items.slice(0, 3);
-                  const more  = items.length - show.length;
-                  return (
-                    <div
-                      key={o.id}
-                      className="kcard"
-                      draggable
-                      onDragStart={(e) => onDragStart(e, o.id)}
-                      onClick={() => {
-                        if (dragIdRef.current === o.id) return;
-                        router.push(`/storefront/orders/${o.id}`);
-                      }}
-                    >
-                      <div className="card-title">{o.title || "Untitled Order"}</div>
-                      {show.length > 0 && (
-                        <div className="card-items">
-                          {show.map((it, i) => (
-                            <div key={i} className="card-item">
-                              <span className="qty">{it.quantity ?? 0}×</span>
-                              <span>{it.name || it.sku || "Item"}</span>
-                            </div>
-                          ))}
-                          {more > 0 && <div className="card-item" style={{ opacity: 0.4 }}>+{more} more…</div>}
+              {/* Cards */}
+              {!isCollapsed && (
+                <div className="stage-body">
+                  {list.map((o) => {
+                    const items = Array.isArray(o.items) ? o.items : [];
+                    const show = items.slice(0, 3);
+                    const more = items.length - show.length;
+                    return (
+                      <div
+                        key={o.id}
+                        className="kcard"
+                        onClick={() => router.push(`/storefront/orders/${o.id}`)}
+                      >
+                        <div className="card-title">{o.title || "Untitled Order"}</div>
+
+                        {show.length > 0 && (
+                          <div className="card-items">
+                            {show.map((it, i) => (
+                              <div key={i} className="card-item">
+                                <span style={{ minWidth: 22 }}>{it.quantity ?? 0}×</span>
+                                <span>{it.name || it.sku || "Item"}</span>
+                              </div>
+                            ))}
+                            {more > 0 && (
+                              <div className="card-item" style={{ opacity: 0.35 }}>
+                                +{more} more…
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="card-foot">
+                          <span className="card-total">{currency(o.amount_cents)}</span>
+                          <select
+                            className="stage-sel"
+                            value={o.stage ?? stage.key}
+                            disabled={moving === o.id}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              moveOrder(o.id, stage.key, e.target.value);
+                            }}
+                          >
+                            {stages.map((s) => (
+                              <option key={s.key} value={s.key}>
+                                {s.label}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                      )}
-                      <div className="card-footer">
-                        <span className="card-total">{currency(o.amount_cents)}</span>
-                        <span className="card-hint">Tap to open</span>
                       </div>
-                    </div>
-                  );
-                })}
-                {list.length === 0 && <div className="empty">No orders</div>}
-              </div>
+                    );
+                  })}
+                  {list.length === 0 && (
+                    <div className="empty">No orders in this stage</div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
