@@ -2,7 +2,7 @@
 import React from "react";
 
 type Props = { name: IconName; size?: number; className?: string; "aria-hidden"?: boolean };
-type IconName = "phone" | "door" | "list" | "kanban" | "users" | "home" | "map" | "chev" | "flag" | "message";
+type IconName = "phone" | "door" | "list" | "kanban" | "users" | "home" | "map" | "chev" | "flag" | "message" | "store" | "cart" | "boxes";
 
 const stroke = { stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" as const };
 
@@ -47,6 +47,18 @@ export function Icon({ name, size = 20, className, ...rest }: Props) {
     case "message":
       return <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...rest}>
         <path {...stroke} d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>;
+    case "store":
+      return <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...rest}>
+        <path {...stroke} d="M3 3h18l-2 7H5zM5 10v11h14V10M9 10v11M15 10v11"/>
+      </svg>;
+    case "cart":
+      return <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...rest}>
+        <path {...stroke} d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/>
+      </svg>;
+    case "boxes":
+      return <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...rest}>
+        <path {...stroke} d="M2 7l10-5 10 5-10 5zM2 7v10l10 5 10-5V7M12 12v10M7 9.5l10-5"/>
       </svg>;
     default:
       return null;

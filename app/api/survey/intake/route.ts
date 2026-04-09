@@ -67,6 +67,9 @@ export async function GET(req: NextRequest) {
     dials: "call",
     texts: "text",
     storefront: "embedded",
+    take_order: "embedded",
+    make_sale: "embedded",
+    take_survey: "embedded",
   };
   const viewType = channelToViewType[channel] ?? "embedded";
   const { data: viewConfig } = await sb

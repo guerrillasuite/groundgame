@@ -25,13 +25,13 @@ type Question = {
   conditions?: any;
 };
 
-export default function TakeOrderPage() {
-  const [survey, setSurvey] = useState<Survey | null | undefined>(undefined); // undefined = loading
+export default function TakeSurveyPage() {
+  const [survey, setSurvey] = useState<Survey | null | undefined>(undefined);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [viewConfig, setViewConfig] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/survey/intake?channel=take_order")
+    fetch("/api/survey/intake?channel=take_survey")
       .then((r) => r.json())
       .then((data) => {
         setSurvey(data.survey ?? null);
@@ -52,13 +52,13 @@ export default function TakeOrderPage() {
   if (!survey) {
     return (
       <section className="stack" style={{ padding: 32 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Take Order</h1>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Take Survey</h1>
         <p style={{ opacity: 0.6, marginTop: 8 }}>
-          No Take Order form configured. Go to{" "}
+          No survey configured. Go to{" "}
           <a href="/crm/survey" style={{ color: "var(--gg-primary, #2563eb)" }}>
             Survey Builder
           </a>{" "}
-          and set a survey's default intake form to <strong>Take Order</strong>.
+          and set a survey's default intake form to <strong>Take Survey</strong>.
         </p>
       </section>
     );

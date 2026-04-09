@@ -16,7 +16,12 @@ export const ALL_FEATURE_KEYS = [
   "pwa_doors",         // door canvassing app
   "pwa_dials",         // phone banking app
   "pwa_texts",         // text banking app
-  "pwa_storefront",    // storefront / ordering
+  "pwa_storefront",              // storefront / ordering
+  "pwa_storefront_take_order",  // Take Order tab
+  "pwa_storefront_make_sale",   // Make Sale tab
+  "pwa_storefront_orders",      // View Orders tab
+  "pwa_storefront_inventory",   // View Inventory tab
+  "pwa_storefront_survey",      // Take Survey tab
 ] as const;
 
 export type FeatureKey = (typeof ALL_FEATURE_KEYS)[number];
@@ -43,7 +48,12 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   pwa_doors:         { label: "Doors (Door Canvassing)",                  group: "PWA" },
   pwa_dials:         { label: "Dials (Phone Banking)",                    group: "PWA" },
   pwa_texts:         { label: "Texts (Text Banking)",                     group: "PWA" },
-  pwa_storefront:    { label: "Storefront / Ordering",                    group: "PWA" },
+  pwa_storefront:              { label: "Storefront / Ordering",      group: "PWA" },
+  pwa_storefront_take_order:  { label: "Storefront — Take Order tab",  group: "PWA Storefront" },
+  pwa_storefront_make_sale:   { label: "Storefront — Make Sale tab",   group: "PWA Storefront" },
+  pwa_storefront_orders:      { label: "Storefront — View Orders tab", group: "PWA Storefront" },
+  pwa_storefront_inventory:   { label: "Storefront — Inventory tab",   group: "PWA Storefront" },
+  pwa_storefront_survey:      { label: "Storefront — Take Survey tab", group: "PWA Storefront" },
 };
 
 export function hasFeature(features: readonly FeatureKey[], key: FeatureKey): boolean {
