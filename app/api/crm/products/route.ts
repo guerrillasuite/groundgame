@@ -40,3 +40,38 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data ?? []);
 }
+
+/**
+ * POST /api/crm/products
+ * Creates a new product for the current tenant.
+ * Body: { name, sku?, retail_cents?, materials_cents?, packaging_cents?, labor_cents?, on_hand? }
+ */
+export async function POST(req: NextRequest) {
+  const tenant = await getTenant();
+  const sb = makeSb(tenant.id);
+
+  const body = await req.json().catch(() => null);
+  if (!body || !body.name?.trim()) {
+    return NextResponse.json({ error: "name is required" }, { status: 400 });
+  }
+
+  const insert: Record<string, unknown> = {
+    tenant_id: tenant.id,
+    name: body.name.trim(),
+    status: "active",
+  };
+
+  const optionals = ["sku", "description", "retail_cents", "materials_cents", "packaging_cents", "labor_cents", "on_hand"] as const;
+  for (const key of optionals) {
+    if (key in body && body[key] != null) insert[key] = body[key];
+  }
+
+  const { data, error } = await sb
+    .from("products")
+    .insert(insert)
+    .select("id, name, sku, retail_cents, materials_cents, packaging_cents, labor_cents, on_hand, status")
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data, { status: 201 });
+}

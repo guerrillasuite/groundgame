@@ -14,7 +14,11 @@ function makeSb(tenantId: string) {
   );
 }
 
-const PATCHABLE = ["name", "sku", "description", "retail_cents", "on_hand", "status"] as const;
+const PATCHABLE = [
+  "name", "sku", "description",
+  "retail_cents", "materials_cents", "packaging_cents", "labor_cents",
+  "on_hand", "status",
+] as const;
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params;
@@ -23,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
   const { data: product, error } = await sb
     .from("products")
-    .select("id, name, sku, description, retail_cents, on_hand, status, photo_url")
+    .select("id, name, sku, description, retail_cents, materials_cents, packaging_cents, labor_cents, on_hand, status, photo_url")
     .eq("id", id)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
@@ -37,7 +41,26 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     .select("id", { count: "exact", head: true })
     .eq("product_id", id);
 
-  return NextResponse.json({ product, activeOrderCount: activeOrderCount ?? 0 });
+  // Fetch recent orders linked to this product (last 20)
+  const { data: recentOrdersRaw } = await sb
+    .from("order_items")
+    .select("id, quantity, unit_price_cents, opportunity_id, opportunities(id, title, stage, created_at)")
+    .eq("product_id", id)
+    .eq("tenant_id", tenant.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const recentOrders = (recentOrdersRaw ?? []).map((oi: any) => ({
+    id: oi.id,
+    quantity: oi.quantity,
+    unit_price_cents: oi.unit_price_cents,
+    opportunity_id: oi.opportunity_id,
+    opportunity_title: oi.opportunities?.title ?? null,
+    opportunity_stage: oi.opportunities?.stage ?? null,
+    created_at: oi.opportunities?.created_at ?? null,
+  }));
+
+  return NextResponse.json({ product, activeOrderCount: activeOrderCount ?? 0, recentOrders });
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {

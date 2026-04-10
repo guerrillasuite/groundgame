@@ -26,6 +26,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
       { href: "/crm/locations",   label: "Locations" },
     ];
     if (f("crm_companies")) recordItems.push({ href: "/crm/companies", label: "Companies" });
+    recordItems.push({ href: "/crm/products", label: "Products" });
     nav.push({ label: "Records", items: recordItems });
   }
 
