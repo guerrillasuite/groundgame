@@ -29,50 +29,78 @@ export default function InventoryEditor({ initial }: { initial: ProductRow[] }) 
         });
       }}
     >
-      <div className="table" role="table" style={{ width: "100%", overflowX: "auto" }}>
-        <div className="row head" role="row" style={{ fontWeight: 700 }}>
-          <div style={{ flex: 2 }}>Product</div>
-          <div style={{ flex: 1 }}>SKU</div>
-          <div style={{ width: 100, textAlign: "right" }}>On Hand</div>
-          <div style={{ width: 120, textAlign: "right" }}>Reserved</div>
-        </div>
+      <div style={{ borderRadius: 12, border: "1px solid var(--gg-border, #e5e7eb)", overflow: "hidden" }}>
+        {rows.length === 0 && (
+          <p style={{ margin: 0, padding: "20px 16px", fontSize: 13, opacity: 0.5 }}>No active products found.</p>
+        )}
         {rows.map((r, i) => (
-          <div key={r.id} className="row" role="row" style={{ alignItems: "center" }}>
-            <div style={{ flex: 2 }}>
+          <div
+            key={r.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "14px 16px",
+              borderBottom: i < rows.length - 1 ? "1px solid var(--gg-border, #e5e7eb)" : undefined,
+            }}
+          >
+            {/* Left: name + SKU */}
+            <div style={{ flex: 1, minWidth: 0 }}>
               <Link
                 href={`/storefront/inventory/${r.id}`}
-                style={{ fontWeight: 600, textDecoration: "none", color: "var(--gg-primary, #2563eb)" }}
+                style={{ fontWeight: 700, fontSize: 15, textDecoration: "none", color: "inherit", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
               >
                 {r.name}
               </Link>
+              {r.sku && (
+                <span style={{ fontSize: 12, opacity: 0.5, marginTop: 2, display: "block" }}>
+                  {r.sku}
+                </span>
+              )}
             </div>
-            <div style={{ flex: 1, fontSize: 13, opacity: 0.65 }}>{r.sku ?? ""}</div>
-            <div style={{ width: 100 }}>
-              <input
-                type="number"
-                value={Number(r.on_hand ?? 0)}
-                min={0}
-                onChange={(e) => {
-                  const next = [...rows];
-                  next[i] = { ...r, on_hand: Number(e.target.value) };
-                  setRows(next);
-                }}
-                style={{ width: "100%", textAlign: "right" }}
-              />
-            </div>
-            <div style={{ width: 120, textAlign: "right", opacity: 0.65 }}>
-              {Number(r.reserved_qty ?? 0)}
+
+            {/* Right: on-hand input + reserved */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <label style={{ fontSize: 11, opacity: 0.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  On Hand
+                </label>
+                <input
+                  type="number"
+                  value={Number(r.on_hand ?? 0)}
+                  min={0}
+                  onChange={(e) => {
+                    const next = [...rows];
+                    next[i] = { ...r, on_hand: Number(e.target.value) };
+                    setRows(next);
+                  }}
+                  style={{
+                    width: 64,
+                    textAlign: "right",
+                    padding: "5px 8px",
+                    borderRadius: 6,
+                    border: "1px solid var(--gg-border, #e5e7eb)",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    background: "transparent",
+                    color: "inherit",
+                  }}
+                />
+              </div>
+              {(r.reserved_qty ?? 0) > 0 && (
+                <span style={{ fontSize: 11, opacity: 0.5 }}>
+                  {Number(r.reserved_qty)} reserved
+                </span>
+              )}
             </div>
           </div>
         ))}
-        {rows.length === 0 && (
-          <div className="row" style={{ opacity: 0.5, fontSize: 13 }}>No active products found.</div>
-        )}
       </div>
 
-      <div className="row" style={{ gap: 8 }}>
-        <button className="btn" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-      </div>
+      <button className="btn" disabled={pending} style={{ alignSelf: "flex-start" }}>
+        {pending ? "Saving…" : "Save"}
+      </button>
     </form>
   );
 }

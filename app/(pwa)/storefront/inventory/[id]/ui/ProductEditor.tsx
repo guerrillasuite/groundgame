@@ -347,13 +347,16 @@ export default function ProductEditor({
 
   return (
     <section className="stack" style={{ padding: 16, maxWidth: 540 }}>
-      {/* Back link */}
-      <Link href={backHref} style={{ fontSize: 13, opacity: 0.6, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
-        ← {product.status === "inactive" ? "Inactive Products" : "Inventory"}
-      </Link>
+      {/* Back link + title */}
+      <div>
+        <Link href={backHref} style={{ fontSize: 13, opacity: 0.6, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+          ← {product.status === "inactive" ? "Inactive Products" : "Inventory"}
+        </Link>
+        <h1 style={{ margin: "6px 0 0", fontSize: 22, fontWeight: 800 }}>{product.name}</h1>
+      </div>
 
       {/* Photo */}
-      <div style={{ width: "100%", aspectRatio: "16/9", borderRadius: 12, overflow: "hidden", background: "var(--gg-border, #e5e7eb)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 200, aspectRatio: "1/1", borderRadius: 12, overflow: "hidden", background: "var(--gg-border, #e5e7eb)", display: "flex", alignItems: "center", justifyContent: "center" }}>
         {product.photo_url ? (
           <img src={product.photo_url} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : (
@@ -361,11 +364,10 @@ export default function ProductEditor({
         )}
       </div>
 
-      {/* Name + status row */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+      {/* SKU + status row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>{product.name}</h1>
-          {product.sku && <p style={{ margin: "4px 0 0", fontSize: 13, opacity: 0.55 }}>SKU: {product.sku}</p>}
+          {product.sku && <p style={{ margin: 0, fontSize: 13, opacity: 0.55 }}>SKU: {product.sku}</p>}
         </div>
         <button
           type="button"
