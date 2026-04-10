@@ -40,7 +40,7 @@ export default async function PersonDetail({ params }: Params) {
   // 1) Person (joined through tenant_people to enforce tenant isolation)
   const { data: person, error: pErr } = await sb
     .from("people")
-    .select(`id, title, first_name, middle_name, middle_initial, last_name, suffix, email, phone, contact_type, notes, created_at, household_id, active,
+    .select(`id, title, first_name, middle_name, middle_initial, last_name, suffix, email, phone, notes, created_at, household_id, active,
       lalvoteid, state_voter_id, county_voter_id, gender, birth_date, age, party, party_switcher, party_switch_type,
       voter_status, registration_date, permanent_absentee, veteran, do_not_call, place_of_birth,
       phone_cell, phone_landline, phone_cell_confidence, mailing_address, mailing_city, mailing_state, mailing_zip,
@@ -53,7 +53,7 @@ export default async function PersonDetail({ params }: Params) {
       education_level, marital_status, religion,
       occupation, occupation_title, company_name, income_range, net_worth_range,
       length_of_residence, moved_from_state, meta_json,
-      tenant_people!inner(tenant_id, notes, contact_type, custom_data, contact_types)`)
+      tenant_people!inner(tenant_id, notes, custom_data, contact_types)`)
     .eq("id", personId)
     .eq("tenant_people.tenant_id", tenant.id)
     .single();
@@ -69,7 +69,8 @@ export default async function PersonDetail({ params }: Params) {
     .eq("tenant_id", tenant.id)
     .order("order_index");
   const availableContactTypes: { key: string; label: string }[] = Array.isArray(availableCTs) ? [...availableCTs] : [];
-  const currentContactTypes: string[] = (person as any).tenant_people?.contact_types ?? [];
+  const rawContactTypes = (person as any).tenant_people?.[0]?.contact_types ?? (person as any).tenant_people?.contact_types;
+  const currentContactTypes: string[] = Array.isArray(rawContactTypes) ? rawContactTypes : (rawContactTypes ? [rawContactTypes] : []);
 
   // 4) Household — try junction table first, then direct field
   let household: { id: string; name: string | null; location_id: string | null } | null = null;
@@ -220,15 +221,7 @@ export default async function PersonDetail({ params }: Params) {
                       </span>
                     );
                   })
-                : person.contact_type && (
-                    <span style={{
-                      fontSize: 12, fontWeight: 600,
-                      padding: "2px 10px", borderRadius: 10,
-                      background: "rgba(99,102,241,0.1)", color: "#4338ca",
-                    }}>
-                      {person.contact_type}
-                    </span>
-                  )
+                : null
               }
               {(person as any).active === false && (
                 <span style={{

@@ -37,7 +37,7 @@ const ENTITY_TABS: { value: EntityType; label: string }[] = [
 const ENTITY_COLUMNS: Record<EntityType, { key: string; label: string; width?: number }[]> = {
   people:     [
     { key: "name", label: "Name", width: 200 }, { key: "email", label: "Email", width: 220 },
-    { key: "phone", label: "Phone", width: 140 }, { key: "contact_type", label: "Contact Type", width: 130 },
+    { key: "phone", label: "Phone", width: 140 },
   ],
   households: [{ key: "name", label: "Name", width: 220 }, { key: "address", label: "Address", width: 380 }],
   locations:  [{ key: "address", label: "Address", width: 320 }, { key: "city", label: "City", width: 140 }, { key: "state", label: "State", width: 80 }],
@@ -74,8 +74,7 @@ function getEditFields(target: EntityType, contactTypes: ContactType[]): FieldDe
         { key: "phone_cell",     label: "Cell Phone",     inputType: "text" },
         { key: "phone_landline", label: "Landline",       inputType: "text" },
         // ── Contact types
-        { key: "contact_types",  label: "Contact Types (multi-value)", inputType: "multiselect", options: contactTypes.map((ct) => ({ value: ct.key, label: ct.label })) },
-        { key: "contact_type",   label: "Contact Type (legacy single)", inputType: "select", options: ctOpts },
+        { key: "contact_types",  label: "Contact Types", inputType: "multiselect", options: contactTypes.map((ct) => ({ value: ct.key, label: ct.label })) },
         // ── Notes
         { key: "notes", label: "Notes", inputType: "textarea", hasMode: true },
       ];
@@ -148,7 +147,7 @@ function normalizeRow(target: EntityType, item: any): Record<string, any> {
       return {
         id: item.id,
         name: item.name ?? ([item.first_name, item.last_name].filter(Boolean).join(" ") || "—"),
-        email: item.email ?? "", phone: item.phone ?? "", contact_type: item.contact_type ?? "",
+        email: item.email ?? "", phone: item.phone ?? "",
       };
     case "households":
       return {

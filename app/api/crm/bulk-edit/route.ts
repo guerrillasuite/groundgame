@@ -19,7 +19,7 @@ type Target = "people" | "households" | "locations" | "companies";
 const BULK_EDITABLE: Record<Target, readonly string[]> = {
   people: [
     "title", "first_name", "middle_name", "middle_initial", "last_name", "suffix",
-    "email", "phone", "phone_cell", "phone_landline", "contact_type", "notes",
+    "email", "phone", "phone_cell", "phone_landline", "notes",
   ],
   households: ["name", "notes"],
   locations:  ["address_line1", "address_line2", "city", "state", "postal_code", "notes"],
@@ -81,17 +81,6 @@ export async function POST(req: NextRequest) {
         : sb.from(target).update(standardUpdates).in("id", c).eq("tenant_id", tenant.id);
       const { error } = await q;
       if (error) errors.push(error.message);
-    }
-    // For contact_type on people: also sync the tenant_people record
-    if (target === "people" && standardUpdates.contact_type !== undefined) {
-      for (const c of chunks) {
-        const { error } = await sb
-          .from("tenant_people")
-          .update({ contact_type: standardUpdates.contact_type })
-          .in("person_id", c)
-          .eq("tenant_id", tenant.id);
-        if (error) errors.push(`tenant_people.contact_type: ${error.message}`);
-      }
     }
   }
 

@@ -81,10 +81,9 @@ export default async function PeoplePage() {
       searchEndpoint="/api/crm/people/search"
       searchPlaceholder="Search by name, email, phone…"
       columns={[
-        { key: "name",         label: "Name",         width: 200 },
-        { key: "email",        label: "Email",        width: 220 },
-        { key: "phone",        label: "Phone",        width: 140 },
-        { key: "contact_type", label: "Contact Type", width: 130 },
+        { key: "name",  label: "Name",  width: 200 },
+        { key: "email", label: "Email", width: 220 },
+        { key: "phone", label: "Phone", width: 140 },
       ]}
       target="people"
       rowHrefPrefix="/crm/people/"

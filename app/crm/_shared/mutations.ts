@@ -21,7 +21,7 @@ function makeSb(tenantId: string) {
 const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   people: [
     "title", "first_name", "middle_name", "middle_initial", "last_name", "suffix",
-    "email", "phone", "notes", "household_id", "contact_type",
+    "email", "phone", "notes", "household_id",
     "phone_cell", "phone_landline",
   ],
   locations: [
@@ -150,9 +150,14 @@ export async function createPersonAction(
 
   if (pErr || !newPerson) throw new Error(pErr?.message ?? "Failed to create person");
 
-  // Link to tenant
+  // Link to tenant — write to contact_types array (canonical), not singular contact_type
   await sb.from("tenant_people").upsert(
-    { tenant_id: tenant.id, person_id: (newPerson as any).id, linked_at: new Date().toISOString(), contact_type: contactType },
+    {
+      tenant_id: tenant.id,
+      person_id: (newPerson as any).id,
+      linked_at: new Date().toISOString(),
+      contact_types: contactType ? [contactType] : [],
+    },
     { onConflict: "tenant_id,person_id", ignoreDuplicates: false }
   );
 
