@@ -18,6 +18,7 @@ import type {
   ItemEntry,
   ProductOption,
   TenantUser,
+  ContactTypeOption,
 } from "./ui/OppDetailClient";
 
 function makeSb(tenantId: string) {
@@ -70,10 +71,13 @@ export default async function OpportunityDetail({ params }: Params) {
     );
   }
 
+  const contactType = (oppRaw as any).contact_type ?? null;
+
   const opp: OppData = {
     id: oppRaw.id,
     title: oppRaw.title,
     stage: oppRaw.stage,
+    contact_type: contactType,
     amount_cents: oppRaw.amount_cents,
     description: oppRaw.description,
     notes: oppRaw.notes,
@@ -82,19 +86,22 @@ export default async function OpportunityDetail({ params }: Params) {
     due_at: (oppRaw as any).due_at ?? null,
   };
 
-  // ── 2. Stages (for the stage dropdown) ─────────────────────────────────────
-  const contactType = (oppRaw as any).contact_type ?? null;
-  // Prefer stages for this opp's contact type; fall back to all stages so the
-  // dropdown is never empty (e.g. when contact_type is null or unrecognised).
-  const { data: ctStagesData } = contactType
-    ? await sb.from("opportunity_stages").select("key,label").eq("tenant_id", tenantId).eq("contact_type_key", contactType).order("order_index", { ascending: true })
-    : { data: null };
-  const { data: allStagesData } = await sb
-    .from("opportunity_stages")
-    .select("key,label")
-    .eq("tenant_id", tenantId)
-    .order("order_index", { ascending: true });
+  // ── 2. Stages + contact types (for dropdowns) ───────────────────────────────
+  const [ctStagesResult, allStagesResult, ctTypesResult] = await Promise.all([
+    contactType
+      ? sb.from("opportunity_stages").select("key,label").eq("tenant_id", tenantId).eq("contact_type_key", contactType).order("order_index", { ascending: true })
+      : Promise.resolve({ data: null }),
+    sb.from("opportunity_stages").select("key,label").eq("tenant_id", tenantId).order("order_index", { ascending: true }),
+    sb.from("tenant_contact_types").select("key,label").eq("tenant_id", tenantId).order("order_index", { ascending: true }),
+  ]);
+
+  const ctStagesData = ctStagesResult.data;
+  const allStagesData = allStagesResult.data;
   const stagesData = (ctStagesData && (ctStagesData as any[]).length > 0) ? ctStagesData : allStagesData;
+
+  const contactTypeOptions: ContactTypeOption[] = Array.isArray(ctTypesResult.data)
+    ? (ctTypesResult.data as any[]).map((ct) => ({ key: ct.key, label: ct.label || ct.key }))
+    : [];
 
   const stages =
     Array.isArray(stagesData) && stagesData.length > 0
@@ -126,30 +133,44 @@ export default async function OpportunityDetail({ params }: Params) {
     ? junctionIds
     : (oppRaw.contact_person_id ? [oppRaw.contact_person_id] : []);
 
-  if (personIdsToFetch.length > 0) {
-    const { data: pData } = await sb
-      .from("people")
-      .select("id,first_name,last_name,phone,email")
-      .in("id", personIdsToFetch);
-    if (Array.isArray(pData)) {
-      for (const p of pData as any[]) {
-        const link = Array.isArray(oppPeople)
-          ? (oppPeople as any[]).find((x) => x.person_id === p.id)
-          : null;
-        // is_primary: from junction if available, else true for the contact_person_id fallback
-        const isPrimary = link ? (link.is_primary ?? false) : true;
-        people.push({
-          id: p.id,
-          name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || p.id,
-          phone: p.phone,
-          email: p.email,
-          is_primary: isPrimary,
-        });
-      }
-      // Sort: primary first
-      people.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+  // Fetch people + their tenant_people contact_types in parallel
+  const [pDataResult, tpDataResult] = personIdsToFetch.length > 0
+    ? await Promise.all([
+        sb.from("people").select("id,first_name,last_name,phone,email").in("id", personIdsToFetch),
+        sb.from("tenant_people").select("person_id,contact_types").eq("tenant_id", tenantId).in("person_id", personIdsToFetch),
+      ])
+    : [{ data: null }, { data: null }];
+
+  if (Array.isArray(pDataResult.data)) {
+    for (const p of pDataResult.data as any[]) {
+      const link = Array.isArray(oppPeople)
+        ? (oppPeople as any[]).find((x) => x.person_id === p.id)
+        : null;
+      // is_primary: from junction if available, else true for the contact_person_id fallback
+      const isPrimary = link ? (link.is_primary ?? false) : true;
+      people.push({
+        id: p.id,
+        name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || p.id,
+        phone: p.phone,
+        email: p.email,
+        is_primary: isPrimary,
+      });
+    }
+    // Sort: primary first
+    people.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+  }
+
+  // Union all contact_types from linked people — used to filter pipeline dropdown
+  const linkedPersonContactTypes = new Set<string>();
+  for (const tp of (tpDataResult.data as any[] | null) ?? []) {
+    for (const ct of (tp.contact_types as string[] | null) ?? []) {
+      linkedPersonContactTypes.add(ct);
     }
   }
+  // Filter pipeline options to types the linked people have; fall back to all if none
+  const filteredContactTypeOptions = linkedPersonContactTypes.size > 0
+    ? contactTypeOptions.filter((ct) => linkedPersonContactTypes.has(ct.key))
+    : contactTypeOptions;
 
   // ── 4. Assigned users ───────────────────────────────────────────────────────
   const { data: oppUsers } = await sb
@@ -321,7 +342,7 @@ export default async function OpportunityDetail({ params }: Params) {
 
       <div style={{ display: "grid", gap: 16 }}>
         {/* Editable details */}
-        <OppFieldEditor opp={opp} stages={stages} />
+        <OppFieldEditor opp={opp} stages={stages} contactTypes={filteredContactTypeOptions} />
 
         {/* People */}
         <OppPeopleSection opportunityId={oppId} people={people} />

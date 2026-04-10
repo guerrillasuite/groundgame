@@ -63,12 +63,18 @@ export type OppData = {
   id: string;
   title: string | null;
   stage: string | null;
+  contact_type: string | null;
   amount_cents: number | null;
   description: string | null;
   notes: string | null;
   priority: string | null;
   source: string | null;
   due_at: string | null;
+};
+
+export type ContactTypeOption = {
+  key: string;
+  label: string;
 };
 
 export type PersonEntry = {
@@ -108,7 +114,7 @@ export type TenantUser = {
 
 // ── Field editor ──────────────────────────────────────────────────────────────
 
-export function OppFieldEditor({ opp, stages }: { opp: OppData; stages: { key: string; label: string }[] }) {
+export function OppFieldEditor({ opp, stages, contactTypes }: { opp: OppData; stages: { key: string; label: string }[]; contactTypes: ContactTypeOption[] }) {
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
 
@@ -136,6 +142,22 @@ export function OppFieldEditor({ opp, stages }: { opp: OppData; stages: { key: s
             onBlur={(e) => save({ title: e.target.value })}
           />
         </div>
+
+        {contactTypes.length > 0 && (
+          <div>
+            <label style={LABEL}>Pipeline</label>
+            <select
+              style={{ ...INPUT }}
+              defaultValue={opp.contact_type ?? ""}
+              onChange={(e) => save({ contact_type: e.target.value || null })}
+            >
+              <option value="">— Uncategorized —</option>
+              {contactTypes.map((ct) => (
+                <option key={ct.key} value={ct.key}>{ct.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>

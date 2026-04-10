@@ -135,6 +135,7 @@ export async function POST(req: NextRequest) {
     opportunities: {},
   };
   const productItems: Array<{ product_id: string; qty: number }> = [];
+  const contactTypesToAdd: string[] = [];
 
   for (const q of questionRows ?? []) {
     const val = answers[q.id];
@@ -151,6 +152,11 @@ export async function POST(req: NextRequest) {
 
     if (!q.crm_field) continue;
     const { table, column } = normalizeCrmField(q.crm_field);
+    // tenant_people.contact_types — collect for array append after person resolution
+    if (table === "tenant_people" && column === "contact_types") {
+      contactTypesToAdd.push(...val.split(",").map((v) => v.trim()).filter(Boolean));
+      continue;
+    }
     if (tableFields[table]) {
       tableFields[table][column] = val;
     }
@@ -190,6 +196,11 @@ export async function POST(req: NextRequest) {
   for (const af of (surveyRow?.auto_fields as { crm_field: string; value: string }[] | null) ?? []) {
     if (!af.crm_field || !af.value?.trim()) continue;
     const { table, column } = normalizeCrmField(af.crm_field);
+    // tenant_people.contact_types — collect for array append after person resolution
+    if (table === "tenant_people" && column === "contact_types") {
+      contactTypesToAdd.push(...af.value.split(",").map((v) => v.trim()).filter(Boolean));
+      continue;
+    }
     if (tableFields[table]) tableFields[table][column] = af.value.trim();
   }
 
@@ -271,6 +282,14 @@ export async function POST(req: NextRequest) {
         source: "survey",
       }).select("id").single();
       opportunityId = (opp as any)?.id ?? null;
+
+      // Link person into opportunity_people junction table
+      if (opportunityId) {
+        await sb.from("opportunity_people").upsert(
+          { tenant_id: tenant.id, opportunity_id: opportunityId, person_id: personId, role: "contact", is_primary: true },
+          { onConflict: "opportunity_id,person_id" }
+        );
+      }
     }
   }
 
@@ -279,6 +298,27 @@ export async function POST(req: NextRequest) {
     await sb.from("opportunities")
       .update(tableFields.opportunities)
       .eq("id", opportunityId);
+  }
+
+  // ── Append contact types to tenant_people ─────────────────────────────────
+  // Collect: auto_fields targeting tenant_people.contact_types + opp_trigger.contact_type
+  if (trigger?.enabled && trigger.contact_type && opportunityId) {
+    contactTypesToAdd.push(trigger.contact_type);
+  }
+  if (contactTypesToAdd.length > 0) {
+    const { data: tpRow } = await sb
+      .from("tenant_people")
+      .select("contact_types")
+      .eq("tenant_id", tenant.id)
+      .eq("person_id", personId)
+      .maybeSingle();
+    const existing: string[] = (tpRow?.contact_types as string[] | null) ?? [];
+    const merged = [...new Set([...existing, ...contactTypesToAdd])];
+    await sb
+      .from("tenant_people")
+      .update({ contact_types: merged })
+      .eq("tenant_id", tenant.id)
+      .eq("person_id", personId);
   }
 
   // ── Upsert delivery location if provided ─────────────────────────────────

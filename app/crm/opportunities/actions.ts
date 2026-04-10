@@ -33,7 +33,7 @@ export async function updateOpportunityStage(opportunityId: string, newStage: st
 
 const ALLOWED_FIELDS = [
   "title", "amount_cents", "description", "notes",
-  "due_at", "priority", "source", "contact_person_id", "stage",
+  "due_at", "priority", "source", "contact_person_id", "stage", "contact_type",
 ];
 
 export async function updateOpportunityField(id: string, patch: Record<string, any>) {

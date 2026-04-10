@@ -1848,6 +1848,9 @@ const COMMON_FIELDS: Record<string, { column: string; label: string }[]> = {
     { column: "occupation",     label: "Occupation" },
     { column: "notes",          label: "Notes" },
   ],
+  tenant_people: [
+    { column: "contact_types",  label: "Contact Types (append to list)" },
+  ],
   locations: [
     { column: "address_line1",  label: "Street Address" },
     { column: "city",           label: "City" },
@@ -1874,6 +1877,7 @@ const COMMON_FIELDS: Record<string, { column: string; label: string }[]> = {
 
 const TABLE_LABELS: Record<string, string> = {
   people: "People",
+  tenant_people: "Person (Contact Types)",
   locations: "Location",
   opportunities: "Opportunity",
   households: "Household",
@@ -1961,7 +1965,7 @@ function CrmFieldPicker({
   }
 
   const displaySchema = showAdvanced && Object.keys(advancedSchema).length > 0 ? advancedSchema : null;
-  const TABLE_ORDER = ["people", "locations", "opportunities", "households", "companies"];
+  const TABLE_ORDER = ["people", "tenant_people", "locations", "opportunities", "households", "companies"];
 
   return (
     <>

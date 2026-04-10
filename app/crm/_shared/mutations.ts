@@ -4,6 +4,15 @@ import { revalidatePath } from "next/cache";
 import { getTenant } from "@/lib/tenant";
 import { getServerSupabaseWritable } from "@/lib/supabase/server";
 import { findOrCreateLocation, findOrCreateHousehold } from "@/lib/crm/location-utils";
+import { createClient } from "@supabase/supabase-js";
+
+function makeSb(tenantId: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
+  );
+}
 
 /**
  * Whitelist fields per table you want editable. This prevents arbitrary writes.
@@ -27,7 +36,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   ],
   opportunities: [
     "title", "amount_cents", "description", "notes", "contact_person_id",
-    "stage", "order_index", "due_at", "priority", "source",
+    "stage", "order_index", "due_at", "priority", "source", "contact_type",
   ],
   // add lists, stops, etc.
 };
@@ -236,8 +245,8 @@ export async function updateContactTypesAction(
   contactTypes: string[],
   revalidate: string
 ) {
-  const sb = getServerSupabaseWritable();
   const tenant = await getTenant();
+  const sb = makeSb(tenant.id);
 
   const { error } = await sb
     .from("tenant_people")
