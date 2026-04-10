@@ -142,7 +142,7 @@ function Modal({ onClose, onCreated }: { onClose: () => void; onCreated: () => v
           <button type="button" onClick={onClose} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", cursor: "pointer", fontSize: 14, color: "inherit" }}>
             Cancel
           </button>
-          <button type="submit" disabled={saving} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--gg-primary, #2563eb)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+          <button type="submit" disabled={saving} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--gg-primary, #2563eb)", color: "var(--on-primary, #fff)", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
             {saving ? "Creating…" : "Add Product"}
           </button>
         </div>

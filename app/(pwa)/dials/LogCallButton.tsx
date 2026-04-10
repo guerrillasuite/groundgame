@@ -12,7 +12,7 @@ export default function LogCallButton() {
         onClick={() => setOpen(true)}
         style={{
           background: "var(--gg-primary, #2563eb)",
-          color: "#fff",
+          color: "var(--on-primary, #fff)",
           border: "none",
           borderRadius: 8,
           padding: "8px 16px",

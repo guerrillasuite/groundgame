@@ -124,7 +124,7 @@ export default function PwaSettingsPage() {
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,.1)', paddingBottom: 12 }}>
-        <span style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: 'var(--brand-primary, #2563eb)', color: '#fff' }}>
+        <span style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: 'var(--gg-primary, #2563eb)', color: 'var(--on-primary, #fff)' }}>
           Settings
         </span>
         <Link href="/account/auth" style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: 'rgba(255,255,255,.07)', color: '#fff' }}>
@@ -138,7 +138,7 @@ export default function PwaSettingsPage() {
           <p style={{ margin: '0 0 2px', fontSize: 12, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Signed in as</p>
           <p style={{ margin: 0, fontWeight: 600, fontSize: 15 }}>{email ?? '—'}</p>
           {role && (
-            <span style={{ display: 'inline-block', marginTop: 8, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: role === 'admin' ? 'rgba(37,99,235,.25)' : 'rgba(255,255,255,.08)', color: role === 'admin' ? '#93c5fd' : '#ccc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ display: 'inline-block', marginTop: 8, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: role === 'admin' ? 'color-mix(in srgb, var(--gg-primary, #2563eb) 25%, transparent)' : 'rgba(255,255,255,.08)', color: role === 'admin' ? 'var(--gg-accent, #93c5fd)' : '#ccc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               {role}
             </span>
           )}
@@ -160,7 +160,7 @@ export default function PwaSettingsPage() {
             {pwMsg && <p style={{ color: '#86efac', fontSize: 13, margin: 0 }}>{pwMsg}</p>}
             <button
               type="submit" disabled={pwLoading}
-              style={{ padding: '12px', borderRadius: 10, border: 'none', background: 'var(--brand-primary, #2563eb)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: pwLoading ? 'default' : 'pointer' }}
+              style={{ padding: '12px', borderRadius: 10, border: 'none', background: 'var(--gg-primary, #2563eb)', color: 'var(--on-primary, #fff)', fontWeight: 600, fontSize: 14, cursor: pwLoading ? 'default' : 'pointer' }}
             >
               {pwLoading ? 'Saving…' : 'Update Password'}
             </button>

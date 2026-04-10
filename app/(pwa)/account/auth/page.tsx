@@ -128,7 +128,7 @@ function AppAuthPageInner() {
         <Link href="/account/settings" style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: 'rgba(255,255,255,.07)', color: '#fff' }}>
           Settings
         </Link>
-        <span style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: 'var(--brand-primary, #2563eb)', color: '#fff' }}>
+        <span style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: 'var(--gg-primary, #2563eb)', color: 'var(--on-primary, #fff)' }}>
           Login / Logout
         </span>
       </div>
@@ -152,7 +152,7 @@ function AppAuthPageInner() {
           <div style={{ display: 'flex', gap: 6 }}>
             {(['password', 'magic', 'forgot'] as const).map((m) => (
               <button key={m} onClick={() => { setMode(m); reset(); }}
-                style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: mode === m ? 'var(--brand-primary, #2563eb)' : 'rgba(255,255,255,.07)', color: '#fff' }}
+                style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, background: mode === m ? 'var(--gg-primary, #2563eb)' : 'rgba(255,255,255,.07)', color: mode === m ? 'var(--on-primary, #fff)' : '#fff' }}
               >
                 {m === 'password' ? 'Password' : m === 'magic' ? 'Magic Link' : 'Set Password'}
               </button>
@@ -170,12 +170,12 @@ function AppAuthPageInner() {
                 <PasswordInput value={password} onChange={setPassword} placeholder="Your password" />
               </div>
               {err && <p style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{err}</p>}
-              <button type="submit" disabled={loading} style={{ padding: '12px', borderRadius: 10, border: 'none', background: 'var(--brand-primary, #2563eb)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: loading ? 'default' : 'pointer' }}>
+              <button type="submit" disabled={loading} style={{ padding: '12px', borderRadius: 10, border: 'none', background: 'var(--gg-primary, #2563eb)', color: 'var(--on-primary, #fff)', fontWeight: 600, fontSize: 14, cursor: loading ? 'default' : 'pointer' }}>
                 {loading ? 'Signing in…' : 'Sign In'}
               </button>
               <p style={{ fontSize: 12, opacity: 0.5, margin: 0, textAlign: 'center' }}>
                 No password?{' '}
-                <button type="button" onClick={() => { setMode('magic'); reset(); }} style={{ background: 'none', border: 'none', color: 'var(--brand-primary, #2563eb)', cursor: 'pointer', fontSize: 12, padding: 0 }}>
+                <button type="button" onClick={() => { setMode('magic'); reset(); }} style={{ background: 'none', border: 'none', color: 'var(--gg-primary, #2563eb)', cursor: 'pointer', fontSize: 12, padding: 0 }}>
                   Use a magic link
                 </button>
               </p>
@@ -190,7 +190,7 @@ function AppAuthPageInner() {
               </div>
               {msg && <p style={{ color: '#86efac', fontSize: 13, margin: 0 }}>{msg}</p>}
               {err && <p style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{err}</p>}
-              <button type="submit" disabled={loading} style={{ padding: '12px', borderRadius: 10, border: 'none', background: 'var(--brand-primary, #2563eb)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: loading ? 'default' : 'pointer' }}>
+              <button type="submit" disabled={loading} style={{ padding: '12px', borderRadius: 10, border: 'none', background: 'var(--gg-primary, #2563eb)', color: 'var(--on-primary, #fff)', fontWeight: 600, fontSize: 14, cursor: loading ? 'default' : 'pointer' }}>
                 {loading ? 'Sending…' : 'Send Magic Link'}
               </button>
             </form>
@@ -205,7 +205,7 @@ function AppAuthPageInner() {
               </div>
               {msg && <p style={{ color: '#86efac', fontSize: 13, margin: 0 }}>{msg}</p>}
               {err && <p style={{ color: '#f87171', fontSize: 13, margin: 0 }}>{err}</p>}
-              <button type="submit" disabled={loading} style={{ padding: '12px', borderRadius: 10, border: 'none', background: 'var(--brand-primary, #2563eb)', color: '#fff', fontWeight: 600, fontSize: 14, cursor: loading ? 'default' : 'pointer' }}>
+              <button type="submit" disabled={loading} style={{ padding: '12px', borderRadius: 10, border: 'none', background: 'var(--gg-primary, #2563eb)', color: 'var(--on-primary, #fff)', fontWeight: 600, fontSize: 14, cursor: loading ? 'default' : 'pointer' }}>
                 {loading ? 'Sending…' : 'Send Reset Link'}
               </button>
             </form>

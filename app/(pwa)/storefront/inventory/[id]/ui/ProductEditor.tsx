@@ -256,7 +256,7 @@ function EditModal({
           <button type="button" onClick={onClose} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", cursor: "pointer", fontSize: 14, color: "inherit" }}>
             Cancel
           </button>
-          <button type="submit" disabled={saving} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "var(--gg-primary, #2563eb)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+          <button type="submit" disabled={saving} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "var(--gg-primary, #2563eb)", color: "var(--on-primary, #fff)", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
             {saving ? "Saving…" : "Save Changes"}
           </button>
         </div>
@@ -426,7 +426,7 @@ export default function ProductEditor({
           onClick={() => setShowEdit(true)}
           style={{
             flex: 1, padding: "11px 20px", borderRadius: 8, fontWeight: 700, fontSize: 15,
-            border: "none", background: "var(--gg-primary, #2563eb)", color: "#fff", cursor: "pointer",
+            border: "none", background: "var(--gg-primary, #2563eb)", color: "var(--on-primary, #fff)", cursor: "pointer",
           }}
         >
           Edit
