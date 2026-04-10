@@ -233,9 +233,10 @@ export default function TenantSelfPanel() {
                           Pipeline Visibility
                         </p>
                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                          {contactTypes.map((ct) => {
+                          {[...contactTypes, { key: "__uncategorized__", label: "Uncategorized", stages: [] }].map((ct) => {
                             const isPipelineOn = !hiddenPipelines.includes(ct.key);
                             const hiddenStages = hiddenStagesMap[ct.key] ?? [];
+                            const stagesWithUncategorized = ct.key === "__uncategorized__" ? [] : [...ct.stages, { key: "__uncategorized__", label: "Uncategorized" }];
                             return (
                               <div key={ct.key} style={{
                                 borderRadius: 10,
@@ -244,15 +245,15 @@ export default function TenantSelfPanel() {
                                 padding: "10px 12px",
                                 transition: "all 0.2s",
                               }}>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: ct.stages.length > 0 ? 10 : 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: stagesWithUncategorized.length > 0 ? 10 : 0 }}>
                                   <span style={{ fontWeight: 700, fontSize: 14, opacity: isPipelineOn ? 1 : 0.4, transition: "opacity 0.2s" }}>
                                     {ct.label}
                                   </span>
                                   <ToggleSwitch checked={isPipelineOn} onChange={() => togglePipeline(ct.key)} />
                                 </div>
-                                {ct.stages.length > 0 && (
+                                {stagesWithUncategorized.length > 0 && (
                                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, opacity: isPipelineOn ? 1 : 0.3, transition: "opacity 0.2s", pointerEvents: isPipelineOn ? "auto" : "none" }}>
-                                    {ct.stages.map((stage) => {
+                                    {stagesWithUncategorized.map((stage) => {
                                       const isOn = !hiddenStages.includes(stage.key);
                                       return (
                                         <button key={stage.key} type="button" onClick={() => toggleStage(ct.key, stage.key)}

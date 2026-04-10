@@ -33,7 +33,6 @@ type OppRow = {
   amount_cents: number | null;
   source: string | null;
   priority: string | null;
-  contact_person_id: string | null;
 };
 
 type PersonRow = {
@@ -67,42 +66,51 @@ export default async function OpportunitiesPage() {
   const { id: tenantId } = await getTenant();
   const sb = makeSb(tenantId);
 
-  // 1) Load contact types
-  const { data: ctData } = await sb
-    .from("tenant_contact_types")
-    .select("key, label, order_index")
-    .eq("tenant_id", tenantId)
-    .order("order_index", { ascending: true });
+  // 1) Load contact types, stages, opps, and opportunity_people in parallel
+  const [
+    { data: ctData },
+    { data: stagesData },
+    { data: oppsData },
+    { data: oppPeopleData },
+  ] = await Promise.all([
+    sb.from("tenant_contact_types")
+      .select("key, label, order_index")
+      .eq("tenant_id", tenantId)
+      .order("order_index", { ascending: true }),
+    sb.from("opportunity_stages")
+      .select("key, label, order_index, contact_type_key")
+      .eq("tenant_id", tenantId)
+      .order("order_index", { ascending: true }),
+    sb.from("opportunities")
+      .select("id, title, stage, contact_type, amount_cents, source, priority")
+      .eq("tenant_id", tenantId),
+    sb.from("opportunity_people")
+      .select("opportunity_id, person_id, is_primary")
+      .eq("tenant_id", tenantId),
+  ]);
 
   const contactTypes: ContactTypeRow[] = Array.isArray(ctData) ? [...(ctData as ContactTypeRow[])] : [];
-
-  // 2) Load all stages
-  const { data: stagesData } = await sb
-    .from("opportunity_stages")
-    .select("key, label, order_index, contact_type_key")
-    .eq("tenant_id", tenantId)
-    .order("order_index", { ascending: true });
-
   const allStages: StageRow[] = Array.isArray(stagesData) ? [...(stagesData as StageRow[])] : [];
-
-  // Group stages by contact_type_key
-  const stagesByType: Record<string, StageRow[]> = {};
-  for (const s of allStages) {
-    const k = s.contact_type_key ?? "__uncategorized__";
-    if (!stagesByType[k]) stagesByType[k] = [];
-    stagesByType[k].push(s);
-  }
-
-  // 3) Load all opportunities
-  const { data: oppsData } = await sb
-    .from("opportunities")
-    .select("id, title, stage, contact_type, amount_cents, source, priority, contact_person_id")
-    .eq("tenant_id", tenantId);
-
   const opps: OppRow[] = Array.isArray(oppsData) ? [...(oppsData as OppRow[])] : [];
 
-  // 4) Batch-fetch contact people
-  const personIds = [...new Set(opps.map((o) => o.contact_person_id).filter(Boolean))] as string[];
+  // 2) Build primary person map from opportunity_people
+  type OppPersonRow = { opportunity_id: string; person_id: string; is_primary: boolean };
+  const oppPeople = (Array.isArray(oppPeopleData) ? oppPeopleData : []) as OppPersonRow[];
+
+  // Group by opp, prefer is_primary row, fall back to first
+  const primaryPersonByOpp = new Map<string, string>();
+  const byOpp = new Map<string, OppPersonRow[]>();
+  for (const row of oppPeople) {
+    if (!byOpp.has(row.opportunity_id)) byOpp.set(row.opportunity_id, []);
+    byOpp.get(row.opportunity_id)!.push(row);
+  }
+  for (const [oppId, rows] of byOpp) {
+    const primary = rows.find((r) => r.is_primary) ?? rows[0];
+    if (primary) primaryPersonByOpp.set(oppId, primary.person_id);
+  }
+
+  // 3) Batch-fetch people for contact names
+  const personIds = [...new Set(primaryPersonByOpp.values())];
   const personMap = new Map<string, PersonRow>();
   if (personIds.length > 0) {
     const { data: pData } = await sb
@@ -114,16 +122,25 @@ export default async function OpportunitiesPage() {
     }
   }
 
+  // Group stages by contact_type_key
+  const stagesByType: Record<string, StageRow[]> = {};
+  for (const s of allStages) {
+    const k = s.contact_type_key ?? "__uncategorized__";
+    if (!stagesByType[k]) stagesByType[k] = [];
+    stagesByType[k].push(s);
+  }
+
   // Helper: build OppCard from OppRow
   function toCard(o: OppRow, validStageKeys: string[], fallbackKey: string): [string, OppCard] {
     const stageKey = o.stage && validStageKeys.includes(o.stage) ? o.stage : fallbackKey;
-    const p = o.contact_person_id ? personMap.get(o.contact_person_id) : undefined;
+    const pId = primaryPersonByOpp.get(o.id);
+    const p = pId ? personMap.get(pId) : undefined;
     const contact_name = p ? [p.first_name, p.last_name].filter(Boolean).join(" ") || null : null;
     const contact_method = p ? (p.phone || p.email || null) : null;
     return [stageKey, { id: o.id, title: o.title, amount_cents: o.amount_cents, source: o.source, priority: o.priority, contact_name, contact_method }];
   }
 
-  // 5) Build sections
+  // 4) Build sections — one per contact type
   type Section = {
     key: string;
     label: string;
@@ -133,35 +150,42 @@ export default async function OpportunitiesPage() {
   };
 
   const sections: Section[] = [];
+  const assignedOppIds = new Set<string>();
 
-  // One section per configured contact type
   for (const ct of contactTypes) {
     const ctStages = stagesByType[ct.key] ?? [];
     const stageKeys = ctStages.map((s) => s.key);
-    if (stageKeys.length === 0) continue; // skip types with no pipeline yet
+    if (stageKeys.length === 0) continue;
 
+    const stageKeySet = new Set(stageKeys);
     const stageLabels = Object.fromEntries(ctStages.map((s) => [s.key, s.label]));
     const itemsByStage: Record<string, OppCard[]> = {};
     for (const k of stageKeys) itemsByStage[k] = [];
 
-    const ctOpps = opps.filter((o) => o.contact_type === ct.key);
+    // Include opps explicitly in this type OR opps with no contact_type whose stage belongs here
+    const ctOpps = opps.filter((o) => {
+      if (o.contact_type === ct.key) return true;
+      if (!o.contact_type && o.stage && stageKeySet.has(o.stage)) return true;
+      return false;
+    });
+
     for (const o of ctOpps) {
       const [sk, card] = toCard(o, stageKeys, stageKeys[0]);
       itemsByStage[sk].push(card);
+      assignedOppIds.add(o.id);
     }
 
     sections.push({ key: ct.key, label: ct.label, stageKeys, stageLabels, itemsByStage });
   }
 
-  // Uncategorized section: opps with no contact_type, using untagged stages or fallback
+  // 5) Uncategorized section: opps that didn't match any configured type or stage
   const uncatStages = stagesByType["__uncategorized__"] ?? [];
   const uncatStageKeys = uncatStages.length > 0 ? uncatStages.map((s) => s.key) : FALLBACK_STAGE_KEYS;
   const uncatStageLabels = uncatStages.length > 0
     ? Object.fromEntries(uncatStages.map((s) => [s.key, s.label]))
     : FALLBACK_STAGE_LABELS;
 
-  const configuredTypeKeys = new Set(contactTypes.map((ct) => ct.key));
-  const uncatOpps = opps.filter((o) => !o.contact_type || !configuredTypeKeys.has(o.contact_type));
+  const uncatOpps = opps.filter((o) => !assignedOppIds.has(o.id));
 
   const uncatItemsByStage: Record<string, OppCard[]> = {};
   for (const k of uncatStageKeys) uncatItemsByStage[k] = [];
@@ -170,9 +194,7 @@ export default async function OpportunitiesPage() {
     uncatItemsByStage[sk].push(card);
   }
 
-  const hasUncatOpps = uncatOpps.length > 0;
-  // Show uncategorized section if there are opps or no contact types configured yet
-  if (hasUncatOpps || sections.length === 0) {
+  if (uncatOpps.length > 0 || sections.length === 0) {
     sections.push({
       key: "__uncategorized__",
       label: contactTypes.length > 0 ? "Uncategorized" : "All Opportunities",

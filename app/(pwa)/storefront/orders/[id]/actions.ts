@@ -1,8 +1,16 @@
 "use server";
 
-import { getServerSupabase } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
+
+function makeSb(tenantId: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
+  );
+}
 
 /**
  * Update opportunity + contact + delivery info.
@@ -17,8 +25,8 @@ export async function updateOrder(
     delivery?: { address_line1?: string | null; unit?: string | null; city?: string | null; state?: string | null; postal_code?: string | null };
   }
 ) {
-  const sb = getServerSupabase();
   const { id: tenantId } = await getTenant();
+  const sb = makeSb(tenantId);
 
   // 1) Upsert contact person if data provided
   let contact_person_id: string | null | undefined = undefined;
@@ -63,6 +71,14 @@ export async function updateOrder(
       }
 
       contact_person_id = personId;
+
+      // Also link into opportunity_people junction so CRM reads work
+      if (personId) {
+        await sb.from("opportunity_people").upsert(
+          { tenant_id: tenantId, opportunity_id: orderId, person_id: personId, role: "contact", is_primary: true },
+          { onConflict: "opportunity_id,person_id" }
+        );
+      }
     }
   }
 
@@ -119,8 +135,8 @@ export async function updateOrder(
 
 /** Add item to an order */
 export async function addOrderItem(orderId: string, productId: string, qty: number) {
-  const sb = getServerSupabase();
   const { id: tenantId } = await getTenant();
+  const sb = makeSb(tenantId);
 
   const { error } = await sb
     .from("order_items")
@@ -137,8 +153,8 @@ export async function addOrderItem(orderId: string, productId: string, qty: numb
 
 /** Update an item's quantity */
 export async function updateOrderItem(itemId: string, qty: number) {
-  const sb = getServerSupabase();
   const { id: tenantId } = await getTenant();
+  const sb = makeSb(tenantId);
 
   const { error } = await sb
     .from("order_items")
@@ -146,14 +162,12 @@ export async function updateOrderItem(itemId: string, qty: number) {
     .eq("tenant_id", tenantId)
     .eq("id", itemId);
   if (error) throw error;
-
-  // We can't know orderId cheaply; revalidate the detail path upstream if needed
 }
 
 /** Remove an item from an order */
 export async function removeOrderItem(itemId: string) {
-  const sb = getServerSupabase();
   const { id: tenantId } = await getTenant();
+  const sb = makeSb(tenantId);
 
   const { error } = await sb.from("order_items").delete().eq("tenant_id", tenantId).eq("id", itemId);
   if (error) throw error;

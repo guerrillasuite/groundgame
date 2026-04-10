@@ -56,7 +56,7 @@ export default async function OpportunityDetail({ params }: Params) {
   // ── 1. Opportunity ──────────────────────────────────────────────────────────
   const { data: oppRaw, error: oppErr } = await sb
     .from("opportunities")
-    .select("id,title,stage,amount_cents,description,notes,priority,source,due_at,stop_id,contact_person_id")
+    .select("id,title,stage,amount_cents,description,notes,priority,source,due_at,stop_id,contact_person_id,contact_type")
     .eq("tenant_id", tenantId)
     .eq("id", oppId)
     .single();
@@ -82,12 +82,19 @@ export default async function OpportunityDetail({ params }: Params) {
     due_at: (oppRaw as any).due_at ?? null,
   };
 
-  // ── 2. Stages (for the stage dropdown) ─────────────────────────────────────
-  const { data: stagesData } = await sb
+  // ── 2. Stages (for the stage dropdown — scoped to this opp's contact type) ──
+  const contactType = (oppRaw as any).contact_type ?? null;
+  let stagesQuery = sb
     .from("opportunity_stages")
     .select("key,label")
     .eq("tenant_id", tenantId)
     .order("order_index", { ascending: true });
+  if (contactType) {
+    stagesQuery = stagesQuery.eq("contact_type_key", contactType);
+  } else {
+    stagesQuery = stagesQuery.is("contact_type_key", null);
+  }
+  const { data: stagesData } = await stagesQuery;
 
   const stages =
     Array.isArray(stagesData) && stagesData.length > 0
@@ -101,54 +108,46 @@ export default async function OpportunityDetail({ params }: Params) {
           { key: "lost", label: "Lost" },
         ];
 
-  // ── 3. People ───────────────────────────────────────────────────────────────
-  // Primary contact
+  // ── 3. People — from opportunity_people junction (fallback: contact_person_id) ─
   const people: PersonEntry[] = [];
 
-  if (oppRaw.contact_person_id) {
-    const { data: prim } = await sb
-      .from("people")
-      .select("id,first_name,last_name,phone,email")
-      .eq("id", oppRaw.contact_person_id)
-      .single();
-    if (prim) {
-      people.push({
-        id: prim.id,
-        name: [prim.first_name, prim.last_name].filter(Boolean).join(" ") || prim.email || prim.id,
-        phone: prim.phone,
-        email: prim.email,
-        is_primary: true,
-      });
-    }
-  }
-
-  // Additional people from opportunity_people
   const { data: oppPeople } = await sb
     .from("opportunity_people")
-    .select("person_id,role")
+    .select("person_id,role,is_primary")
     .eq("tenant_id", tenantId)
     .eq("opportunity_id", oppId);
 
-  if (Array.isArray(oppPeople) && oppPeople.length > 0) {
-    const extraIds = oppPeople
-      .map((x: any) => x.person_id)
-      .filter((id: string) => id !== oppRaw.contact_person_id);
-    if (extraIds.length > 0) {
-      const { data: extras } = await sb
-        .from("people")
-        .select("id,first_name,last_name,phone,email")
-        .in("id", extraIds);
-      if (Array.isArray(extras)) {
-        for (const p of extras as any[]) {
-          people.push({
-            id: p.id,
-            name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || p.id,
-            phone: p.phone,
-            email: p.email,
-            is_primary: false,
-          });
-        }
+  const junctionIds = Array.isArray(oppPeople)
+    ? (oppPeople as any[]).map((x) => x.person_id as string).filter(Boolean)
+    : [];
+
+  // If junction table has entries, use those; otherwise fall back to contact_person_id
+  const personIdsToFetch: string[] = junctionIds.length > 0
+    ? junctionIds
+    : (oppRaw.contact_person_id ? [oppRaw.contact_person_id] : []);
+
+  if (personIdsToFetch.length > 0) {
+    const { data: pData } = await sb
+      .from("people")
+      .select("id,first_name,last_name,phone,email")
+      .in("id", personIdsToFetch);
+    if (Array.isArray(pData)) {
+      for (const p of pData as any[]) {
+        const link = Array.isArray(oppPeople)
+          ? (oppPeople as any[]).find((x) => x.person_id === p.id)
+          : null;
+        // is_primary: from junction if available, else true for the contact_person_id fallback
+        const isPrimary = link ? (link.is_primary ?? false) : true;
+        people.push({
+          id: p.id,
+          name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || p.id,
+          phone: p.phone,
+          email: p.email,
+          is_primary: isPrimary,
+        });
       }
+      // Sort: primary first
+      people.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
     }
   }
 
