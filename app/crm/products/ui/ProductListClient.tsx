@@ -75,6 +75,21 @@ function SortArrow({ dir }: { dir: "asc" | "desc" }) {
   );
 }
 
+// ── Shared styles for modal fields ───────────────────────────────────────────
+
+const mInput: React.CSSProperties = {
+  width: "100%", padding: "9px 12px", borderRadius: 8,
+  border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 14,
+  background: "transparent", color: "inherit", boxSizing: "border-box",
+};
+const mLabel: React.CSSProperties = {
+  display: "block", fontSize: 12, opacity: 0.6, marginBottom: 4, fontWeight: 600,
+};
+const mSection: React.CSSProperties = {
+  fontSize: 11, fontWeight: 700, textTransform: "uppercase",
+  letterSpacing: "0.06em", opacity: 0.45, marginBottom: 2,
+};
+
 // ── Create Product Modal ──────────────────────────────────────────────────────
 
 function CreateModal({ onClose, onCreated }: {
@@ -83,9 +98,32 @@ function CreateModal({ onClose, onCreated }: {
 }) {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
-  const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
+  const [retail, setRetail] = useState("");
+  const [materials, setMaterials] = useState("");
+  const [packaging, setPackaging] = useState("");
+  const [labor, setLabor] = useState("");
+  const [onHand, setOnHand] = useState("0");
+  const [status, setStatus] = useState<"active" | "inactive">("active");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  function toCents(v: string) {
+    return v ? Math.round(parseFloat(v) * 100) : null;
+  }
+
+  // Computed cost preview
+  const totalCost =
+    (toCents(materials) ?? 0) + (toCents(packaging) ?? 0) + (toCents(labor) ?? 0);
+  const retailCents = toCents(retail);
+  const profit = retailCents != null ? retailCents - totalCost : null;
+  const margin = retailCents && retailCents > 0 && profit != null
+    ? Math.round((profit / retailCents) * 100) : null;
+
+  function fmtPreview(cents: number | null) {
+    if (cents == null) return "—";
+    return `$${(cents / 100).toFixed(2)}`;
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -97,7 +135,13 @@ function CreateModal({ onClose, onCreated }: {
       body: JSON.stringify({
         name: name.trim(),
         sku: sku.trim() || null,
-        retail_cents: price ? Math.round(parseFloat(price) * 100) : null,
+        description: description.trim() || null,
+        retail_cents: toCents(retail),
+        materials_cents: toCents(materials),
+        packaging_cents: toCents(packaging),
+        labor_cents: toCents(labor),
+        on_hand: parseInt(onHand) || 0,
+        status,
       }),
     });
     const data = await res.json();
@@ -107,74 +151,109 @@ function CreateModal({ onClose, onCreated }: {
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)" }}
+      style={{ position: "fixed", inset: 0, zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)", overflowY: "auto", padding: "20px 0" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <form
         onSubmit={submit}
         style={{
           background: "var(--gg-card, #fff)", borderRadius: 14,
-          padding: 24, width: "min(420px, 94vw)",
-          display: "flex", flexDirection: "column", gap: 14,
+          padding: 24, width: "min(560px, 96vw)",
+          display: "flex", flexDirection: "column", gap: 16,
           boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+          margin: "auto",
         }}
       >
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>New Product</h2>
-
-        <div>
-          <label style={{ display: "block", fontSize: 12, opacity: 0.6, marginBottom: 4, fontWeight: 600 }}>
-            Name *
-          </label>
-          <input
-            autoFocus
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Product name"
-            style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 14, background: "transparent", color: "inherit", boxSizing: "border-box" }}
-          />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>New Product</h2>
+          <button type="button" onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", opacity: 0.4, lineHeight: 1, padding: 4 }}>×</button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 12, opacity: 0.6, marginBottom: 4, fontWeight: 600 }}>SKU</label>
-            <input
-              type="text"
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              placeholder="Optional"
-              style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 14, background: "transparent", color: "inherit", boxSizing: "border-box" }}
-            />
+        {/* Identity */}
+        <div>
+          <p style={mSection}>Identity</p>
+          <div style={{ display: "grid", gap: 10 }}>
+            <div>
+              <label style={mLabel}>Name *</label>
+              <input autoFocus type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" style={mInput} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label style={mLabel}>SKU</label>
+                <input type="text" value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Optional" style={mInput} />
+              </div>
+              <div>
+                <label style={mLabel}>Status</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as "active" | "inactive")}
+                  style={mInput}
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={mLabel}>Description</label>
+              <textarea
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Optional product description…"
+                style={{ ...mInput, resize: "vertical", lineHeight: 1.5 }}
+              />
+            </div>
           </div>
+        </div>
+
+        {/* Pricing */}
+        <div>
+          <p style={mSection}>Pricing</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={mLabel}>Retail Price ($)</label>
+              <input type="number" min={0} step={0.01} value={retail} onChange={(e) => setRetail(e.target.value)} placeholder="0.00" style={{ ...mInput, textAlign: "right" }} />
+            </div>
+            <div>
+              <label style={mLabel}>Materials Cost ($)</label>
+              <input type="number" min={0} step={0.01} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="0.00" style={{ ...mInput, textAlign: "right" }} />
+            </div>
+            <div>
+              <label style={mLabel}>Packaging Cost ($)</label>
+              <input type="number" min={0} step={0.01} value={packaging} onChange={(e) => setPackaging(e.target.value)} placeholder="0.00" style={{ ...mInput, textAlign: "right" }} />
+            </div>
+            <div>
+              <label style={mLabel}>Labor Cost ($)</label>
+              <input type="number" min={0} step={0.01} value={labor} onChange={(e) => setLabor(e.target.value)} placeholder="0.00" style={{ ...mInput, textAlign: "right" }} />
+            </div>
+          </div>
+          {/* Computed preview */}
+          {(retail || materials || packaging || labor) && (
+            <div style={{ marginTop: 8, display: "flex", gap: 16, fontSize: 12, opacity: 0.7 }}>
+              <span>Cost: {fmtPreview(totalCost || null)}</span>
+              <span>Profit: <span style={{ color: profit != null ? (profit >= 0 ? "#16a34a" : "#dc2626") : undefined, fontWeight: 600 }}>{fmtPreview(profit)}</span></span>
+              <span>Margin: <span style={{ color: margin != null ? (margin >= 0 ? "#16a34a" : "#dc2626") : undefined, fontWeight: 600 }}>{margin != null ? `${margin}%` : "—"}</span></span>
+            </div>
+          )}
+        </div>
+
+        {/* Inventory */}
+        <div>
+          <p style={mSection}>Inventory</p>
           <div>
-            <label style={{ display: "block", fontSize: 12, opacity: 0.6, marginBottom: 4, fontWeight: 600 }}>Price ($)</label>
-            <input
-              type="number"
-              min={0}
-              step={0.01}
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="0.00"
-              style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 14, textAlign: "right", background: "transparent", color: "inherit", boxSizing: "border-box" }}
-            />
+            <label style={mLabel}>On Hand (units)</label>
+            <input type="number" min={0} value={onHand} onChange={(e) => setOnHand(e.target.value)} style={{ ...mInput, maxWidth: 140 }} />
           </div>
         </div>
 
         {err && <p style={{ color: "#dc2626", fontSize: 13, margin: 0 }}>{err}</p>}
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", cursor: "pointer", fontSize: 14, color: "inherit" }}
-          >
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 4 }}>
+          <button type="button" onClick={onClose} style={{ padding: "9px 20px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", cursor: "pointer", fontSize: 14, color: "inherit" }}>
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--gg-primary, #2563eb)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}
-          >
+          <button type="submit" disabled={saving} style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "var(--gg-primary, #2563eb)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
             {saving ? "Creating…" : "Create Product"}
           </button>
         </div>
