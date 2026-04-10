@@ -89,3 +89,32 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
+
+export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  const { id } = await params;
+  const tenant = await getTenant();
+  const sb = makeSb(tenant.id);
+
+  // Block delete if product has any order_items
+  const { count } = await sb
+    .from("order_items")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", id)
+    .eq("tenant_id", tenant.id);
+
+  if ((count ?? 0) > 0) {
+    return NextResponse.json(
+      { error: `Cannot delete — this product has ${count} order ${count === 1 ? "item" : "items"}. Set it to Inactive instead.` },
+      { status: 409 }
+    );
+  }
+
+  const { error } = await sb
+    .from("products")
+    .delete()
+    .eq("id", id)
+    .eq("tenant_id", tenant.id);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

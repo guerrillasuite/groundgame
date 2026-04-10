@@ -109,6 +109,10 @@ export default function ProductCrmPanel({
   const [p, setP] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [duplicating, setDuplicating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   function set<K extends keyof Product>(key: K, val: Product[K]) {
     setP((prev) => ({ ...prev, [key]: val }));
@@ -155,6 +159,42 @@ export default function ProductCrmPanel({
       setSaveStatus("error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function duplicate() {
+    setDuplicating(true);
+    const res = await fetch("/api/crm/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `${p.name} (copy)`,
+        sku: p.sku ? `${p.sku}-COPY` : null,
+        description: p.description,
+        retail_cents: p.retail_cents,
+        materials_cents: p.materials_cents,
+        packaging_cents: p.packaging_cents,
+        labor_cents: p.labor_cents,
+        on_hand: p.on_hand ?? 0,
+        status: "inactive", // copies start inactive so they don't accidentally appear live
+      }),
+    });
+    const data = await res.json();
+    setDuplicating(false);
+    if (res.ok) router.push(`/crm/products/${data.id}`);
+  }
+
+  async function deleteProduct() {
+    setDeleting(true);
+    setDeleteErr(null);
+    const res = await fetch(`/api/crm/products/${p.id}`, { method: "DELETE" });
+    if (res.ok) {
+      router.push("/crm/products");
+    } else {
+      const data = await res.json();
+      setDeleteErr(data.error ?? "Delete failed");
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -336,8 +376,8 @@ export default function ProductCrmPanel({
         </div>
       </div>
 
-      {/* Save button */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 24 }}>
+      {/* Action row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 24, flexWrap: "wrap" }}>
         <button
           type="button"
           onClick={() => save()}
@@ -354,6 +394,60 @@ export default function ProductCrmPanel({
         >
           {saving ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : saveStatus === "error" ? "Error — retry" : "Save Changes"}
         </button>
+
+        <button
+          type="button"
+          onClick={duplicate}
+          disabled={duplicating}
+          style={{
+            padding: "10px 20px", borderRadius: 8, fontWeight: 600, fontSize: 14,
+            border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent",
+            cursor: duplicating ? "not-allowed" : "pointer", color: "inherit",
+            opacity: duplicating ? 0.6 : 1,
+          }}
+        >
+          {duplicating ? "Duplicating…" : "Duplicate"}
+        </button>
+
+        <div style={{ marginLeft: "auto" }}>
+          {!confirmDelete ? (
+            <button
+              type="button"
+              onClick={() => { setConfirmDelete(true); setDeleteErr(null); }}
+              style={{
+                padding: "10px 20px", borderRadius: 8, fontWeight: 600, fontSize: 14,
+                border: "1px solid rgba(239,68,68,0.4)", background: "transparent",
+                cursor: "pointer", color: "#dc2626",
+              }}
+            >
+              Delete
+            </button>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 13, color: "#dc2626", fontWeight: 600 }}>Delete this product?</span>
+              <button
+                type="button"
+                onClick={deleteProduct}
+                disabled={deleting}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, fontWeight: 700, fontSize: 13,
+                  border: "none", background: "#dc2626", color: "#fff",
+                  cursor: deleting ? "not-allowed" : "pointer", opacity: deleting ? 0.6 : 1,
+                }}
+              >
+                {deleting ? "Deleting…" : "Yes, delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmDelete(false); setDeleteErr(null); }}
+                style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", cursor: "pointer", fontSize: 13, color: "inherit" }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          {deleteErr && <p style={{ color: "#dc2626", fontSize: 12, margin: "6px 0 0" }}>{deleteErr}</p>}
+        </div>
       </div>
 
       {/* Active Orders */}

@@ -47,6 +47,10 @@ export default function ProductEditor({
   const [product, setProduct] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [duplicating, setDuplicating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   function set<K extends keyof Product>(key: K, val: Product[K]) {
     setProduct((p) => ({ ...p, [key]: val }));
@@ -77,6 +81,39 @@ export default function ProductEditor({
       setSaveStatus("error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function duplicate() {
+    setDuplicating(true);
+    const res = await fetch("/api/crm/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `${product.name} (copy)`,
+        sku: product.sku ? `${product.sku}-COPY` : null,
+        description: product.description,
+        retail_cents: product.retail_cents,
+        on_hand: product.on_hand ?? 0,
+        status: "inactive",
+      }),
+    });
+    const data = await res.json();
+    setDuplicating(false);
+    if (res.ok) router.push(`/storefront/inventory/${data.id}`);
+  }
+
+  async function deleteProduct() {
+    setDeleting(true);
+    setDeleteErr(null);
+    const res = await fetch(`/api/crm/products/${product.id}`, { method: "DELETE" });
+    if (res.ok) {
+      router.push("/storefront/inventory");
+    } else {
+      const data = await res.json();
+      setDeleteErr(data.error ?? "Delete failed");
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -184,8 +221,8 @@ export default function ProductEditor({
         </div>
       </div>
 
-      {/* Save button */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {/* Save + actions */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <button
           type="button"
           onClick={() => save()}
@@ -199,7 +236,59 @@ export default function ProductEditor({
         >
           {saving ? "Saving…" : saveStatus === "saved" ? "Saved ✓" : saveStatus === "error" ? "Error — retry" : "Save"}
         </button>
+
+        <button
+          type="button"
+          onClick={duplicate}
+          disabled={duplicating}
+          style={{
+            padding: "9px 18px", borderRadius: 8, fontWeight: 600, fontSize: 14,
+            border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent",
+            cursor: duplicating ? "not-allowed" : "pointer", color: "inherit",
+            opacity: duplicating ? 0.6 : 1,
+          }}
+        >
+          {duplicating ? "Duplicating…" : "Duplicate"}
+        </button>
+
+        {!confirmDelete ? (
+          <button
+            type="button"
+            onClick={() => { setConfirmDelete(true); setDeleteErr(null); }}
+            style={{
+              padding: "9px 18px", borderRadius: 8, fontWeight: 600, fontSize: 14,
+              border: "1px solid rgba(239,68,68,0.4)", background: "transparent",
+              cursor: "pointer", color: "#dc2626",
+            }}
+          >
+            Delete
+          </button>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, color: "#dc2626", fontWeight: 600 }}>Delete?</span>
+            <button
+              type="button"
+              onClick={deleteProduct}
+              disabled={deleting}
+              style={{
+                padding: "8px 14px", borderRadius: 8, fontWeight: 700, fontSize: 13,
+                border: "none", background: "#dc2626", color: "#fff",
+                cursor: deleting ? "not-allowed" : "pointer", opacity: deleting ? 0.6 : 1,
+              }}
+            >
+              {deleting ? "Deleting…" : "Yes, delete"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setConfirmDelete(false); setDeleteErr(null); }}
+              style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", cursor: "pointer", fontSize: 13, color: "inherit" }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
+      {deleteErr && <p style={{ color: "#dc2626", fontSize: 12, margin: "4px 0 0" }}>{deleteErr}</p>}
     </section>
   );
 }
