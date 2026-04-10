@@ -22,7 +22,7 @@ export default async function ProductProfilePage({ params }: Ctx) {
 
   const { data: product, error: productError } = await sb
     .from("products")
-    .select("id, name, sku, description, retail_cents, on_hand, status, photo_url")
+    .select("id, name, sku, description, retail_cents, materials_cents, packaging_cents, labor_cents, on_hand, status, photo_url")
     .eq("id", id)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
