@@ -1,19 +1,48 @@
 import Link from "next/link";
-import { getServerSupabase } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import InventoryEditor from "./ui/InventoryEditor";
 import AddProductButton from "./ui/AddProductButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function InventoryPage() {
-  const sb = getServerSupabase();
-  const { id: tenantId } = await getTenant();
+function makeSb(tenantId: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
+  );
+}
 
-  const { data, error } = await sb.rpc("gg_list_inventory_v1", {
-    p_tenant_id: tenantId,
-  });
+export default async function InventoryPage() {
+  const { id: tenantId } = await getTenant();
+  const sb = makeSb(tenantId);
+
+  const [{ data: products, error }, { data: orderItems }] = await Promise.all([
+    sb
+      .from("products")
+      .select("id, name, sku, on_hand, retail_cents, status")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .order("name", { ascending: true }),
+    sb
+      .from("order_items")
+      .select("product_id")
+      .eq("tenant_id", tenantId),
+  ]);
+
   if (error) return <p style={{ color: "var(--red-10)" }}>Error: {error.message}</p>;
+
+  // Build reserved count map
+  const reservedMap: Record<string, number> = {};
+  for (const oi of orderItems ?? []) {
+    reservedMap[oi.product_id] = (reservedMap[oi.product_id] ?? 0) + 1;
+  }
+
+  const rows = (products ?? []).map((p) => ({
+    ...p,
+    reserved_qty: reservedMap[p.id] ?? 0,
+  }));
 
   return (
     <>
@@ -30,7 +59,7 @@ export default async function InventoryPage() {
         </div>
       </div>
       <p className="text-dim" style={{ marginTop: 4 }}>Edit on-hand counts. Click a product name to view its profile.</p>
-      <InventoryEditor initial={data ?? []} />
+      <InventoryEditor initial={rows} />
     </>
   );
 }
