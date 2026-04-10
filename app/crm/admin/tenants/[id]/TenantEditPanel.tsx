@@ -5,12 +5,19 @@ import { supabase } from "@/lib/supabase/client";
 import {
   ALL_FEATURE_KEYS,
   PLAN_FEATURES,
+  PLAN_LABELS,
   FEATURE_META,
   planFromFeatures,
   type FeatureKey,
   type Plan,
 } from "@/lib/features";
 import type { Branding } from "@/lib/tenant";
+
+type ContactTypeRow = {
+  key: string;
+  label: string;
+  stages: { key: string; label: string }[];
+};
 
 type TenantData = {
   id: string;
@@ -20,10 +27,11 @@ type TenantData = {
   features: FeatureKey[];
   branding: Partial<Branding>;
   settings: Record<string, unknown>;
+  contactTypes: ContactTypeRow[];
 };
 
 // Group features for the toggle grid
-const GROUPS = ["PWA", "CRM Core", "CRM Field", "CRM Data"] as const;
+const GROUPS = ["App Settings", "CRM Core", "CRM Field", "CRM Data"] as const;
 
 const TOGGLE: React.CSSProperties = {
   position: "relative", display: "inline-flex", width: 40, height: 22,
@@ -88,7 +96,26 @@ export default function TenantEditPanel({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [contactTypes, setContactTypes] = useState<ContactTypeRow[]>([]);
   const logoInputRef = useRef<HTMLInputElement>(null);
+
+  function toggleGroup(group: string) {
+    setCollapsedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+  }
+
+  function togglePipeline(ctKey: string) {
+    const hidden = (settings.hiddenContactTypes as string[] | undefined) ?? [];
+    const next = hidden.includes(ctKey) ? hidden.filter((k) => k !== ctKey) : [...hidden, ctKey];
+    setSettingsField("hiddenContactTypes", next);
+  }
+
+  function toggleStage(ctKey: string, stageKey: string) {
+    const hiddenStages = (settings.hiddenStages as Record<string, string[]> | undefined) ?? {};
+    const current = hiddenStages[ctKey] ?? [];
+    const next = current.includes(stageKey) ? current.filter((k) => k !== stageKey) : [...current, stageKey];
+    setSettingsField("hiddenStages", { ...hiddenStages, [ctKey]: next });
+  }
 
   const getToken = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -109,6 +136,7 @@ export default function TenantEditPanel({ id }: { id: string }) {
       setFeatures(data.features ?? [...ALL_FEATURE_KEYS]);
       setBranding(data.branding ?? {});
       setSettings(data.settings ?? {});
+      setContactTypes(data.contactTypes ?? []);
       setLoading(false);
     })();
   }, [id, getToken]);
@@ -313,48 +341,135 @@ export default function TenantEditPanel({ id }: { id: string }) {
       <div>
         <p style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>Plan Preset</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {(["basic", "pro", "custom"] as const).map((p) => (
+          {(["scout_kit", "field_pack", "war_chest", "enterprise", "custom"] as const).map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => p !== "custom" && applyPlan(p)}
               style={{
-                padding: "6px 16px", borderRadius: 8, border: "none", cursor: p === "custom" ? "default" : "pointer",
-                fontWeight: 700, fontSize: 13, textTransform: "capitalize",
+                padding: "6px 16px", borderRadius: 8, border: "none",
+                cursor: p === "custom" ? "default" : "pointer",
+                fontWeight: 700, fontSize: 13,
                 background: currentPlan === p ? "var(--gg-primary, #2563eb)" : "rgba(255,255,255,.08)",
                 color: "#fff", opacity: p === "custom" && currentPlan !== "custom" ? 0.4 : 1,
               }}
             >
-              {p}
+              {p === "custom" ? "Custom" : PLAN_LABELS[p]}
             </button>
           ))}
         </div>
         <p style={{ fontSize: 12, opacity: 0.5, marginTop: 6 }}>
-          Basic: CRM + Lists + Doors + Dials · Pro: everything
+          Scout Kit: field ops · Field Pack: + pipeline & storefront · War Chest: + data tools · Enterprise: everything
         </p>
       </div>
 
-      {/* Feature toggles by group */}
+      {/* Feature toggles by group — collapsible */}
       {GROUPS.map((group) => {
         const groupKeys = ALL_FEATURE_KEYS.filter(
           (k) => FEATURE_META[k].group === group
         );
+        const isCollapsed = !!collapsedGroups[group];
+        const enabledCount = groupKeys.filter((k) => features.includes(k)).length;
         return (
-          <div key={group}>
-            <p style={{ fontSize: 12, fontWeight: 700, opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-              {group}
-            </p>
-            <div style={{ display: "grid", gap: 10 }}>
-              {groupKeys.map((key) => (
-                <div key={key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <ToggleSwitch
-                    checked={features.includes(key)}
-                    onChange={() => toggleFeature(key)}
-                  />
-                  <span style={{ fontSize: 14 }}>{FEATURE_META[key].label}</span>
-                </div>
-              ))}
-            </div>
+          <div key={group} style={{ border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, overflow: "hidden" }}>
+            <button
+              type="button"
+              onClick={() => toggleGroup(group)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 14px", background: "rgba(255,255,255,.03)",
+                border: "none", cursor: "pointer", color: "inherit", textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.55, textTransform: "uppercase", letterSpacing: "0.08em", flex: 1 }}>
+                {group}
+              </span>
+              <span style={{ fontSize: 11, opacity: 0.4 }}>{enabledCount}/{groupKeys.length}</span>
+              <span style={{ fontSize: 10, opacity: 0.4, transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)", transition: "transform 0.15s" }}>▶</span>
+            </button>
+            {!isCollapsed && (
+              <div style={{ padding: "10px 14px", display: "grid", gap: 10 }}>
+                {groupKeys.map((key) => (
+                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <ToggleSwitch
+                      checked={features.includes(key)}
+                      onChange={() => toggleFeature(key)}
+                    />
+                    <span style={{ fontSize: 14 }}>{FEATURE_META[key].label}</span>
+                  </div>
+                ))}
+
+                {/* Pipeline visibility — injected inside CRM Field */}
+                {group === "CRM Field" && contactTypes.length > 0 && (() => {
+                  const hiddenPipelines = (settings.hiddenContactTypes as string[] | undefined) ?? [];
+                  const hiddenStagesMap = (settings.hiddenStages as Record<string, string[]> | undefined) ?? {};
+                  return (
+                    <div style={{ marginTop: 8, borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, opacity: 0.4, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 12px" }}>
+                        Pipeline Visibility
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {contactTypes.map((ct) => {
+                          const isPipelineOn = !hiddenPipelines.includes(ct.key);
+                          const hiddenStages = hiddenStagesMap[ct.key] ?? [];
+                          return (
+                            <div
+                              key={ct.key}
+                              style={{
+                                borderRadius: 10,
+                                border: `1px solid ${isPipelineOn ? "rgba(99,102,241,.35)" : "rgba(255,255,255,.07)"}`,
+                                background: isPipelineOn ? "rgba(99,102,241,.06)" : "rgba(255,255,255,.02)",
+                                padding: "10px 12px",
+                                transition: "all 0.2s",
+                              }}
+                            >
+                              {/* Pipeline header row */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: ct.stages.length > 0 ? 10 : 0 }}>
+                                <span style={{ fontWeight: 700, fontSize: 14, opacity: isPipelineOn ? 1 : 0.4, transition: "opacity 0.2s" }}>
+                                  {ct.label}
+                                </span>
+                                <ToggleSwitch checked={isPipelineOn} onChange={() => togglePipeline(ct.key)} />
+                              </div>
+
+                              {/* Stage chips */}
+                              {ct.stages.length > 0 && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, opacity: isPipelineOn ? 1 : 0.3, transition: "opacity 0.2s", pointerEvents: isPipelineOn ? "auto" : "none" }}>
+                                  {ct.stages.map((stage) => {
+                                    const isOn = !hiddenStages.includes(stage.key);
+                                    return (
+                                      <button
+                                        key={stage.key}
+                                        type="button"
+                                        onClick={() => toggleStage(ct.key, stage.key)}
+                                        style={{
+                                          padding: "4px 11px",
+                                          borderRadius: 20,
+                                          border: isOn ? "1px solid rgba(99,102,241,.5)" : "1px solid rgba(255,255,255,.1)",
+                                          background: isOn ? "rgba(99,102,241,.18)" : "transparent",
+                                          color: isOn ? "#a5b4fc" : "rgba(255,255,255,.25)",
+                                          fontSize: 12,
+                                          fontWeight: 600,
+                                          cursor: "pointer",
+                                          textDecoration: isOn ? "none" : "line-through",
+                                          transition: "all 0.15s",
+                                          letterSpacing: "0.01em",
+                                        }}
+                                      >
+                                        {stage.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         );
       })}

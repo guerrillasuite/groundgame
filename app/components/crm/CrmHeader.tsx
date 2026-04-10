@@ -52,6 +52,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
 
   // Settings: always show; Pipeline Stages only with crm_opportunities; Tenants for superadmin only
   const settingsItems: NavItem[] = [
+    { href: "/crm/settings", label: "Brand Settings" },
     { href: "/crm/settings/users", label: "Users" },
   ];
   if (f("crm")) {
@@ -59,9 +60,6 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
   }
   if (f("crm")) {
     settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
-  }
-  if (f("pwa_storefront")) {
-    settingsItems.push({ href: "/crm/settings/storefront", label: "Storefront Tabs" });
   }
   if (isSuperAdmin) {
     settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });

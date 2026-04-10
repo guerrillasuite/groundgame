@@ -34,6 +34,31 @@ export async function GET(
     return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
   }
 
+  // Fetch contact types + stages for pipeline visibility controls
+  const { data: ctRows } = await sb
+    .from("tenant_contact_types")
+    .select("key, label, order_index")
+    .eq("tenant_id", params.id)
+    .order("order_index");
+
+  const { data: stageRows } = await sb
+    .from("opportunity_stages")
+    .select("key, label, order_index, contact_type_key")
+    .eq("tenant_id", params.id)
+    .order("order_index");
+
+  const stagesByType: Record<string, { key: string; label: string }[]> = {};
+  for (const s of (stageRows ?? []) as any[]) {
+    if (!stagesByType[s.contact_type_key]) stagesByType[s.contact_type_key] = [];
+    stagesByType[s.contact_type_key].push({ key: s.key, label: s.label });
+  }
+
+  const contactTypes = (ctRows ?? []).map((ct: any) => ({
+    key: ct.key,
+    label: ct.label,
+    stages: stagesByType[ct.key] ?? [],
+  }));
+
   return NextResponse.json({
     id: data.id,
     slug: data.slug,
@@ -42,6 +67,7 @@ export async function GET(
     features: (data.features as FeatureKey[]) ?? [...ALL_FEATURE_KEYS],
     branding: (data.branding as Record<string, unknown>) ?? {},
     settings: (data.settings as Record<string, unknown>) ?? {},
+    contactTypes,
     createdAt: data.created_at,
   });
 }
