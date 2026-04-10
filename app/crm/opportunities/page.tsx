@@ -150,42 +150,34 @@ export default async function OpportunitiesPage() {
   };
 
   const sections: Section[] = [];
-  const assignedOppIds = new Set<string>();
+  const configuredTypeKeys = new Set(contactTypes.map((ct) => ct.key));
 
   for (const ct of contactTypes) {
     const ctStages = stagesByType[ct.key] ?? [];
-    const stageKeys = ctStages.map((s) => s.key);
-    if (stageKeys.length === 0) continue;
-
-    const stageKeySet = new Set(stageKeys);
-    const stageLabels = Object.fromEntries(ctStages.map((s) => [s.key, s.label]));
+    const stageKeys = ctStages.length > 0 ? ctStages.map((s) => s.key) : FALLBACK_STAGE_KEYS;
+    const stageLabels = ctStages.length > 0
+      ? Object.fromEntries(ctStages.map((s) => [s.key, s.label]))
+      : FALLBACK_STAGE_LABELS;
     const itemsByStage: Record<string, OppCard[]> = {};
     for (const k of stageKeys) itemsByStage[k] = [];
 
-    // Include opps explicitly in this type OR opps with no contact_type whose stage belongs here
-    const ctOpps = opps.filter((o) => {
-      if (o.contact_type === ct.key) return true;
-      if (!o.contact_type && o.stage && stageKeySet.has(o.stage)) return true;
-      return false;
-    });
-
+    const ctOpps = opps.filter((o) => o.contact_type === ct.key);
     for (const o of ctOpps) {
       const [sk, card] = toCard(o, stageKeys, stageKeys[0]);
       itemsByStage[sk].push(card);
-      assignedOppIds.add(o.id);
     }
 
     sections.push({ key: ct.key, label: ct.label, stageKeys, stageLabels, itemsByStage });
   }
 
-  // 5) Uncategorized section: opps that didn't match any configured type or stage
+  // 5) Uncategorized: opps with no contact_type or an unrecognised contact_type
   const uncatStages = stagesByType["__uncategorized__"] ?? [];
   const uncatStageKeys = uncatStages.length > 0 ? uncatStages.map((s) => s.key) : FALLBACK_STAGE_KEYS;
   const uncatStageLabels = uncatStages.length > 0
     ? Object.fromEntries(uncatStages.map((s) => [s.key, s.label]))
     : FALLBACK_STAGE_LABELS;
 
-  const uncatOpps = opps.filter((o) => !assignedOppIds.has(o.id));
+  const uncatOpps = opps.filter((o) => !o.contact_type || !configuredTypeKeys.has(o.contact_type));
 
   const uncatItemsByStage: Record<string, OppCard[]> = {};
   for (const k of uncatStageKeys) uncatItemsByStage[k] = [];

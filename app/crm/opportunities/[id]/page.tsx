@@ -82,19 +82,19 @@ export default async function OpportunityDetail({ params }: Params) {
     due_at: (oppRaw as any).due_at ?? null,
   };
 
-  // ── 2. Stages (for the stage dropdown — scoped to this opp's contact type) ──
+  // ── 2. Stages (for the stage dropdown) ─────────────────────────────────────
   const contactType = (oppRaw as any).contact_type ?? null;
-  let stagesQuery = sb
+  // Prefer stages for this opp's contact type; fall back to all stages so the
+  // dropdown is never empty (e.g. when contact_type is null or unrecognised).
+  const { data: ctStagesData } = contactType
+    ? await sb.from("opportunity_stages").select("key,label").eq("tenant_id", tenantId).eq("contact_type_key", contactType).order("order_index", { ascending: true })
+    : { data: null };
+  const { data: allStagesData } = await sb
     .from("opportunity_stages")
     .select("key,label")
     .eq("tenant_id", tenantId)
     .order("order_index", { ascending: true });
-  if (contactType) {
-    stagesQuery = stagesQuery.eq("contact_type_key", contactType);
-  } else {
-    stagesQuery = stagesQuery.is("contact_type_key", null);
-  }
-  const { data: stagesData } = await stagesQuery;
+  const stagesData = (ctStagesData && (ctStagesData as any[]).length > 0) ? ctStagesData : allStagesData;
 
   const stages =
     Array.isArray(stagesData) && stagesData.length > 0
