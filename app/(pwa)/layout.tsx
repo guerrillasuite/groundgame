@@ -39,10 +39,11 @@ function contrastColor(hex: string): string {
 export default async function PwaLayout({ children }: { children: React.ReactNode }) {
   const [b, { features }] = await Promise.all([getTenantBranding(), getTenant()]);
   const onPrimary = contrastColor(b.primaryColor);
+  const hasCustomColors = b.primaryColor !== BASE_BRANDING.primaryColor || b.accentColor !== BASE_BRANDING.accentColor;
   return (
     <div className="app-wrap">
-      {b.primaryColor !== BASE_BRANDING.primaryColor && (
-        <style>{`:root { --gg-primary: ${b.primaryColor}; --on-primary: ${onPrimary}; }`}</style>
+      {hasCustomColors && (
+        <style>{`:root { --gg-primary: ${b.primaryColor}; --on-primary: ${onPrimary}; --gg-accent: ${b.accentColor}; }`}</style>
       )}
       <Header logoUrl={b.logoUrl} appName={b.appName} showInstall />
       <OfflineBanner />

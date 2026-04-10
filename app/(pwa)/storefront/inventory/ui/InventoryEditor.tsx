@@ -18,22 +18,6 @@ function fmt(cents: number | null | undefined) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-const stepBtn: React.CSSProperties = {
-  width: 36,
-  height: 36,
-  borderRadius: 8,
-  border: "1px solid var(--gg-border, #e5e7eb)",
-  background: "transparent",
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  color: "inherit",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-};
-
 export default function InventoryEditor({ initial }: { initial: ProductRow[] }) {
   const [rows, setRows] = useState<ProductRow[]>(initial);
   const [pending, start] = useTransition();
@@ -44,6 +28,8 @@ export default function InventoryEditor({ initial }: { initial: ProductRow[] }) 
     next[i] = { ...next[i], on_hand: Math.max(0, current + delta) };
     setRows(next);
   }
+
+  const primaryBorder = "1px solid var(--gg-primary, #2563eb)";
 
   return (
     <form
@@ -70,52 +56,75 @@ export default function InventoryEditor({ initial }: { initial: ProductRow[] }) 
               style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
                 gap: 12,
-                padding: "14px 16px",
+                padding: "12px 16px",
                 borderBottom: i < rows.length - 1 ? "1px solid var(--gg-border, #e5e7eb)" : undefined,
               }}
             >
-              {/* Left: name, SKU, price */}
+              {/* Name + SKU */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Link
                   href={`/storefront/inventory/${r.id}`}
-                  style={{ fontWeight: 700, fontSize: 15, textDecoration: "none", color: "inherit", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                  style={{ fontWeight: 700, fontSize: 14, textDecoration: "none", color: "inherit", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                 >
                   {r.name}
                 </Link>
-                <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center", flexWrap: "wrap" }}>
-                  {price && (
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--gg-primary, #2563eb)" }}>{price}</span>
-                  )}
-                  {r.sku && (
-                    <span style={{ fontSize: 12, opacity: 0.45 }}>{r.sku}</span>
-                  )}
-                </div>
-                {(r.reserved_qty ?? 0) > 0 && (
-                  <span style={{ fontSize: 11, opacity: 0.4, marginTop: 2, display: "block" }}>
-                    {Number(r.reserved_qty)} reserved
-                  </span>
+                {r.sku && (
+                  <span style={{ fontSize: 11, opacity: 0.4, display: "block", marginTop: 1 }}>{r.sku}</span>
                 )}
               </div>
 
-              {/* Right: count + stepper buttons */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-                <span style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, minWidth: 32, textAlign: "right" }}>
-                  {Number(r.on_hand ?? 0)}
+              {/* Price */}
+              {price && (
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--gg-accent, #3B82F6)", flexShrink: 0 }}>
+                  {price}
                 </span>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {([-5, -1, 1, 5] as const).map((delta) => (
-                    <button
-                      key={delta}
-                      type="button"
-                      onClick={() => adjust(i, delta)}
-                      style={stepBtn}
-                    >
-                      {delta > 0 ? `+${delta}` : delta}
-                    </button>
-                  ))}
+              )}
+
+              {/* Stepper: [-5][-1][count][+1][+5] */}
+              <div style={{ display: "flex", flexShrink: 0 }}>
+                {([-5, -1] as const).map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    onClick={() => adjust(i, delta)}
+                    style={{
+                      width: 34, height: 34, border: primaryBorder,
+                      borderRight: "none", background: "transparent", cursor: "pointer",
+                      fontSize: 12, fontWeight: 700, color: "var(--gg-primary, #2563eb)",
+                      borderRadius: delta === -5 ? "8px 0 0 8px" : 0,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {delta}
+                  </button>
+                ))}
+
+                {/* Count cell */}
+                <div style={{
+                  width: 40, height: 34, border: primaryBorder,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 15, fontWeight: 800,
+                }}>
+                  {Number(r.on_hand ?? 0)}
                 </div>
+
+                {([1, 5] as const).map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    onClick={() => adjust(i, delta)}
+                    style={{
+                      width: 34, height: 34, border: primaryBorder,
+                      borderLeft: "none", background: "transparent", cursor: "pointer",
+                      fontSize: 12, fontWeight: 700, color: "var(--gg-primary, #2563eb)",
+                      borderRadius: delta === 5 ? "0 8px 8px 0" : 0,
+                      flexShrink: 0,
+                    }}
+                  >
+                    +{delta}
+                  </button>
+                ))}
               </div>
             </div>
           );
