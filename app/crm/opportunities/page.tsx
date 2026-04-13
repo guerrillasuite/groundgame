@@ -29,7 +29,7 @@ type OppRow = {
   id: string;
   title: string | null;
   stage: string | null;
-  contact_type: string | null;
+  pipeline: string | null;
   amount_cents: number | null;
   source: string | null;
   priority: string | null;
@@ -82,7 +82,7 @@ export default async function OpportunitiesPage() {
       .eq("tenant_id", tenantId)
       .order("order_index", { ascending: true }),
     sb.from("opportunities")
-      .select("id, title, stage, contact_type, amount_cents, source, priority")
+      .select("id, title, stage, pipeline, amount_cents, source, priority")
       .eq("tenant_id", tenantId),
     sb.from("opportunity_people")
       .select("opportunity_id, person_id, is_primary")
@@ -161,7 +161,7 @@ export default async function OpportunitiesPage() {
     const itemsByStage: Record<string, OppCard[]> = {};
     for (const k of stageKeys) itemsByStage[k] = [];
 
-    const ctOpps = opps.filter((o) => o.contact_type === ct.key);
+    const ctOpps = opps.filter((o) => o.pipeline === ct.key);
     for (const o of ctOpps) {
       const [sk, card] = toCard(o, stageKeys, stageKeys[0]);
       itemsByStage[sk].push(card);
@@ -170,14 +170,14 @@ export default async function OpportunitiesPage() {
     sections.push({ key: ct.key, label: ct.label, stageKeys, stageLabels, itemsByStage });
   }
 
-  // 5) Uncategorized: opps with no contact_type or an unrecognised contact_type
+  // 5) Uncategorized: opps with no pipeline or an unrecognised pipeline
   const uncatStages = stagesByType["__uncategorized__"] ?? [];
   const uncatStageKeys = uncatStages.length > 0 ? uncatStages.map((s) => s.key) : FALLBACK_STAGE_KEYS;
   const uncatStageLabels = uncatStages.length > 0
     ? Object.fromEntries(uncatStages.map((s) => [s.key, s.label]))
     : FALLBACK_STAGE_LABELS;
 
-  const uncatOpps = opps.filter((o) => !o.contact_type || !configuredTypeKeys.has(o.contact_type));
+  const uncatOpps = opps.filter((o) => !o.pipeline || !configuredTypeKeys.has(o.pipeline));
 
   const uncatItemsByStage: Record<string, OppCard[]> = {};
   for (const k of uncatStageKeys) uncatItemsByStage[k] = [];

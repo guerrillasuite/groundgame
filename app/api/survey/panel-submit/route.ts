@@ -277,7 +277,7 @@ export async function POST(req: NextRequest) {
         tenant_id: tenant.id,
         title: oppTitle,
         stage,
-        contact_type: trigger.contact_type ?? null,
+        pipeline: trigger.contact_type ?? null,
         contact_person_id: personId,
         source: "survey",
       }).select("id").single();

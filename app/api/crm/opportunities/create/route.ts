@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
   }
 
-  const contact_type = body.contact_type || null;
+  const pipeline = body.pipeline || body.contact_type || null;
 
   // Resolve default stage if not provided
   let stage = body.stage ?? null;
@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
       .order("order_index", { ascending: true })
       .limit(1);
 
-    if (contact_type) {
-      stageQuery = stageQuery.eq("contact_type_key", contact_type);
+    if (pipeline) {
+      stageQuery = stageQuery.eq("contact_type_key", pipeline);
     } else {
       stageQuery = stageQuery.is("contact_type_key", null);
     }
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       tenant_id: tenantId,
       title: body.title.trim(),
       stage,
-      contact_type,
+      pipeline,
       priority: body.priority || null,
       source: body.source || null,
       amount_cents: typeof body.amount_cents === "number" ? body.amount_cents : null,

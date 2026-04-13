@@ -66,14 +66,14 @@ export async function PUT(req: NextRequest) {
   const contactTypes: ContactTypeWithStages[] = body?.contactTypes ?? [];
   const fallbackMap: Record<string, string> | undefined = body?.fallbackMap;
 
-  // Migrate orphaned opportunity contact_type values
+  // Migrate orphaned opportunity pipeline values
   if (fallbackMap && Object.keys(fallbackMap).length > 0) {
     for (const [oldKey, newKey] of Object.entries(fallbackMap)) {
       await sb
         .from("opportunities")
-        .update({ contact_type: newKey })
+        .update({ pipeline: newKey })
         .eq("tenant_id", tenant.id)
-        .eq("contact_type", oldKey);
+        .eq("pipeline", oldKey);
     }
   }
 

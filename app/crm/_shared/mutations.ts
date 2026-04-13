@@ -36,7 +36,7 @@ const EDITABLE_FIELDS: Record<string, readonly string[]> = {
   ],
   opportunities: [
     "title", "amount_cents", "description", "notes", "contact_person_id",
-    "stage", "order_index", "due_at", "priority", "source", "contact_type",
+    "stage", "order_index", "due_at", "priority", "source", "pipeline",
   ],
   // add lists, stops, etc.
 };

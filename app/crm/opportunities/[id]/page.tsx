@@ -57,7 +57,7 @@ export default async function OpportunityDetail({ params }: Params) {
   // ── 1. Opportunity ──────────────────────────────────────────────────────────
   const { data: oppRaw, error: oppErr } = await sb
     .from("opportunities")
-    .select("id,title,stage,amount_cents,description,notes,priority,source,due_at,stop_id,contact_person_id,contact_type")
+    .select("id,title,stage,amount_cents,description,notes,priority,source,due_at,stop_id,contact_person_id,pipeline")
     .eq("tenant_id", tenantId)
     .eq("id", oppId)
     .single();
@@ -71,13 +71,13 @@ export default async function OpportunityDetail({ params }: Params) {
     );
   }
 
-  const contactType = (oppRaw as any).contact_type ?? null;
+  const contactType = (oppRaw as any).pipeline ?? null;
 
   const opp: OppData = {
     id: oppRaw.id,
     title: oppRaw.title,
     stage: oppRaw.stage,
-    contact_type: contactType,
+    pipeline: contactType,
     amount_cents: oppRaw.amount_cents,
     description: oppRaw.description,
     notes: oppRaw.notes,

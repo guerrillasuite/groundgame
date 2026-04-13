@@ -68,7 +68,7 @@ export default async function PipelinePage({ params }: Params) {
     .from("opportunities")
     .select("id, title, stage, amount_cents, source, priority, contact_person_id")
     .eq("tenant_id", tenantId)
-    .eq("contact_type", contactTypeKey);
+    .eq("pipeline", contactTypeKey);
 
   const opps: { id: string; title: string | null; stage: string | null; amount_cents: number | null; source: string | null; priority: string | null; contact_person_id: string | null }[] =
     Array.isArray(oppsData) ? [...oppsData] : [];

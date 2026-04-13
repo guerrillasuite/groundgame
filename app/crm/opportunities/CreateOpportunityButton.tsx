@@ -87,7 +87,7 @@ export default function CreateOpportunityButton() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: title.trim(),
-            contact_type: contactType || undefined,
+            pipeline: contactType || undefined,
             stage: stage || undefined,
             priority: priority || undefined,
             source: source || undefined,

@@ -63,7 +63,7 @@ export type OppData = {
   id: string;
   title: string | null;
   stage: string | null;
-  contact_type: string | null;
+  pipeline: string | null;
   amount_cents: number | null;
   description: string | null;
   notes: string | null;
@@ -148,8 +148,8 @@ export function OppFieldEditor({ opp, stages, contactTypes }: { opp: OppData; st
             <label style={LABEL}>Pipeline</label>
             <select
               style={{ ...INPUT }}
-              defaultValue={opp.contact_type ?? ""}
-              onChange={(e) => save({ contact_type: e.target.value || null })}
+              defaultValue={opp.pipeline ?? ""}
+              onChange={(e) => save({ pipeline: e.target.value || null })}
             >
               <option value="">— Uncategorized —</option>
               {contactTypes.map((ct) => (

@@ -38,7 +38,7 @@ export default async function StorefrontOrdersKanbanPage() {
       .eq("tenant_id", tenantId)
       .order("order_index", { ascending: true }),
     sb.from("opportunities")
-      .select("id, contact_type")
+      .select("id, pipeline")
       .eq("tenant_id", tenantId),
     sb.rpc("gg_list_orders_with_items_v1", { p_tenant_id: tenantId }),
   ]);
@@ -48,10 +48,10 @@ export default async function StorefrontOrdersKanbanPage() {
   const hiddenContactTypes = (settings.hiddenContactTypes as string[] | undefined) ?? [];
   const hiddenStagesMap = (settings.hiddenStages as Record<string, string[]> | undefined) ?? {};
 
-  // Build contact_type lookup by opportunity id
+  // Build pipeline lookup by opportunity id
   const ctKeyById: Record<string, string | null> = {};
-  for (const opp of (oppCtData ?? []) as { id: string; contact_type: string | null }[]) {
-    ctKeyById[opp.id] = opp.contact_type ?? null;
+  for (const opp of (oppCtData ?? []) as { id: string; pipeline: string | null }[]) {
+    ctKeyById[opp.id] = opp.pipeline ?? null;
   }
 
   // Filter stages: remove entire stage column if its pipeline or stage is hidden
