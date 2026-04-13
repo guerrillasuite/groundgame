@@ -289,9 +289,9 @@ export default function ContactTypesClient() {
 
   return (
     <section style={{ padding: 16, maxWidth: 760, margin: "0 auto", color: "rgb(238 242 246)" }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Contact Types</h1>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Pipelines</h1>
       <p style={{ margin: "0 0 20px", fontSize: 13, opacity: 0.7 }}>
-        Define the contact types for your tenant. Each type has its own opportunity pipeline with configurable stages.
+        Each pipeline represents a category of contact — e.g. Customer, Donor, Volunteer. Opportunities are assigned to a pipeline based on who they are linked to. Each pipeline has its own set of stages that track where an opportunity is in that process.
       </p>
 
       {loading ? (
@@ -299,7 +299,7 @@ export default function ContactTypesClient() {
       ) : (
         <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
           {types.length === 0 && (
-            <p style={{ opacity: 0.4, fontSize: 13 }}>No contact types configured yet. Add one below.</p>
+            <p style={{ opacity: 0.4, fontSize: 13 }}>No pipelines configured yet. Add one below.</p>
           )}
           {types.map((ct, idx) => (
             <ContactTypeRow
@@ -316,7 +316,7 @@ export default function ContactTypesClient() {
             onClick={handleAdd}
             style={{ ...card, padding: "10px 14px", cursor: "pointer", border: "1px dashed rgba(255,255,255,.15)", background: "transparent", color: "rgba(255,255,255,.5)", fontSize: 13, textAlign: "left" }}
           >
-            + Add Contact Type
+            + Add Pipeline
           </button>
         </div>
       )}
@@ -329,7 +329,7 @@ export default function ContactTypesClient() {
         disabled={saving || loading}
         style={btn("var(--gg-primary, #2563eb)", { opacity: saving || loading ? 0.6 : 1 })}
       >
-        {saving ? "Saving…" : "Save Contact Types"}
+        {saving ? "Saving…" : "Save Pipelines"}
       </button>
     </section>
   );

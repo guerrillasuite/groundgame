@@ -56,7 +56,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
     { href: "/crm/settings/users", label: "Users" },
   ];
   if (f("crm")) {
-    settingsItems.push({ href: "/crm/settings/contact-types", label: "Contact Types" });
+    settingsItems.push({ href: "/crm/settings/contact-types", label: "Pipelines" });
   }
   if (f("crm")) {
     settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
