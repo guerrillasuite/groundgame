@@ -66,13 +66,15 @@ export default async function OpportunitiesPage() {
   const { id: tenantId } = await getTenant();
   const sb = makeSb(tenantId);
 
-  // 1) Load contact types, stages, opps, and opportunity_people in parallel
+  // 1) Load tenant settings + contact types, stages, opps, and opportunity_people in parallel
   const [
+    { data: tenantData },
     { data: ctData },
     { data: stagesData },
     { data: oppsData },
     { data: oppPeopleData },
   ] = await Promise.all([
+    sb.from("tenants").select("settings").eq("id", tenantId).single(),
     sb.from("tenant_contact_types")
       .select("key, label, order_index")
       .eq("tenant_id", tenantId)
@@ -89,8 +91,24 @@ export default async function OpportunitiesPage() {
       .eq("tenant_id", tenantId),
   ]);
 
-  const contactTypes: ContactTypeRow[] = Array.isArray(ctData) ? [...(ctData as ContactTypeRow[])] : [];
-  const allStages: StageRow[] = Array.isArray(stagesData) ? [...(stagesData as StageRow[])] : [];
+  // Parse visibility settings
+  const settings = (tenantData?.settings as Record<string, unknown>) ?? {};
+  const hiddenContactTypes = (settings.hiddenContactTypes as string[] | undefined) ?? [];
+  const hiddenStagesMap = (settings.hiddenStages as Record<string, string[]> | undefined) ?? {};
+
+  // Apply visibility filtering
+  const allContactTypes: ContactTypeRow[] = Array.isArray(ctData) ? [...(ctData as ContactTypeRow[])] : [];
+  const contactTypes = allContactTypes.filter((ct) => !hiddenContactTypes.includes(ct.key));
+
+  const rawStages: StageRow[] = Array.isArray(stagesData) ? [...(stagesData as StageRow[])] : [];
+  const allStages = rawStages.filter((s) => {
+    const ctKey = s.contact_type_key ?? "__uncategorized__";
+    if (hiddenContactTypes.includes(ctKey)) return false;
+    const hiddenForCt = hiddenStagesMap[ctKey] ?? [];
+    if (hiddenForCt.includes(s.key)) return false;
+    return true;
+  });
+
   const opps: OppRow[] = Array.isArray(oppsData) ? [...(oppsData as OppRow[])] : [];
 
   // 2) Build primary person map from opportunity_people
@@ -130,14 +148,14 @@ export default async function OpportunitiesPage() {
     stagesByType[k].push(s);
   }
 
-  // Helper: build OppCard from OppRow
-  function toCard(o: OppRow, validStageKeys: string[], fallbackKey: string): [string, OppCard] {
-    const stageKey = o.stage && validStageKeys.includes(o.stage) ? o.stage : fallbackKey;
+  // Helper: build OppCard from OppRow — returns null if stage is not visible
+  function toCard(o: OppRow, validStageKeys: string[]): [string, OppCard] | null {
+    if (!o.stage || !validStageKeys.includes(o.stage)) return null;
     const pId = primaryPersonByOpp.get(o.id);
     const p = pId ? personMap.get(pId) : undefined;
     const contact_name = p ? [p.first_name, p.last_name].filter(Boolean).join(" ") || null : null;
     const contact_method = p ? (p.phone || p.email || null) : null;
-    return [stageKey, { id: o.id, title: o.title, amount_cents: o.amount_cents, source: o.source, priority: o.priority, contact_name, contact_method }];
+    return [o.stage, { id: o.id, title: o.title, amount_cents: o.amount_cents, source: o.source, priority: o.priority, contact_name, contact_method }];
   }
 
   // 4) Build sections — one per contact type
@@ -163,8 +181,8 @@ export default async function OpportunitiesPage() {
 
     const ctOpps = opps.filter((o) => o.pipeline === ct.key);
     for (const o of ctOpps) {
-      const [sk, card] = toCard(o, stageKeys, stageKeys[0]);
-      itemsByStage[sk].push(card);
+      const result = toCard(o, stageKeys);
+      if (result) itemsByStage[result[0]].push(result[1]);
     }
 
     sections.push({ key: ct.key, label: ct.label, stageKeys, stageLabels, itemsByStage });
@@ -177,13 +195,16 @@ export default async function OpportunitiesPage() {
     ? Object.fromEntries(uncatStages.map((s) => [s.key, s.label]))
     : FALLBACK_STAGE_LABELS;
 
-  const uncatOpps = opps.filter((o) => !o.pipeline || !configuredTypeKeys.has(o.pipeline));
+  const uncatOpps = opps.filter((o) =>
+    (!o.pipeline || !configuredTypeKeys.has(o.pipeline)) &&
+    !hiddenContactTypes.includes("__uncategorized__")
+  );
 
   const uncatItemsByStage: Record<string, OppCard[]> = {};
   for (const k of uncatStageKeys) uncatItemsByStage[k] = [];
   for (const o of uncatOpps) {
-    const [sk, card] = toCard(o, uncatStageKeys, uncatStageKeys[0]);
-    uncatItemsByStage[sk].push(card);
+    const result = toCard(o, uncatStageKeys);
+    if (result) uncatItemsByStage[result[0]].push(result[1]);
   }
 
   if (uncatOpps.length > 0 || sections.length === 0) {

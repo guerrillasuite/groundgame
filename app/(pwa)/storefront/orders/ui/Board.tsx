@@ -29,8 +29,10 @@ export default function Board({
     const by: Record<string, Order[]> = {};
     stages.forEach((s) => (by[s.key] = []));
     (orders || []).forEach((o) => {
-      const k = o.stage && stages.some((s) => s.key === o.stage) ? o.stage : stages[0]?.key ?? "new";
-      by[k] = [...(by[k] ?? []), o];
+      // Only place the order if its stage is visible — don't reassign to first column
+      if (o.stage && stages.some((s) => s.key === o.stage)) {
+        by[o.stage] = [...(by[o.stage] ?? []), o];
+      }
     });
     return by;
   });
@@ -91,8 +93,9 @@ export default function Board({
       const by: Record<string, Order[]> = {};
       stages.forEach((s) => (by[s.key] = []));
       (orders || []).forEach((o) => {
-        const k = o.stage && stages.some((s) => s.key === o.stage) ? o.stage : stages[0]?.key ?? "new";
-        by[k] = [...(by[k] ?? []), o];
+        if (o.stage && stages.some((s) => s.key === o.stage)) {
+          by[o.stage] = [...(by[o.stage] ?? []), o];
+        }
       });
       setCols(by);
       alert("Failed to update stage.");
