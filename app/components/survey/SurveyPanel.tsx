@@ -39,6 +39,7 @@ interface SurveyPanelProps {
   questions: Question[];
   postSubmitSurveyId?: string | null;
   postSubmitQuestions?: Question[] | null;
+  postSubmitRequired?: boolean;
   isKiosk: boolean;
   contactId?: string | null;
   initialAnswers?: Record<string, string>;
@@ -220,6 +221,7 @@ export default function SurveyPanel({
   questions,
   postSubmitSurveyId,
   postSubmitQuestions,
+  postSubmitRequired,
   isKiosk,
   contactId,
   initialAnswers,
@@ -281,6 +283,14 @@ export default function SurveyPanel({
 
   const totalQuestions = questions.length;
   const currentQuestion = questions[current];
+
+  // ── Sync openAnswer from prefilled answers when navigating to a text question ──
+  useEffect(() => {
+    if (!currentQuestion) return;
+    if (["text", "text_short", "number", "email", "phone", "date"].includes(currentQuestion.question_type ?? "")) {
+      setOpenAnswer(answers[currentQuestion.id] ?? "");
+    }
+  }, [current]);
 
   // ── Kiosk auto-reset ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -982,9 +992,11 @@ export default function SurveyPanel({
                 <button type="submit" disabled={submitting} style={btn(submitColor)}>
                   {submitting ? "Saving…" : "Save my Results"}
                 </button>
-                <button type="button" onClick={async () => { const r = await submitMainSurvey(); if (r?.payment_required) setPhase("payment"); else setPhase("thankyou"); }} style={{ ...ghostBtn, marginTop: 10 }}>
-                  Skip
-                </button>
+                {!postSubmitRequired && (
+                  <button type="button" onClick={async () => { const r = await submitMainSurvey(); if (r?.payment_required) setPhase("payment"); else setPhase("thankyou"); }} style={{ ...ghostBtn, marginTop: 10 }}>
+                    Skip
+                  </button>
+                )}
               </form>
             ) : (
               <button

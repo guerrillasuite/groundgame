@@ -11,7 +11,7 @@ function makeSb() {
 
 async function fetchSurveyByIdOrSlug(surveyId: string) {
   const sb = makeSb();
-  const cols = "id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id, prefill_contact";
+  const cols = "id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, prefill_contact";
   // Try by ID first
   let { data: survey } = await sb
     .from("surveys")
@@ -130,6 +130,7 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
       questions={(questions ?? []).map(mapQ)}
       postSubmitSurveyId={survey.post_submit_survey_id ?? null}
       postSubmitQuestions={postSubmitQuestions ? postSubmitQuestions.map(mapQ) : null}
+      postSubmitRequired={Boolean(survey.post_submit_required)}
       isKiosk={kiosk === "1"}
       contactId={contact_id ?? null}
       initialAnswers={Object.keys(initialAnswers).length > 0 ? initialAnswers : undefined}

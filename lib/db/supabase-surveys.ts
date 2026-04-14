@@ -56,6 +56,7 @@ export type Survey = {
   active: boolean;
   active_channels: ActiveChannel[] | null;
   post_submit_survey_id: string | null;
+  post_submit_required: boolean;
   opp_trigger: OppTrigger | null;
   op_intake_channels: string[];
   payment_enabled: boolean;
@@ -217,6 +218,7 @@ export async function updateSurvey(
     active_channels: ActiveChannel[];
     public_slug?: string;
     post_submit_survey_id?: string | null;
+    post_submit_required?: boolean;
     opp_trigger?: OppTrigger | null;
     op_intake_channels?: string[];
     prefill_contact?: boolean;
@@ -240,6 +242,7 @@ export async function updateSurvey(
   };
   if (params.public_slug !== undefined) update.public_slug = params.public_slug || null;
   if ("post_submit_survey_id" in params) update.post_submit_survey_id = params.post_submit_survey_id ?? null;
+  if ("post_submit_required" in params) update.post_submit_required = params.post_submit_required ?? false;
   if ("opp_trigger" in params) update.opp_trigger = params.opp_trigger ?? null;
   if ("op_intake_channels" in params) update.op_intake_channels = params.op_intake_channels ?? [];
   if ("prefill_contact" in params) update.prefill_contact = params.prefill_contact ?? false;

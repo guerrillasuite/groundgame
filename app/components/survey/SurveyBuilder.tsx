@@ -128,6 +128,7 @@ export default function SurveyBuilder({
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [footerText, setFooterText] = useState("");
   const [postSubmitSurveyId, setPostSubmitSurveyId] = useState<string>("");
+  const [postSubmitRequired, setPostSubmitRequired] = useState(false);
   const [embeddableSurveys, setEmbeddableSurveys] = useState<{ id: string; title: string }[]>([]);
   const [activeChannels, setActiveChannels] = useState<Set<string>>(new Set(["embedded","hosted","doors","dials","texts"]));
 
@@ -206,6 +207,7 @@ export default function SurveyBuilder({
         setActiveChannels(new Set(channels));
         setPublicSlug(s.public_slug ?? s.id ?? "");
         setPostSubmitSurveyId(s.post_submit_survey_id ?? "");
+        setPostSubmitRequired(Boolean(s.post_submit_required));
         // Opp trigger
         const ot = s.opp_trigger as any;
         if (ot?.enabled) {
@@ -494,6 +496,7 @@ export default function SurveyBuilder({
             active_channels: [...activeChannels],
             public_slug: publicSlug.trim() || null,
             post_submit_survey_id: postSubmitSurveyId || null,
+            post_submit_required: postSubmitRequired,
             opp_trigger: oppEnabled ? {
               enabled: true,
               mode: oppMode,
@@ -871,13 +874,25 @@ export default function SurveyBuilder({
 
               {/* Post-submit embedded form */}
               <div style={{ display: "grid", gap: 6 }}>
-                <label style={labelStyle}>Post-submit form (optional)</label>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <label style={labelStyle}>Post-submit form (optional)</label>
+                  {postSubmitSurveyId && (
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      <input
+                        type="checkbox"
+                        checked={postSubmitRequired}
+                        onChange={(e) => setPostSubmitRequired(e.target.checked)}
+                      />
+                      Required (no skip)
+                    </label>
+                  )}
+                </div>
                 <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
                   After completing this survey, show another embeddable form (e.g. a contact form). Only surveys active for the Embedded channel appear here.
                 </p>
                 <select
                   value={postSubmitSurveyId}
-                  onChange={(e) => setPostSubmitSurveyId(e.target.value)}
+                  onChange={(e) => { setPostSubmitSurveyId(e.target.value); if (!e.target.value) setPostSubmitRequired(false); }}
                   style={{ ...inputStyle, cursor: "pointer" }}
                 >
                   <option value="">(None)</option>

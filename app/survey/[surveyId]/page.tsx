@@ -57,7 +57,7 @@ export default async function SurveyPage({ params, searchParams }: Props) {
     { data: contactRow },
   ] = await Promise.all([
     sb.from("surveys")
-      .select("id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id, payment_enabled, delivery_enabled, order_products, opp_trigger, auto_fields")
+      .select("id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, payment_enabled, delivery_enabled, order_products, opp_trigger, auto_fields")
       .eq("id", surveyId)
       .eq("active", true)
       .maybeSingle(),
@@ -146,6 +146,7 @@ export default async function SurveyPage({ params, searchParams }: Props) {
         questions={(questions ?? []).map(mapQ)}
         postSubmitSurveyId={survey.post_submit_survey_id ?? null}
         postSubmitQuestions={postSubmitQuestions ? postSubmitQuestions.map(mapQ) : null}
+        postSubmitRequired={Boolean(survey.post_submit_required)}
         isKiosk={kiosk === "1"}
         contactId={contact_id}
         initialAnswers={Object.keys(initialAnswers).length > 0 ? initialAnswers : undefined}
