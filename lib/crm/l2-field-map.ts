@@ -235,17 +235,21 @@ export const L2_FIELD_MAP: Record<string, L2FieldDef> = {
   home_bedrooms:                 { dest: "households", column: "home_bedrooms",    transform: "smallint" },
 };
 
-// ── Type coercion sets (used by import route) ──────────────────────────────
+// ── Type coercion sets (used by import route and panel-submit) ────────────
 
 export const L2_BOOLEAN_COLS = new Set([
   "party_switcher", "permanent_absentee", "veteran", "do_not_call",
-  "early_voter",
-  // per-election voting history
+  "early_voter", "active",
+  // per-election voting history (turnout — did they vote?)
   "voted_general_2024", "voted_general_2022", "voted_general_2020", "voted_general_2018",
   "voted_primary_2024", "voted_primary_2022", "voted_primary_2020", "voted_primary_2018",
   // households
   "has_senior", "has_young_adult", "has_children", "is_single_parent",
   "has_disabled", "home_owner",
+  // locations
+  "is_residential",
+  // opportunities
+  "recurring", "paid",
 ]);
 
 export const L2_INTEGER_COLS = new Set([
@@ -265,7 +269,22 @@ export const L2_DATE_COLS = new Set([
 
 export const L2_FLOAT_COLS = new Set(["lat", "lon"]);
 
-/** Coerce a raw string value to the correct DB type for a given L2 column. */
+/**
+ * Columns that store TEXT[] arrays. Values should be parsed from JSON arrays
+ * (e.g. multi-select survey answers) or split from comma-separated CSV strings.
+ */
+export const L2_ARRAY_COLS = new Set(["top_issues"]);
+
+/**
+ * Integer/bigint columns that store cent-denominated money — coerce to number.
+ */
+export const L2_BIGINT_COLS = new Set(["amount_cents"]);
+
+/**
+ * Coerce a raw string value to the correct DB type for a given column.
+ * Handles boolean, integer, smallint, date, float, bigint, and text[] array columns.
+ * Returns null for empty/unparseable values to avoid DB type errors.
+ */
 export function applyL2Transform(raw: string, column: string): unknown {
   const v = (raw ?? "").trim();
   if (!v) return null;
@@ -274,7 +293,7 @@ export function applyL2Transform(raw: string, column: string): unknown {
     const lc = v.toLowerCase();
     return lc === "true" || lc === "yes" || lc === "1" || lc === "y" || lc === "t";
   }
-  if (L2_INTEGER_COLS.has(column) || L2_SMALLINT_COLS.has(column)) {
+  if (L2_INTEGER_COLS.has(column) || L2_SMALLINT_COLS.has(column) || L2_BIGINT_COLS.has(column)) {
     const n = parseInt(v.replace(/[^0-9-]/g, ""), 10);
     return isNaN(n) ? null : n;
   }
@@ -285,6 +304,16 @@ export function applyL2Transform(raw: string, column: string): unknown {
   if (L2_FLOAT_COLS.has(column)) {
     const n = parseFloat(v);
     return isNaN(n) ? null : n;
+  }
+  if (L2_ARRAY_COLS.has(column)) {
+    // Accept JSON array string or comma-separated list
+    if (v.startsWith("[")) {
+      try {
+        const arr = JSON.parse(v);
+        if (Array.isArray(arr)) return arr.map(String).filter(Boolean);
+      } catch { /* fall through to comma split */ }
+    }
+    return v.split(",").map((s) => s.trim()).filter(Boolean);
   }
 
   // voter_status normalization: "A" → "Active", "I" → "Inactive"
@@ -305,6 +334,7 @@ export const PEOPLE_L2_COLS = new Set([
   "phone_cell", "phone_landline", "phone_cell_confidence", "mailing_address",
   "mailing_city", "mailing_state", "mailing_zip",
   "score_prog_dem", "score_mod_dem", "score_cons_rep", "score_mod_rep",
+  "nolan_personal_score", "nolan_economic_score",
   "likelihood_to_vote", "primary_likelihood", "general_primary_likelihood",
   "voting_frequency", "early_voter", "absentee_type",
   "voted_general_2024", "voted_general_2022", "voted_general_2020", "voted_general_2018",
@@ -313,6 +343,7 @@ export const PEOPLE_L2_COLS = new Set([
   "english_proficiency", "education_level", "marital_status", "religion",
   "occupation_title", "company_name", "income_range", "net_worth_range",
   "length_of_residence", "moved_from_state",
+  "top_issues",  // TEXT[] — coerced via L2_ARRAY_COLS
 ]);
 
 export const HOUSEHOLD_L2_COLS = new Set([

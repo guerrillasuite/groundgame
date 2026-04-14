@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import MarkdownText from "@/app/components/MarkdownText";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -377,7 +378,7 @@ export default function SurveyPanel({
 
   // ── Submit main survey answers ──────────────────────────────────────────────
   // Returns { payment_required, opportunity_id } from panel-submit response.
-  async function submitMainSurvey(): Promise<{ payment_required: boolean; opportunity_id: string | null }> {
+  async function submitMainSurvey(overrideContactId?: string): Promise<{ payment_required: boolean; opportunity_id: string | null }> {
     setSubmitting(true);
     try {
       if (isWspq) {
@@ -400,7 +401,7 @@ export default function SurveyPanel({
         const res = await fetch("/api/survey/panel-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ survey_id: surveyId, tenant_id: tenantId, answers, delivery: deliveryPayload, contact_id: contactId || undefined }),
+          body: JSON.stringify({ survey_id: surveyId, tenant_id: tenantId, answers, delivery: deliveryPayload, contact_id: overrideContactId || contactId || undefined }),
         });
         const data = await res.json().catch(() => ({}));
         if (data.opportunity_id) setOpportunityId(data.opportunity_id);
@@ -543,7 +544,7 @@ export default function SurveyPanel({
                           {q.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
                         </p>
                         {q.description && (
-                          <p style={{ color: textColor, fontSize: 12, opacity: 0.6, margin: "0 0 8px", lineHeight: 1.4 }}>{q.description}</p>
+                          <p style={{ color: textColor, fontSize: 12, opacity: 0.6, margin: "0 0 8px", lineHeight: 1.4 }}><MarkdownText text={q.description} /></p>
                         )}
                         {!q.description && <div style={{ marginBottom: 8 }} />}
                         {["multiple_choice", "multiple_choice_with_other"].includes(qType) && (
@@ -686,7 +687,7 @@ export default function SurveyPanel({
             {currentQuestion?.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
           </p>
           {currentQuestion?.description && (
-            <p style={{ fontSize: 14, color: textColor, opacity: 0.65, lineHeight: 1.5, margin: "0 0 22px" }}>{currentQuestion.description}</p>
+            <p style={{ fontSize: 14, color: textColor, opacity: 0.65, lineHeight: 1.5, margin: "0 0 22px" }}><MarkdownText text={currentQuestion.description} /></p>
           )}
 
           {/* Choice questions */}
@@ -913,15 +914,16 @@ export default function SurveyPanel({
                 e.preventDefault();
                 setSubmitting(true);
                 try {
-                  // Submit main survey + post-submit form in parallel
-                  const [mainResult] = await Promise.all([
-                    submitMainSurvey(),
-                    fetch("/api/survey/panel-submit", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ survey_id: postSubmitSurveyId, tenant_id: tenantId, answers: psAnswers, contact_id: contactId || undefined }),
-                    }),
-                  ]);
+                  // 1. Submit post-submit (contact) form first — no stop, just person resolution
+                  const psRes = await fetch("/api/survey/panel-submit", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ survey_id: postSubmitSurveyId, tenant_id: tenantId, answers: psAnswers, contact_id: contactId || undefined, skip_stop: true }),
+                  });
+                  const psData = await psRes.json().catch(() => ({}));
+                  // 2. Use resolved person_id when submitting the main survey (creates the stop)
+                  const resolvedPersonId: string | undefined = psData.person_id || contactId || undefined;
+                  const mainResult = await submitMainSurvey(resolvedPersonId);
                   setSubmitting(false);
                   if (mainResult?.payment_required) setPhase("payment");
                   else setPhase("thankyou");
@@ -943,7 +945,7 @@ export default function SurveyPanel({
                           {psQ.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
                         </p>
                         {psQ.description && (
-                          <p style={{ color: textColor, fontSize: 12, opacity: 0.6, margin: "0 0 8px", lineHeight: 1.4 }}>{psQ.description}</p>
+                          <p style={{ color: textColor, fontSize: 12, opacity: 0.6, margin: "0 0 8px", lineHeight: 1.4 }}><MarkdownText text={psQ.description} /></p>
                         )}
                         {isOpen && (
                           psType === "text" ? (

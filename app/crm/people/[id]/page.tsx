@@ -49,6 +49,7 @@ export default async function PersonDetail({ params }: Params) {
       voting_frequency, early_voter, absentee_type,
       voted_general_2024, voted_general_2022, voted_general_2020, voted_general_2018,
       voted_primary_2024, voted_primary_2022, voted_primary_2020, voted_primary_2018,
+      votes_history, top_issues,
       ethnicity, ethnicity_source, hispanic_origin, language, english_proficiency,
       education_level, marital_status, religion,
       occupation, occupation_title, company_name, income_range, net_worth_range,
@@ -429,33 +430,81 @@ export default async function PersonDetail({ params }: Params) {
       {/* Political */}
       {(() => {
         const p = person as any;
-        const hasAny = p.party || p.party_switcher != null || p.likelihood_to_vote != null ||
+        const hasScores = p.party || p.party_switcher != null || p.likelihood_to_vote != null ||
           p.primary_likelihood != null || p.general_primary_likelihood != null ||
           p.score_prog_dem != null || p.score_mod_dem != null ||
           p.score_cons_rep != null || p.score_mod_rep != null;
-        if (!hasAny) return null;
+        const votesHistory: Record<string, string> | null = p.votes_history && Object.keys(p.votes_history).length > 0 ? p.votes_history : null;
+        const topIssues: string[] | null = Array.isArray(p.top_issues) && p.top_issues.length > 0 ? p.top_issues : null;
+        if (!hasScores && !votesHistory && !topIssues) return null;
         return (
           <div style={cardStyle}>
             <p style={{ ...labelStyle, marginBottom: 12 }}>Political</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
-              {[
-                { label: "Party", val: p.party },
-                { label: "Party Switcher", val: p.party_switcher === true ? "Yes" : p.party_switcher === false ? "No" : null },
-                { label: "Party Switch Type", val: p.party_switch_type },
-                { label: "Likelihood to Vote", val: p.likelihood_to_vote != null ? `${p.likelihood_to_vote}/100` : null },
-                { label: "Primary Likelihood", val: p.primary_likelihood != null ? `${p.primary_likelihood}/100` : null },
-                { label: "G+P Likelihood", val: p.general_primary_likelihood != null ? `${p.general_primary_likelihood}/100` : null },
-                { label: "Progressive Dem", val: p.score_prog_dem != null ? `${p.score_prog_dem}/100` : null },
-                { label: "Moderate Dem", val: p.score_mod_dem != null ? `${p.score_mod_dem}/100` : null },
-                { label: "Conservative Rep", val: p.score_cons_rep != null ? `${p.score_cons_rep}/100` : null },
-                { label: "Moderate Rep", val: p.score_mod_rep != null ? `${p.score_mod_rep}/100` : null },
-              ].filter(f => f.val != null).map(({ label, val }) => (
-                <div key={label}>
-                  <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
-                  <p style={valueStyle}>{val}</p>
+            {hasScores && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px", marginBottom: votesHistory || topIssues ? 16 : 0 }}>
+                {[
+                  { label: "Party", val: p.party },
+                  { label: "Party Switcher", val: p.party_switcher === true ? "Yes" : p.party_switcher === false ? "No" : null },
+                  { label: "Party Switch Type", val: p.party_switch_type },
+                  { label: "Likelihood to Vote", val: p.likelihood_to_vote != null ? `${p.likelihood_to_vote}/100` : null },
+                  { label: "Primary Likelihood", val: p.primary_likelihood != null ? `${p.primary_likelihood}/100` : null },
+                  { label: "G+P Likelihood", val: p.general_primary_likelihood != null ? `${p.general_primary_likelihood}/100` : null },
+                  { label: "Progressive Dem", val: p.score_prog_dem != null ? `${p.score_prog_dem}/100` : null },
+                  { label: "Moderate Dem", val: p.score_mod_dem != null ? `${p.score_mod_dem}/100` : null },
+                  { label: "Conservative Rep", val: p.score_cons_rep != null ? `${p.score_cons_rep}/100` : null },
+                  { label: "Moderate Rep", val: p.score_mod_rep != null ? `${p.score_mod_rep}/100` : null },
+                ].filter(f => f.val != null).map(({ label, val }) => (
+                  <div key={label}>
+                    <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
+                    <p style={valueStyle}>{val}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {topIssues && (
+              <div style={{ marginBottom: votesHistory ? 16 : 0 }}>
+                <p style={{ ...labelStyle, marginBottom: 6 }}>Top Political Issues</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {topIssues.map((issue) => (
+                    <span key={issue} style={{
+                      fontSize: 12, fontWeight: 500, padding: "3px 10px", borderRadius: 10,
+                      background: "rgba(37,99,235,0.08)", color: "var(--gg-primary, #2563eb)",
+                      border: "1px solid rgba(37,99,235,0.15)",
+                    }}>
+                      {issue}
+                    </span>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+            {votesHistory && (
+              <>
+                <p style={{ ...labelStyle, marginBottom: 8 }}>Presidential Vote History</p>
+                <table style={{ borderCollapse: "collapse", fontSize: 13, width: "auto" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...labelStyle, textAlign: "left", paddingRight: 20, paddingBottom: 4 }}>Election</th>
+                      <th style={{ ...labelStyle, textAlign: "left", paddingBottom: 4 }}>Candidate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { key: "2024_presidential_general", label: "2024 General" },
+                      { key: "2024_presidential_primary", label: "2024 Primary" },
+                      { key: "2020_presidential_general", label: "2020 General" },
+                      { key: "2020_presidential_primary", label: "2020 Primary" },
+                      { key: "2016_presidential_general", label: "2016 General" },
+                      { key: "2016_presidential_primary", label: "2016 Primary" },
+                    ].filter(({ key }) => votesHistory[key]).map(({ key, label }) => (
+                      <tr key={key} style={{ borderTop: "1px solid var(--gg-border, #f3f4f6)" }}>
+                        <td style={{ paddingRight: 20, paddingTop: 5, paddingBottom: 5, fontWeight: 500, color: "var(--gg-text-dim, #6b7280)" }}>{label}</td>
+                        <td style={{ fontWeight: 600 }}>{votesHistory[key]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
           </div>
         );
       })()}

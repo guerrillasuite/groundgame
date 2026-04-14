@@ -68,7 +68,7 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
       : Promise.resolve({ data: null }),
     sb.from("survey_view_configs").select("pagination, page_groups").eq("survey_id", survey.id).eq("view_type", "hosted").maybeSingle(),
     (survey.prefill_contact && contact_id)
-      ? sb.from("people").select("first_name, last_name, email, phone").eq("id", contact_id).maybeSingle().then(r => r.data)
+      ? sb.from("people").select("first_name, last_name, email, phone, votes_history, top_issues").eq("id", contact_id).maybeSingle().then(r => r.data)
       : Promise.resolve(null),
   ]);
 
@@ -89,19 +89,34 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
     conditions: q.conditions ?? null,
   });
 
-  // Build pre-filled answers from contact info if prefill_contact is enabled
+  // Build pre-filled answers from contact info if prefill_contact is enabled.
+  // Supports plain columns, JSONB paths (people.votes_history.2024_presidential_general),
+  // and array columns (people.top_issues → JSON string for multi-select).
   const initialAnswers: Record<string, string> = {};
   if (survey.prefill_contact && contactRow) {
-    const contactData: Record<string, string> = {
-      "people.first_name": contactRow.first_name ?? "",
-      "people.last_name": contactRow.last_name ?? "",
-      "people.email": contactRow.email ?? "",
-      "people.phone": contactRow.phone ?? "",
-    };
     for (const q of (questions ?? [])) {
-      if (q.crm_field && contactData[q.crm_field]) {
-        initialAnswers[q.id] = contactData[q.crm_field];
+      if (!q.crm_field) continue;
+      const crm = q.crm_field as string;
+      // Strip table prefix — only handle "people.*" for now
+      if (!crm.startsWith("people.")) continue;
+      const colPath = crm.slice("people.".length); // e.g. "first_name" or "votes_history.2024_presidential_general"
+      const dotIdx = colPath.indexOf(".");
+      let val: string | undefined;
+      if (dotIdx >= 0) {
+        // JSONB path: contactRow["votes_history"]["2024_presidential_general"]
+        const baseCol = colPath.slice(0, dotIdx);
+        const jsonKey = colPath.slice(dotIdx + 1);
+        const jsonObj = (contactRow as any)[baseCol];
+        if (jsonObj && typeof jsonObj === "object") val = jsonObj[jsonKey] ?? undefined;
+      } else {
+        const raw = (contactRow as any)[colPath];
+        if (Array.isArray(raw)) {
+          val = raw.length > 0 ? JSON.stringify(raw) : undefined;
+        } else if (raw != null && raw !== "") {
+          val = String(raw);
+        }
       }
+      if (val) initialAnswers[q.id] = val;
     }
   }
 

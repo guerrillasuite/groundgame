@@ -1124,12 +1124,12 @@ export default function SurveyBuilder({
 
                   {/* Description / help text */}
                   <div style={{ display: "grid", gap: 6 }}>
-                    <label style={labelStyle}>Description <span style={{ opacity: 0.45, fontWeight: 400 }}>(optional — shown below the question in smaller text)</span></label>
+                    <label style={labelStyle}>Description <span style={{ opacity: 0.45, fontWeight: 400 }}>(optional — supports **bold**, *italic*, - bullet lists, blank line for paragraph break)</span></label>
                     <textarea
-                      rows={2}
+                      rows={3}
                       value={q.description}
                       onChange={(e) => updateQuestion(q.id, { description: e.target.value })}
-                      placeholder="Add clarifying text, instructions, or context…"
+                      placeholder={"Add clarifying text, instructions, or context…\n\nSupports **bold**, *italic*, and:\n- bullet\n- lists"}
                       style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5, fontSize: 12 }}
                     />
                   </div>
@@ -1883,51 +1883,86 @@ const QUESTION_TYPE_META: Record<string, { label: string }> = {
 
 // ── CRM Field Picker ──────────────────────────────────────────────────────────
 
-type SchemaEntry = { column: string; label: string; table?: string; is_join?: boolean };
+type SchemaEntry = { column: string; label: string; data_type?: string; table?: string; is_join?: boolean };
 
-const COMMON_FIELDS: Record<string, { column: string; label: string }[]> = {
+const COMMON_FIELDS: Record<string, SchemaEntry[]> = {
   people: [
-    { column: "first_name",     label: "First Name" },
-    { column: "last_name",      label: "Last Name" },
-    { column: "email",          label: "Email" },
-    { column: "phone",          label: "Phone (primary)" },
-    { column: "phone_cell",     label: "Phone (cell)" },
-    { column: "phone_landline", label: "Phone (landline)" },
-    { column: "birth_date",     label: "Date of Birth" },
-    { column: "gender",         label: "Gender" },
-    { column: "occupation",     label: "Occupation" },
-    { column: "notes",          label: "Notes" },
+    // Contact
+    { column: "first_name",     label: "First Name",          data_type: "text" },
+    { column: "last_name",      label: "Last Name",           data_type: "text" },
+    { column: "email",          label: "Email",               data_type: "text" },
+    { column: "phone",          label: "Phone (primary)",     data_type: "text" },
+    { column: "phone_cell",     label: "Phone (cell)",        data_type: "text" },
+    { column: "phone_landline", label: "Phone (landline)",    data_type: "text" },
+    // Basic
+    { column: "birth_date",     label: "Date of Birth",       data_type: "date" },
+    { column: "gender",         label: "Gender",              data_type: "text" },
+    { column: "occupation",     label: "Occupation",          data_type: "text" },
+    { column: "notes",          label: "Notes",               data_type: "text" },
+    // Political
+    { column: "party",          label: "Party",               data_type: "text" },
+    { column: "top_issues",     label: "Top Political Issues",data_type: "text[]" },
+    { column: "votes_history.2024_presidential_general", label: "2024 Pres. General — Who they voted for", data_type: "text" },
+    { column: "votes_history.2024_presidential_primary", label: "2024 Pres. Primary — Who they voted for", data_type: "text" },
+    { column: "votes_history.2020_presidential_general", label: "2020 Pres. General — Who they voted for", data_type: "text" },
+    { column: "votes_history.2020_presidential_primary", label: "2020 Pres. Primary — Who they voted for", data_type: "text" },
+    { column: "votes_history.2016_presidential_general", label: "2016 Pres. General — Who they voted for", data_type: "text" },
+    { column: "votes_history.2016_presidential_primary", label: "2016 Pres. Primary — Who they voted for", data_type: "text" },
+    // Demographics
+    { column: "ethnicity",      label: "Ethnicity",           data_type: "text" },
+    { column: "language",       label: "Language",            data_type: "text" },
+    { column: "marital_status", label: "Marital Status",      data_type: "text" },
+    { column: "education_level",label: "Education Level",     data_type: "text" },
+    { column: "income_range",   label: "Income Range",        data_type: "text" },
+    { column: "religion",       label: "Religion",            data_type: "text" },
   ],
   tenant_people: [
-    { column: "contact_types",  label: "Contact Types (append to list)" },
+    { column: "contact_types",    label: "Contact Types (append)",  data_type: "text[]" },
+    { column: "notes",            label: "Tenant Notes",            data_type: "text" },
+    { column: "priority",         label: "Priority",                data_type: "text" },
+    { column: "volunteer_status", label: "Volunteer Status",        data_type: "text" },
+    { column: "source",           label: "Source (how they found us)", data_type: "text" },
   ],
   locations: [
-    { column: "address_line1",  label: "Street Address" },
-    { column: "city",           label: "City" },
-    { column: "state",          label: "State" },
-    { column: "postal_code",    label: "ZIP Code" },
-    { column: "unit",           label: "Unit / Apt" },
+    { column: "address_line1",  label: "Street Address",      data_type: "text" },
+    { column: "city",           label: "City",                data_type: "text" },
+    { column: "state",          label: "State",               data_type: "text" },
+    { column: "postal_code",    label: "ZIP Code",            data_type: "text" },
+    { column: "unit",           label: "Unit / Apt",          data_type: "text" },
   ],
   opportunities: [
-    { column: "title",          label: "Title" },
-    { column: "amount_cents",   label: "Amount (cents)" },
-    { column: "priority",       label: "Priority" },
-    { column: "notes",          label: "Notes" },
+    { column: "title",             label: "Title",              data_type: "text" },
+    { column: "stage",             label: "Stage",              data_type: "text" },
+    { column: "pipeline",          label: "Pipeline",           data_type: "text" },
+    { column: "amount_cents",      label: "Amount (cents)",     data_type: "integer" },
+    { column: "priority",          label: "Priority",           data_type: "text" },
+    { column: "channel",           label: "Channel",            data_type: "text" },
+    { column: "how_heard",         label: "How They Heard",     data_type: "text" },
+    { column: "referred_by",       label: "Referred By",        data_type: "text" },
+    { column: "message",           label: "Message",            data_type: "text" },
+    { column: "notes",             label: "Notes",              data_type: "text" },
+    { column: "delivery_location", label: "Delivery Location",  data_type: "text" },
+    { column: "frequency",         label: "Frequency",          data_type: "text" },
+    { column: "recurring",         label: "Recurring",          data_type: "boolean" },
+    { column: "paid",              label: "Paid",               data_type: "boolean" },
+    { column: "delivery_date",     label: "Delivery Date",      data_type: "date" },
+    { column: "due_at",            label: "Due At",             data_type: "timestamp" },
   ],
   households: [
-    { column: "name",           label: "Household Name" },
+    { column: "name",           label: "Household Name",      data_type: "text" },
   ],
   companies: [
-    { column: "name",           label: "Company Name" },
-    { column: "phone",          label: "Phone" },
-    { column: "email",          label: "Email" },
-    { column: "industry",       label: "Industry" },
+    { column: "name",           label: "Company Name",        data_type: "text" },
+    { column: "phone",          label: "Phone",               data_type: "text" },
+    { column: "email",          label: "Email",               data_type: "text" },
+    { column: "industry",       label: "Industry",            data_type: "text" },
+    { column: "domain",         label: "Domain",              data_type: "text" },
   ],
 };
 
 const TABLE_LABELS: Record<string, string> = {
   people: "People",
-  tenant_people: "Person (Contact Types)",
+  tenant_people: "Person (Tenant Fields)",
   locations: "Location",
   opportunities: "Opportunity",
   households: "Household",
@@ -2135,7 +2170,8 @@ function CrmFieldPicker({
                         <button key={f.column} type="button"
                           onClick={() => { onChange(isSelected ? null : fieldVal); closePicker(); }}
                           style={{
-                            display: "block", width: "100%", textAlign: "left",
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            width: "100%", textAlign: "left",
                             padding: "8px 14px", border: "none", borderBottom: "1px solid var(--gg-border, #e5e7eb)",
                             cursor: "pointer", fontSize: 13,
                             background: isSelected ? "rgba(37,99,235,0.08)" : "transparent",
@@ -2143,8 +2179,17 @@ function CrmFieldPicker({
                             fontWeight: isSelected ? 600 : 400,
                           }}
                         >
-                          {f.label}
-                          {isSelected && <span style={{ float: "right", opacity: 0.6 }}>✓</span>}
+                          <span>{f.label}</span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                            {f.data_type && (
+                              <span style={{
+                                fontSize: 10, fontWeight: 500, padding: "1px 5px", borderRadius: 4,
+                                background: "rgba(0,0,0,0.06)", color: "var(--gg-text-dim, #6b7280)",
+                                fontFamily: "monospace",
+                              }}>{f.data_type}</span>
+                            )}
+                            {isSelected && <span style={{ opacity: 0.6 }}>✓</span>}
+                          </span>
                         </button>
                       );
                     })}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { normalizeCrmField } from "@/lib/db/supabase-surveys";
+import { applyL2Transform, L2_BOOLEAN_COLS, L2_INTEGER_COLS, L2_SMALLINT_COLS, L2_DATE_COLS, L2_FLOAT_COLS, L2_ARRAY_COLS, L2_BIGINT_COLS } from "@/lib/crm/l2-field-map";
 
 export const dynamic = "force-dynamic";
 
@@ -70,9 +71,19 @@ async function findOrCreatePerson(
     data_source: "survey",
     data_updated_at: new Date().toISOString(),
   };
-  // Copy all provided people fields
+  // Copy all provided people fields — handle JSONB paths and apply type coercion
   for (const [col, val] of Object.entries(fields)) {
-    if (val?.trim()) insert[col] = val.trim();
+    if (!val?.trim()) continue;
+    const dotIdx = col.indexOf(".");
+    if (dotIdx >= 0) {
+      // JSONB path: build nested object directly (new record, nothing to merge with)
+      const jsonCol = col.slice(0, dotIdx);
+      const jsonKey = col.slice(dotIdx + 1);
+      insert[jsonCol] = { ...(insert[jsonCol] ?? {}), [jsonKey]: val.trim() };
+    } else {
+      const coerced = coercePlainValue(col, val);
+      if (coerced !== null) insert[col] = coerced;
+    }
   }
   await sb.from("people").insert(insert);
   await sb.from("tenant_people").insert({
@@ -83,17 +94,51 @@ async function findOrCreatePerson(
   return personId;
 }
 
+/** Coerce a plain (non-path) column value to the correct DB type. */
+function coercePlainValue(col: string, raw: string): unknown {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Delegate to applyL2Transform which handles boolean/int/smallint/date/float/array/text
+  return applyL2Transform(trimmed, col);
+}
+
 async function updatePersonFields(
   sb: ReturnType<typeof makeSb>,
   personId: string,
   fields: PeopleFields
 ): Promise<void> {
   const patch: Record<string, any> = { data_updated_at: new Date().toISOString() };
+  // JSONB path columns grouped by base column: { votes_history: { "2024_presidential_general": "Trump" } }
+  const jsonbUpdates: Record<string, Record<string, any>> = {};
+
   for (const [col, val] of Object.entries(fields)) {
-    if (val?.trim()) {
-      patch[col] = col === "email" ? val.trim().toLowerCase() : val.trim();
+    if (!val?.trim()) continue;
+    const dotIdx = col.indexOf(".");
+    if (dotIdx >= 0) {
+      // JSONB path: "votes_history.2024_presidential_general" → merge key into JSONB column
+      const jsonCol = col.slice(0, dotIdx);
+      const jsonKey = col.slice(dotIdx + 1);
+      if (!jsonbUpdates[jsonCol]) jsonbUpdates[jsonCol] = {};
+      jsonbUpdates[jsonCol][jsonKey] = val.trim();
+    } else {
+      const coerced = coercePlainValue(col, val);
+      if (coerced !== null) patch[col] = coerced;
     }
   }
+
+  // Fetch current JSONB column values, merge new keys on top, include in patch
+  if (Object.keys(jsonbUpdates).length > 0) {
+    const { data: currentRow } = await sb
+      .from("people")
+      .select(Object.keys(jsonbUpdates).join(", "))
+      .eq("id", personId)
+      .maybeSingle();
+    for (const [jsonCol, newKeys] of Object.entries(jsonbUpdates)) {
+      const current = (currentRow as any)?.[jsonCol] ?? {};
+      patch[jsonCol] = { ...current, ...newKeys };
+    }
+  }
+
   if (Object.keys(patch).length > 1) {
     await sb.from("people").update(patch).eq("id", personId);
   }
@@ -106,10 +151,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-  const { survey_id, answers, delivery, contact_id } = body as {
+  const { survey_id, answers, delivery, contact_id, skip_stop } = body as {
     survey_id: string;
     answers: Record<string, string>;
     contact_id?: string;
+    skip_stop?: boolean;
     delivery?: {
       address_line1: string;
       city?: string;
@@ -134,6 +180,7 @@ export async function POST(req: NextRequest) {
     households: {},
     companies: {},
     opportunities: {},
+    tenant_people: {},
   };
   const productItems: Array<{ product_id: string; qty: number }> = [];
   const contactTypesToAdd: string[] = [];
@@ -226,14 +273,16 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Record stop in CRM activity ───────────────────────────────────────────
-  await sb.from("stops").insert({
-    tenant_id: tenant.id,
-    person_id: personId,
-    channel: "survey",
-    result: "completed",
-    notes: surveyRow?.title ?? survey_id,
-    stop_at: now,
-  });
+  if (!skip_stop) {
+    await sb.from("stops").insert({
+      tenant_id: tenant.id,
+      person_id: personId,
+      channel: "survey",
+      result: "completed",
+      notes: surveyRow?.title ?? survey_id,
+      stop_at: now,
+    });
+  }
 
   // ── Upsert survey session ─────────────────────────────────────────────────
   await sb.from("survey_sessions").upsert(
@@ -321,25 +370,38 @@ export async function POST(req: NextRequest) {
       .eq("id", opportunityId);
   }
 
-  // ── Append contact types to tenant_people ─────────────────────────────────
-  // Collect: auto_fields targeting tenant_people.contact_types + opp_trigger.contact_type
+  // ── Update tenant_people: contact_types + other mapped fields ───────────────
   if (trigger?.enabled && trigger.contact_type && opportunityId) {
     contactTypesToAdd.push(trigger.contact_type);
   }
-  if (contactTypesToAdd.length > 0) {
+
+  const tpPlainFields = Object.entries(tableFields.tenant_people).filter(([col]) => col !== "contact_types");
+  if (contactTypesToAdd.length > 0 || tpPlainFields.length > 0) {
+    const selectCols = ["contact_types", ...tpPlainFields.map(([col]) => col)].join(", ");
     const { data: tpRow } = await sb
       .from("tenant_people")
-      .select("contact_types")
+      .select(selectCols)
       .eq("tenant_id", tenant.id)
       .eq("person_id", personId)
       .maybeSingle();
-    const existing: string[] = (tpRow?.contact_types as string[] | null) ?? [];
-    const merged = [...new Set([...existing, ...contactTypesToAdd])];
-    await sb
-      .from("tenant_people")
-      .update({ contact_types: merged })
-      .eq("tenant_id", tenant.id)
-      .eq("person_id", personId);
+
+    const tpPatch: Record<string, any> = {};
+
+    if (contactTypesToAdd.length > 0) {
+      const existing: string[] = ((tpRow as any)?.contact_types as string[] | null) ?? [];
+      tpPatch.contact_types = [...new Set([...existing, ...contactTypesToAdd])];
+    }
+    for (const [col, val] of tpPlainFields) {
+      if (val?.trim()) tpPatch[col] = val.trim();
+    }
+
+    if (Object.keys(tpPatch).length > 0) {
+      await sb
+        .from("tenant_people")
+        .update(tpPatch)
+        .eq("tenant_id", tenant.id)
+        .eq("person_id", personId);
+    }
   }
 
   // ── Upsert delivery location if provided ─────────────────────────────────
