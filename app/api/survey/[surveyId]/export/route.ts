@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSurveyExportData } from "@/lib/db/supabase-surveys";
+import { getTenant } from "@/lib/tenant";
 
 export async function GET(
   request: NextRequest,
@@ -9,104 +10,96 @@ export async function GET(
   const format = request.nextUrl.searchParams.get("format") || "csv";
 
   try {
-    const { survey, sessions, questions, responses } = await getSurveyExportData(surveyId);
+    const tenant = await getTenant();
+    const data = await getSurveyExportData(surveyId, tenant.id);
 
-    if (!survey) {
+    if (!data || !data.survey) {
       return NextResponse.json({ error: "Survey not found" }, { status: 404 });
     }
 
+    const { survey, sessions, questions, responses, postSubmitQuestions, postSubmitResponses, contactMap } = data;
+
+    // Build per-person answer map (covers both main + post-submit surveys)
+    const answersByPerson = new Map<string, Record<string, string>>();
+    for (const r of [...responses, ...postSubmitResponses]) {
+      const pid = (r as any).crm_contact_id;
+      if (!pid) continue;
+      if (!answersByPerson.has(pid)) answersByPerson.set(pid, {});
+      answersByPerson.get(pid)![r.question_id] = r.answer_value ?? "";
+    }
+
+    // Session map for completion timestamps
+    const sessionMap = new Map((sessions as any[]).map((s) => [s.crm_contact_id, s]));
+
+    // All unique respondents (session exists OR answered post-submit form)
+    const allPersonIds = [...new Set([
+      ...(sessions as any[]).map((s) => s.crm_contact_id),
+      ...postSubmitResponses.map((r: any) => r.crm_contact_id),
+    ].filter(Boolean))];
+
+    const allQuestions = [...questions, ...postSubmitQuestions];
+
+    const escape = (cell: any) => {
+      const str = String(cell ?? "");
+      return str.includes(",") || str.includes('"') || str.includes("\n")
+        ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+
     if (format === "csv") {
       const headers = [
-        "Contact ID",
-        "Question",
-        "Answer",
-        "Other Text",
-        "Answered At",
-        "Started At",
-        "Completed At",
-        "Status",
+        "First Name", "Last Name", "Email", "Phone", "Completed At",
+        ...allQuestions.map((q: any) => q.question_text),
       ];
 
-      // Build a session map for quick lookup
-      const sessionMap = new Map(sessions.map((s: any) => [s.crm_contact_id, s]));
-
-      // Join responses with questions
-      const qMap = new Map(questions.map((q: any) => [q.id, q]));
-      const rows = responses.map((r: any) => {
-        const q = qMap.get(r.question_id);
-        const sess = sessionMap.get(r.crm_contact_id) as any;
+      const rows = allPersonIds.map((personId) => {
+        const person = contactMap.get(personId);
+        const sess = sessionMap.get(personId) as any;
+        const qAnswers = answersByPerson.get(personId) ?? {};
         return [
-          r.crm_contact_id,
-          q?.question_text ?? r.question_id,
-          r.answer_value,
-          r.answer_text ?? "",
-          r.created_at,
-          sess?.started_at ?? "",
-          sess?.completed_at ?? "",
-          sess?.completed_at ? "Complete" : "Partial",
+          person?.first_name ?? "",
+          person?.last_name ?? "",
+          person?.email ?? "",
+          person?.phone ?? "",
+          sess?.completed_at ? new Date(sess.completed_at).toLocaleString() : "",
+          ...allQuestions.map((q: any) => qAnswers[q.id] ?? ""),
         ];
       });
-
-      const escape = (cell: any) => {
-        const str = String(cell ?? "");
-        return str.includes(",") || str.includes('"') || str.includes("\n")
-          ? `"${str.replace(/"/g, '""')}"`
-          : str;
-      };
 
       const csv = [
         headers.join(","),
         ...rows.map((row) => row.map(escape).join(",")),
       ].join("\n");
 
+      const safeName = survey.title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
       return new NextResponse(csv, {
         headers: {
           "Content-Type": "text/csv",
-          "Content-Disposition": `attachment; filename="survey-${surveyId}-${Date.now()}.csv"`,
+          "Content-Disposition": `attachment; filename="${safeName}-${Date.now()}.csv"`,
         },
       });
     }
 
-    // JSON export
-    const sessionMap = new Map(sessions.map((s: any) => [s.crm_contact_id, s]));
-    const qMap = new Map(questions.map((q: any) => [q.id, q]));
-
-    const byContact = responses.reduce((acc: any, row: any) => {
-      if (!acc[row.crm_contact_id]) {
-        const sess = sessionMap.get(row.crm_contact_id) as any;
-        acc[row.crm_contact_id] = {
-          contact_id: row.crm_contact_id,
-          started_at: sess?.started_at ?? null,
-          completed_at: sess?.completed_at ?? null,
-          is_complete: !!sess?.completed_at,
-          responses: [],
-        };
-      }
-      const q = qMap.get(row.question_id) as any;
-      acc[row.crm_contact_id].responses.push({
-        question_id: row.question_id,
-        question_text: q?.question_text,
-        question_order: q?.order_index,
-        answer_value: row.answer_value,
-        answer_text: row.answer_text,
-        answered_at: row.created_at,
-      });
-      return acc;
-    }, {});
+    // JSON: return structured per-person data (used by Results dashboard "Responses" tab)
+    const respondents = allPersonIds.map((personId) => {
+      const person = contactMap.get(personId);
+      const sess = sessionMap.get(personId) as any;
+      const qAnswers = answersByPerson.get(personId) ?? {};
+      return {
+        person_id: personId,
+        first_name: person?.first_name ?? null,
+        last_name: person?.last_name ?? null,
+        email: person?.email ?? null,
+        phone: person?.phone ?? null,
+        completed_at: sess?.completed_at ?? null,
+        answers: qAnswers,
+      };
+    });
 
     return NextResponse.json({
-      export_metadata: {
-        survey_id: surveyId,
-        survey_title: survey.title,
-        survey_description: survey.description,
-        survey_created_at: survey.created_at,
-        exported_at: new Date().toISOString(),
-        total_contacts: sessions.length,
-        completed_responses: sessions.filter((s: any) => s.completed_at).length,
-        partial_responses: sessions.filter((s: any) => !s.completed_at).length,
-      },
-      questions,
-      responses: Object.values(byContact),
+      survey_id: surveyId,
+      survey_title: survey.title,
+      questions: allQuestions.map((q: any) => ({ id: q.id, question_text: q.question_text, order_index: q.order_index })),
+      respondents,
     });
   } catch (error) {
     console.error("Error exporting survey:", error);

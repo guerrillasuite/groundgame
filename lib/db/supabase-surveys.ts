@@ -588,23 +588,68 @@ export async function getWalklistsBySurvey(
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
-export async function getSurveyExportData(surveyId: string) {
-  const sb = getClient();
+export async function getSurveyExportData(surveyId: string, tenantId: string) {
+  const sb = getServiceClient(tenantId);
+
+  // Fetch survey (including post_submit_survey_id)
+  const { data: survey } = await sb
+    .from("surveys")
+    .select("id, title, description, created_at, post_submit_survey_id")
+    .eq("id", surveyId)
+    .single();
+
+  if (!survey) return null;
 
   const [
-    { data: survey },
     { data: sessions },
     { data: questions },
     { data: responses },
   ] = await Promise.all([
-    sb.from("surveys").select("id, title, description, created_at").eq("id", surveyId).single(),
     sb.from("survey_sessions").select("*").eq("survey_id", surveyId),
     sb.from("questions").select("*").eq("survey_id", surveyId).order("order_index"),
     sb
       .from("responses")
-      .select("crm_contact_id, question_id, answer_value, answer_text, original_position, created_at")
+      .select("crm_contact_id, question_id, answer_value, answer_text, created_at")
       .eq("survey_id", surveyId),
   ]);
 
-  return { survey, sessions: sessions ?? [], questions: questions ?? [], responses: responses ?? [] };
+  // Fetch post-submit survey questions + responses if linked
+  let postSubmitQuestions: any[] = [];
+  let postSubmitResponses: any[] = [];
+  if (survey.post_submit_survey_id) {
+    const [{ data: psQs }, { data: psRs }] = await Promise.all([
+      sb.from("questions").select("*").eq("survey_id", survey.post_submit_survey_id).order("order_index"),
+      sb.from("responses")
+        .select("crm_contact_id, question_id, answer_value, answer_text, created_at")
+        .eq("survey_id", survey.post_submit_survey_id),
+    ]);
+    postSubmitQuestions = psQs ?? [];
+    postSubmitResponses = psRs ?? [];
+  }
+
+  // Collect all unique person IDs across both surveys
+  const allPersonIds = [...new Set([
+    ...(responses ?? []).map((r: any) => r.crm_contact_id),
+    ...postSubmitResponses.map((r: any) => r.crm_contact_id),
+  ].filter(Boolean))];
+
+  // Fetch contact info from people table
+  const contactMap = new Map<string, { first_name: string | null; last_name: string | null; email: string | null; phone: string | null; id: string }>();
+  if (allPersonIds.length > 0) {
+    const { data: people } = await sb
+      .from("people")
+      .select("id, first_name, last_name, email, phone")
+      .in("id", allPersonIds);
+    for (const p of people ?? []) contactMap.set(p.id, p);
+  }
+
+  return {
+    survey,
+    sessions: sessions ?? [],
+    questions: questions ?? [],
+    responses: responses ?? [],
+    postSubmitQuestions,
+    postSubmitResponses,
+    contactMap,
+  };
 }

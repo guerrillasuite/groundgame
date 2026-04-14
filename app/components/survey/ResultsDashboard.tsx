@@ -26,6 +26,23 @@ interface SurveyStats {
   quizData?: { dots: QuizDot[]; resultCounts: Record<string, number> };
 }
 
+interface Respondent {
+  person_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  completed_at: string | null;
+  answers: Record<string, string>;
+}
+
+interface ResponsesData {
+  survey_id: string;
+  survey_title: string;
+  questions: { id: string; question_text: string; order_index: number }[];
+  respondents: Respondent[];
+}
+
 const RESULT_COLORS: Record<string, string> = {
   libertarian: "#eab308",
   progressive: "#3b82f6",
@@ -103,6 +120,10 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [tab, setTab] = useState<"summary" | "responses">("summary");
+  const [responsesData, setResponsesData] = useState<ResponsesData | null>(null);
+  const [responsesLoading, setResponsesLoading] = useState(false);
+  const [responseSearch, setResponseSearch] = useState("");
 
   const fetchResults = async () => {
     try {
@@ -111,7 +132,7 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to fetch results');
       }
-      
+
       const data = await response.json();
       setStats(data);
       setLastUpdated(new Date());
@@ -124,13 +145,32 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
     }
   };
 
+  const fetchResponses = async () => {
+    if (responsesData) return; // already loaded
+    setResponsesLoading(true);
+    try {
+      const res = await fetch(`/api/survey/${surveyId}/export?format=json`);
+      if (!res.ok) throw new Error("Failed to load responses");
+      const data = await res.json();
+      setResponsesData(data);
+    } catch (err) {
+      console.error("Error fetching responses:", err);
+    } finally {
+      setResponsesLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchResults();
-    
+
     // Auto-refresh every 30 seconds
     const interval = setInterval(fetchResults, 30000);
     return () => clearInterval(interval);
   }, [surveyId]);
+
+  useEffect(() => {
+    if (tab === "responses") fetchResponses();
+  }, [tab]);
 
   const handleExport = async (format: 'csv' | 'json' = 'csv') => {
     try {
@@ -235,6 +275,17 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
     );
   }
 
+  const tabStyle = (t: "summary" | "responses") => ({
+    padding: "8px 18px",
+    borderRadius: 8,
+    fontWeight: 600,
+    fontSize: 14,
+    cursor: "pointer" as const,
+    border: "none",
+    background: tab === t ? "var(--gg-primary, #2563eb)" : "rgba(0,0,0,0.05)",
+    color: tab === t ? "white" : "inherit",
+  });
+
   return (
     <section className="stack" style={{ padding: 16 }}>
       <a href="/crm/survey" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 14, opacity: 0.6, textDecoration: 'none' }}>
@@ -277,29 +328,14 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
               </svg>
               Export CSV
             </button>
-            <button
-              onClick={() => handleExport('json')}
-              style={{
-                padding: '10px 16px',
-                background: 'rgba(0,0,0,0.05)',
-                color: 'inherit',
-                border: 'none',
-                borderRadius: 8,
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontSize: 13
-              }}
-            >
-              JSON
-            </button>
           </div>
         </div>
 
         {/* Summary Stats */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(3, 1fr)', 
-          gap: 12 
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 12
         }}>
           <div style={{ background: 'rgba(59, 130, 246, 0.1)', borderRadius: 8, padding: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 500, opacity: 0.8, marginBottom: 4 }}>
@@ -323,6 +359,101 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
           </div>
         </div>
       </div>
+
+      {/* Tab switcher */}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button style={tabStyle("summary")} onClick={() => setTab("summary")}>Summary</button>
+        <button style={tabStyle("responses")} onClick={() => setTab("responses")}>Individual Responses</button>
+      </div>
+
+      {/* ── Responses tab ── */}
+      {tab === "responses" && (
+        <div style={{ background: "var(--gg-card, white)", borderRadius: 12, border: "1px solid var(--gg-border, #e5e7eb)", overflow: "hidden" }}>
+          {/* Search + count bar */}
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--gg-border, #e5e7eb)", display: "flex", alignItems: "center", gap: 12 }}>
+            <input
+              type="search"
+              placeholder="Search by name, email, or phone…"
+              value={responseSearch}
+              onChange={(e) => setResponseSearch(e.target.value)}
+              style={{ flex: 1, padding: "7px 12px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, background: "transparent", color: "inherit" }}
+            />
+            {responsesData && (
+              <span style={{ fontSize: 13, opacity: 0.6, whiteSpace: "nowrap" }}>
+                {responsesData.respondents.length} respondent{responsesData.respondents.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+
+          {responsesLoading && (
+            <div style={{ padding: 48, textAlign: "center", opacity: 0.6 }}>Loading responses…</div>
+          )}
+
+          {!responsesLoading && responsesData && (() => {
+            const q = responseSearch.trim().toLowerCase();
+            const filtered = q
+              ? responsesData.respondents.filter((r) =>
+                  [r.first_name, r.last_name, r.email, r.phone].some((v) => v?.toLowerCase().includes(q))
+                )
+              : responsesData.respondents;
+
+            if (filtered.length === 0) {
+              return <div style={{ padding: 48, textAlign: "center", opacity: 0.5 }}>No responses found.</div>;
+            }
+
+            return (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "rgba(0,0,0,0.03)" }}>
+                      <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>Name</th>
+                      <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>Email</th>
+                      <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>Phone</th>
+                      <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>Submitted</th>
+                      {responsesData.questions.map((q) => (
+                        <th key={q.id} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, maxWidth: 180, borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>
+                          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }} title={q.question_text}>
+                            {q.question_text}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((r, i) => {
+                      const name = [r.first_name, r.last_name].filter(Boolean).join(" ") || "—";
+                      return (
+                        <tr key={r.person_id} style={{ borderBottom: "1px solid var(--gg-border, #e5e7eb)", background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : undefined }}>
+                          <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                            <a href={`/crm/people/${r.person_id}`} style={{ fontWeight: 600, textDecoration: "none", color: "var(--gg-primary, #2563eb)" }}>
+                              {name}
+                            </a>
+                          </td>
+                          <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>{r.email ?? "—"}</td>
+                          <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>{r.phone ?? "—"}</td>
+                          <td style={{ padding: "10px 14px", whiteSpace: "nowrap", opacity: 0.7 }}>
+                            {r.completed_at ? new Date(r.completed_at).toLocaleDateString() : "—"}
+                          </td>
+                          {responsesData.questions.map((q) => (
+                            <td key={q.id} style={{ padding: "10px 14px", maxWidth: 200 }}>
+                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.answers[q.id] ?? ""}>
+                                {r.answers[q.id] ?? ""}
+                              </span>
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ── Summary tab ── */}
+      {tab === "summary" && <>
 
       {/* WSPQ Nolan Chart (quiz surveys only) */}
       {stats.quizData && stats.quizData.dots.length > 0 && (
@@ -430,6 +561,8 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
       <div style={{ textAlign: 'center', fontSize: 13, opacity: 0.5, paddingTop: 8 }}>
         Auto-refreshing every 30 seconds
       </div>
+
+      </>}
     </section>
   );
 }
