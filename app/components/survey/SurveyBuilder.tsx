@@ -2010,6 +2010,7 @@ const COMMON_FIELDS: Record<string, SchemaEntry[]> = {
     { column: "priority",         label: "Priority",                data_type: "text" },
     { column: "volunteer_status", label: "Volunteer Status",        data_type: "text" },
     { column: "source",           label: "Source (how they found us)", data_type: "text" },
+    { column: "delegation_state", label: "Delegation State",        data_type: "text" },
   ],
   locations: [
     { column: "address_line1",  label: "Street Address",      data_type: "text" },

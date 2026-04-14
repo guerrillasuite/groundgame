@@ -984,8 +984,9 @@ export async function POST(request: Request) {
         person_id: personId,
         linked_at: new Date().toISOString(),
       };
-      if (tp.named.notes)                     r.notes        = tp.named.notes;
-      if (tp.named.contact_type)              r.contact_type = tp.named.contact_type;
+      if (tp.named.notes)                     r.notes            = tp.named.notes;
+      if (tp.named.contact_type)              r.contact_type     = tp.named.contact_type;
+      if (tp.named.delegation_state)          r.delegation_state = tp.named.delegation_state;
       if (Object.keys(tp.custom).length > 0)  r.custom_data  = tp.custom;
       return r;
     });

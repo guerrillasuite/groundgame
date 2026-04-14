@@ -47,6 +47,7 @@ interface SurveyPanelProps {
   isKiosk: boolean;
   contactId?: string | null;
   initialAnswers?: Record<string, string>;
+  initialPostSubmitAnswers?: Record<string, string>;
   branding?: Branding;
   viewConfig?: { pagination?: string; page_groups?: string[][][] | null };
   deliveryEnabled?: boolean;
@@ -233,6 +234,7 @@ export default function SurveyPanel({
   isKiosk,
   contactId,
   initialAnswers,
+  initialPostSubmitAnswers,
   branding,
   viewConfig,
   deliveryEnabled,
@@ -286,7 +288,7 @@ export default function SurveyPanel({
   // Products state
   const [formProducts, setFormProducts] = useState<{ id: string; name: string; sku: string | null }[]>([]);
   // Post-submit form state (always rendered inline on results page, all at once)
-  const [psAnswers, setPsAnswers] = useState<Record<string, string>>({});
+  const [psAnswers, setPsAnswers] = useState<Record<string, string>>(initialPostSubmitAnswers ?? {});
   const hasPostSubmit = !!(postSubmitQuestions && postSubmitQuestions.length > 0);
 
   const totalQuestions = questions.length;

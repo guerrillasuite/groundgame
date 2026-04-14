@@ -79,8 +79,8 @@ export default async function SurveyPage({ params, searchParams }: Props) {
     );
   }
 
-  // Fetch tenant branding, post-submit questions, and view config in parallel
-  const [{ data: tenant }, { data: postSubmitQuestions }, { data: viewConfigRow }] = await Promise.all([
+  // Fetch tenant branding, post-submit questions, view config, and optionally tenant_people in parallel
+  const [{ data: tenant }, { data: postSubmitQuestions }, { data: viewConfigRow }, tpRow] = await Promise.all([
     sb.from("tenants").select("branding").eq("id", survey.tenant_id).maybeSingle(),
     survey.post_submit_survey_id
       ? sb.from("questions").select(qCols).eq("survey_id", survey.post_submit_survey_id).order("order_index", { ascending: true })
@@ -90,6 +90,9 @@ export default async function SurveyPage({ params, searchParams }: Props) {
       .eq("survey_id", survey.id)
       .eq("view_type", "door")
       .maybeSingle(),
+    (survey.prefill_contact && contact_id)
+      ? sb.from("tenant_people").select("notes, priority, volunteer_status, source, delegation_state").eq("person_id", contact_id).eq("tenant_id", survey.tenant_id).maybeSingle().then(r => r.data)
+      : Promise.resolve(null),
   ]);
 
   const branding = tenant?.branding ? { ...BASE_BRANDING, ...tenant.branding } : undefined;
@@ -107,33 +110,42 @@ export default async function SurveyPage({ params, searchParams }: Props) {
   });
 
   // Build pre-filled answers from contact info if prefill_contact is enabled.
-  // Supports plain columns, JSONB paths (people.votes_history.2024_presidential_general),
-  // and array columns (people.top_issues → JSON string for multi-select).
-  const initialAnswers: Record<string, string> = {};
-  if (survey.prefill_contact && contactRow) {
-    for (const q of (questions ?? [])) {
+  // Supports people.* and tenant_people.* fields.
+  function buildPrefill(qs: any[], peopleRow: any, tpRow: any): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const q of qs) {
       if (!q.crm_field) continue;
       const crm = q.crm_field as string;
-      if (!crm.startsWith("people.")) continue;
-      const colPath = crm.slice("people.".length);
-      const dotIdx = colPath.indexOf(".");
+      const dotIdx = crm.indexOf(".");
+      if (dotIdx < 0) continue;
+      const table = crm.slice(0, dotIdx);
+      const colPath = crm.slice(dotIdx + 1);
+      const sourceRow = table === "people" ? peopleRow : table === "tenant_people" ? tpRow : null;
+      if (!sourceRow) continue;
+      const subDot = colPath.indexOf(".");
       let val: string | undefined;
-      if (dotIdx >= 0) {
-        const baseCol = colPath.slice(0, dotIdx);
-        const jsonKey = colPath.slice(dotIdx + 1);
-        const jsonObj = (contactRow as any)[baseCol];
+      if (subDot >= 0) {
+        const baseCol = colPath.slice(0, subDot);
+        const jsonKey = colPath.slice(subDot + 1);
+        const jsonObj = (sourceRow as any)[baseCol];
         if (jsonObj && typeof jsonObj === "object") val = jsonObj[jsonKey] ?? undefined;
       } else {
-        const raw = (contactRow as any)[colPath];
+        const raw = (sourceRow as any)[colPath];
         if (Array.isArray(raw)) {
           val = raw.length > 0 ? JSON.stringify(raw) : undefined;
         } else if (raw != null && raw !== "") {
           val = String(raw);
         }
       }
-      if (val) initialAnswers[q.id] = val;
+      if (val) out[q.id] = val;
     }
+    return out;
   }
+
+  const initialAnswers = (survey.prefill_contact && contactRow)
+    ? buildPrefill(questions ?? [], contactRow, tpRow) : {};
+  const initialPostSubmitAnswers = (survey.prefill_contact && contactRow && postSubmitQuestions)
+    ? buildPrefill(postSubmitQuestions, contactRow, tpRow) : {};
 
   return (
     <>
@@ -154,6 +166,7 @@ export default async function SurveyPage({ params, searchParams }: Props) {
         isKiosk={kiosk === "1"}
         contactId={contact_id}
         initialAnswers={Object.keys(initialAnswers).length > 0 ? initialAnswers : undefined}
+        initialPostSubmitAnswers={Object.keys(initialPostSubmitAnswers).length > 0 ? initialPostSubmitAnswers : undefined}
         branding={branding ? { primaryColor: branding.primaryColor, bgColor: branding.bgColor, textColor: branding.textColor, logoUrl: branding.logoUrl } : undefined}
         viewConfig={viewConfig}
         deliveryEnabled={Boolean(survey.delivery_enabled)}

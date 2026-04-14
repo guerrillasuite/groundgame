@@ -56,7 +56,7 @@ type TargetField =
   | "judicial_district" | "time_zone" | "urbanicity" | "population_density"
   | "census_tract" | "census_block_group" | "census_block" | "dma"
   // Tenant-specific (link table)
-  | "tp_notes" | "tp_contact_type"
+  | "tp_notes" | "tp_contact_type" | "tp_delegation_state"
   // Company import
   | "co_name" | "co_domain" | "co_phone" | "co_email"
   | "co_industry" | "co_status" | "co_presence"
@@ -399,6 +399,8 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
           tenantCustom[col] = val;
         } else if (target === "tp_notes") {
           tenantNamed.notes = val;
+        } else if (target === "tp_delegation_state") {
+          tenantNamed.delegation_state = val;
         } else if (target === "tp_contact_type") {
           tenantNamed.contact_type = val;
           tenantNamed._contact_type_explicit = "1";
@@ -817,6 +819,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                             <optgroup label="Tenant Tracking">
                               <option value="tp_notes">Notes (this org only)</option>
                               <option value="tp_contact_type">Contact Type (this org only)</option>
+                              <option value="tp_delegation_state">Delegation State (this org only)</option>
                             </optgroup>
                             <optgroup label="Giving History (external)">
                               <option value="__giving_cycle__">→ Giving – cycle year (set below)</option>
@@ -897,6 +900,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                             <optgroup label="Tenant Tracking">
                               <option value="tp_notes">Notes (this org only)</option>
                               <option value="tp_contact_type">Contact Type (this org only)</option>
+                              <option value="tp_delegation_state">Delegation State (this org only)</option>
                             </optgroup>
                             <optgroup label="Giving History (external)">
                               <option value="__giving_cycle__">→ Giving – cycle year (set below)</option>
@@ -935,6 +939,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                             <optgroup label="Tenant Tracking">
                               <option value="tp_notes">Notes (this org only)</option>
                               <option value="tp_contact_type">Contact Type (this org only)</option>
+                              <option value="tp_delegation_state">Delegation State (this org only)</option>
                             </optgroup>
                             <optgroup label="Giving History (external)">
                               <option value="__giving_cycle__">→ Giving – cycle year (set below)</option>
