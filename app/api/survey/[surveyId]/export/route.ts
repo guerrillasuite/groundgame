@@ -66,7 +66,7 @@ export async function GET(
       });
 
       const csv = [
-        headers.join(","),
+        headers.map(escape).join(","),
         ...rows.map((row) => row.map(escape).join(",")),
       ].join("\n");
 
