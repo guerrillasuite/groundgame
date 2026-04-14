@@ -125,7 +125,7 @@ export type SurveyWithStats = Survey & {
 // ── Survey CRUD ───────────────────────────────────────────────────────────────
 
 export async function getSurveys(tenantId: string): Promise<SurveyWithStats[]> {
-  const sb = getClient();
+  const sb = getServiceClient(tenantId);
 
   // Fetch surveys
   const { data: surveys, error } = await sb
