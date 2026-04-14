@@ -11,7 +11,7 @@ function makeSb() {
 
 async function fetchSurveyByIdOrSlug(surveyId: string) {
   const sb = makeSb();
-  const cols = "id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id";
+  const cols = "id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id, prefill_contact";
   // Try by ID first
   let { data: survey } = await sb
     .from("surveys")
@@ -39,12 +39,12 @@ async function fetchSurveyByIdOrSlug(surveyId: string) {
 
 interface Props {
   params: Promise<{ surveyId: string }>;
-  searchParams: Promise<{ kiosk?: string }>;
+  searchParams: Promise<{ kiosk?: string; contact_id?: string }>;
 }
 
 export default async function PublicSurveyPage({ params, searchParams }: Props) {
   const { surveyId } = await params;
-  const { kiosk } = await searchParams;
+  const { kiosk, contact_id } = await searchParams;
   const sb = makeSb();
 
   const survey = await fetchSurveyByIdOrSlug(surveyId);
@@ -57,16 +57,19 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
     );
   }
 
-  const qCols = "id, question_text, question_type, order_index, options, display_format";
+  const qCols = "id, question_text, description, question_type, order_index, options, display_format, randomize_choices, crm_field, required, conditions";
 
-  // Fetch questions, tenant branding, post-submit questions, and hosted view config in parallel
-  const [{ data: questions }, { data: tenant }, { data: postSubmitQuestions }, { data: viewConfigRow }] = await Promise.all([
+  // Fetch questions, tenant branding, post-submit questions, hosted view config, and optionally contact info
+  const [{ data: questions }, { data: tenant }, { data: postSubmitQuestions }, { data: viewConfigRow }, contactRow] = await Promise.all([
     sb.from("questions").select(qCols).eq("survey_id", survey.id).order("order_index", { ascending: true }),
     sb.from("tenants").select("branding").eq("id", survey.tenant_id).maybeSingle(),
     survey.post_submit_survey_id
       ? sb.from("questions").select(qCols).eq("survey_id", survey.post_submit_survey_id).order("order_index", { ascending: true })
       : Promise.resolve({ data: null }),
     sb.from("survey_view_configs").select("pagination, page_groups").eq("survey_id", survey.id).eq("view_type", "hosted").maybeSingle(),
+    (survey.prefill_contact && contact_id)
+      ? sb.from("people").select("first_name, last_name, email, phone").eq("id", contact_id).maybeSingle().then(r => r.data)
+      : Promise.resolve(null),
   ]);
 
   const viewConfig = viewConfigRow
@@ -77,7 +80,30 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
     ? { ...BASE_BRANDING, ...tenant.branding }
     : undefined;
 
-  const mapQ = (q: any) => ({ ...q, question_type: q.question_type ?? "multiple_choice", display_format: q.display_format ?? null });
+  const mapQ = (q: any) => ({
+    ...q,
+    question_type: q.question_type ?? "multiple_choice",
+    display_format: q.display_format ?? null,
+    description: q.description ?? null,
+    randomize_choices: Boolean(q.randomize_choices),
+    conditions: q.conditions ?? null,
+  });
+
+  // Build pre-filled answers from contact info if prefill_contact is enabled
+  const initialAnswers: Record<string, string> = {};
+  if (survey.prefill_contact && contactRow) {
+    const contactData: Record<string, string> = {
+      "people.first_name": contactRow.first_name ?? "",
+      "people.last_name": contactRow.last_name ?? "",
+      "people.email": contactRow.email ?? "",
+      "people.phone": contactRow.phone ?? "",
+    };
+    for (const q of (questions ?? [])) {
+      if (q.crm_field && contactData[q.crm_field]) {
+        initialAnswers[q.id] = contactData[q.crm_field];
+      }
+    }
+  }
 
   return (
     <SurveyPanel
@@ -90,6 +116,8 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
       postSubmitSurveyId={survey.post_submit_survey_id ?? null}
       postSubmitQuestions={postSubmitQuestions ? postSubmitQuestions.map(mapQ) : null}
       isKiosk={kiosk === "1"}
+      contactId={contact_id ?? null}
+      initialAnswers={Object.keys(initialAnswers).length > 0 ? initialAnswers : undefined}
       branding={branding ? { primaryColor: branding.primaryColor, bgColor: branding.bgColor, textColor: branding.textColor, logoUrl: branding.logoUrl } : undefined}
       viewConfig={viewConfig}
     />

@@ -1,92 +1,155 @@
-// app/survey/[surveyId]/page.tsx
-import { SurveyContainer } from '@/app/components/survey/SurveyContainer';
+import SurveyPanel from "@/app/components/survey/SurveyPanel";
 import { createClient } from "@supabase/supabase-js";
+import { BASE_BRANDING } from "@/lib/tenant";
 
-async function fetchContactInfo(contactId: string) {
-  const sb = createClient(
+function makeSb() {
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
-  const { data } = await sb
-    .from("people")
-    .select("first_name, last_name, email, phone")
-    .eq("id", contactId)
-    .maybeSingle();
-  if (!data) return undefined;
-  return {
-    name: [data.first_name, data.last_name].filter(Boolean).join(" "),
-    email: data.email ?? "",
-    phone: data.phone ?? "",
-  };
 }
 
-interface SurveyPageProps {
-  params: { surveyId: string };
-  searchParams: { contact_id?: string };
+interface Props {
+  params: Promise<{ surveyId: string }>;
+  searchParams: Promise<{ contact_id?: string; kiosk?: string }>;
 }
 
-export default async function SurveyPage({ params, searchParams }: SurveyPageProps) {
-  const { surveyId } = params;
-  const { contact_id } = searchParams;
-  const contactInfo = contact_id ? await fetchContactInfo(contact_id) : undefined;
-  
+export default async function SurveyPage({ params, searchParams }: Props) {
+  const { surveyId } = await params;
+  const { contact_id, kiosk } = await searchParams;
+
   // Require contact_id to proceed
   if (!contact_id) {
     return (
       <div style={{
-        minHeight: '100vh',
-        background: 'rgb(var(--bg-900))',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px'
+        minHeight: "100vh",
+        background: "rgb(var(--bg-900))",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "16px",
       }}>
         <div style={{
-          maxWidth: '500px',
-          width: '100%',
-          background: 'rgb(var(--surface-800))',
-          borderRadius: '16px',
-          padding: '32px',
-          border: '1px solid rgb(var(--border-600))',
-          boxShadow: 'var(--shadow)',
-          textAlign: 'center'
+          maxWidth: "500px", width: "100%",
+          background: "rgb(var(--surface-800))",
+          borderRadius: "16px", padding: "32px",
+          border: "1px solid rgb(var(--border-600))",
+          textAlign: "center",
         }}>
-          <h2 style={{
-            margin: '0 0 8px',
-            fontSize: '24px',
-            fontWeight: 700,
-            color: 'rgb(var(--text-100))'
-          }}>
+          <h2 style={{ margin: "0 0 8px", fontSize: "24px", fontWeight: 700, color: "rgb(var(--text-100))" }}>
             Access Denied
           </h2>
-          <p style={{
-            margin: 0,
-            color: 'rgb(var(--text-300))',
-            fontSize: '16px'
-          }}>
+          <p style={{ margin: 0, color: "rgb(var(--text-300))", fontSize: "16px" }}>
             This survey requires a valid access link. Please use the link provided to you.
           </p>
         </div>
       </div>
     );
   }
-  
+
+  const sb = makeSb();
+  const qCols = "id, question_text, description, question_type, order_index, options, display_format, randomize_choices, crm_field, required, conditions";
+
+  // Fetch everything in parallel
+  const [
+    { data: survey },
+    { data: questions },
+    { data: contactRow },
+  ] = await Promise.all([
+    sb.from("surveys")
+      .select("id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id, payment_enabled, delivery_enabled, order_products, opp_trigger, auto_fields")
+      .eq("id", surveyId)
+      .eq("active", true)
+      .maybeSingle(),
+    sb.from("questions")
+      .select(qCols)
+      .eq("survey_id", surveyId)
+      .order("order_index", { ascending: true }),
+    sb.from("people")
+      .select("first_name, last_name, email, phone")
+      .eq("id", contact_id)
+      .maybeSingle(),
+  ]);
+
+  if (!survey) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "rgb(var(--bg-900))" }}>
+        <p style={{ color: "rgb(var(--text-300))" }}>Survey not available.</p>
+      </div>
+    );
+  }
+
+  // Fetch tenant branding, post-submit questions, and view config in parallel
+  const [{ data: tenant }, { data: postSubmitQuestions }, { data: viewConfigRow }] = await Promise.all([
+    sb.from("tenants").select("branding").eq("id", survey.tenant_id).maybeSingle(),
+    survey.post_submit_survey_id
+      ? sb.from("questions").select(qCols).eq("survey_id", survey.post_submit_survey_id).order("order_index", { ascending: true })
+      : Promise.resolve({ data: null }),
+    sb.from("survey_view_configs")
+      .select("pagination, page_groups")
+      .eq("survey_id", survey.id)
+      .eq("view_type", "door")
+      .maybeSingle(),
+  ]);
+
+  const branding = tenant?.branding ? { ...BASE_BRANDING, ...tenant.branding } : undefined;
+  const viewConfig = viewConfigRow
+    ? { pagination: viewConfigRow.pagination as string, page_groups: (viewConfigRow.page_groups ?? null) as string[][][] | null }
+    : undefined;
+
+  const mapQ = (q: any) => ({
+    ...q,
+    question_type: q.question_type ?? "multiple_choice",
+    display_format: q.display_format ?? null,
+    description: q.description ?? null,
+    randomize_choices: Boolean(q.randomize_choices),
+    conditions: q.conditions ?? null,
+  });
+
+  // Build pre-filled answers from contact info if prefill_contact is enabled
+  const contactData: Record<string, string> = contactRow ? {
+    "people.first_name": contactRow.first_name ?? "",
+    "people.last_name": contactRow.last_name ?? "",
+    "people.email": contactRow.email ?? "",
+    "people.phone": contactRow.phone ?? "",
+  } : {};
+
+  const initialAnswers: Record<string, string> = {};
+  if (survey.prefill_contact && contactRow) {
+    for (const q of (questions ?? [])) {
+      if (q.crm_field && contactData[q.crm_field]) {
+        initialAnswers[q.id] = contactData[q.crm_field];
+      }
+    }
+  }
+
   return (
     <>
-      <SurveyContainer
-        surveyId={surveyId}
+      <SurveyPanel
+        surveyId={survey.id}
+        tenantId={survey.tenant_id}
+        title={survey.title}
+        websiteUrl={survey.website_url ?? null}
+        footerText={survey.footer_text ?? null}
+        questions={(questions ?? []).map(mapQ)}
+        postSubmitSurveyId={survey.post_submit_survey_id ?? null}
+        postSubmitQuestions={postSubmitQuestions ? postSubmitQuestions.map(mapQ) : null}
+        isKiosk={kiosk === "1"}
         contactId={contact_id}
-        contactInfo={contactInfo}
-        randomizeOptions={true}
+        initialAnswers={Object.keys(initialAnswers).length > 0 ? initialAnswers : undefined}
+        branding={branding ? { primaryColor: branding.primaryColor, bgColor: branding.bgColor, textColor: branding.textColor, logoUrl: branding.logoUrl } : undefined}
+        viewConfig={viewConfig}
+        deliveryEnabled={Boolean(survey.delivery_enabled)}
+        orderProducts={Array.isArray(survey.order_products) ? survey.order_products : null}
       />
-      
+
       {/* Financial Disclosure */}
       <div style={{
-        textAlign: 'center',
-        padding: '24px 16px',
-        color: 'rgb(var(--text-300))',
-        fontSize: '12px',
-        background: 'rgb(var(--bg-900))'
+        textAlign: "center",
+        padding: "24px 16px",
+        color: "rgb(var(--text-300))",
+        fontSize: "12px",
+        background: "rgb(var(--bg-900))",
       }}>
         Paid for by the Libertarian Booster PAC
       </div>
@@ -94,10 +157,9 @@ export default async function SurveyPage({ params, searchParams }: SurveyPagePro
   );
 }
 
-// Optional: Add metadata
-export async function generateMetadata({ params }: { params: { surveyId: string } }) {
-  return {
-    title: 'Survey | GroundGame',
-    description: 'Complete your survey'
-  };
+export async function generateMetadata({ params }: { params: Promise<{ surveyId: string }> }) {
+  const { surveyId } = await params;
+  const sb = makeSb();
+  const { data: survey } = await sb.from("surveys").select("title").eq("id", surveyId).maybeSingle();
+  return { title: survey?.title ?? "Survey | GroundGame" };
 }

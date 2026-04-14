@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -10,10 +10,12 @@ type QuizResult = "libertarian" | "progressive" | "conservative" | "authoritaria
 interface Question {
   id: string;
   question_text: string;
+  description?: string | null;
   question_type: string;
   order_index: number;
   options: string[] | null;
   display_format: string | null;
+  randomize_choices?: boolean;
   required?: boolean;
   conditions?: {
     show_if: { question_id: string; operator: "equals" | "not_equals" | "contains"; value: string };
@@ -37,6 +39,8 @@ interface SurveyPanelProps {
   postSubmitSurveyId?: string | null;
   postSubmitQuestions?: Question[] | null;
   isKiosk: boolean;
+  contactId?: string | null;
+  initialAnswers?: Record<string, string>;
   branding?: Branding;
   viewConfig?: { pagination?: string; page_groups?: string[][][] | null };
   deliveryEnabled?: boolean;
@@ -216,6 +220,8 @@ export default function SurveyPanel({
   postSubmitSurveyId,
   postSubmitQuestions,
   isKiosk,
+  contactId,
+  initialAnswers,
   branding,
   viewConfig,
   deliveryEnabled,
@@ -234,10 +240,28 @@ export default function SurveyPanel({
     return (0.299*r + 0.587*g + 0.114*b) / 255 > 0.5 ? "#111827" : "#ffffff";
   }
 
+  // Compute shuffled options once per question (stable across re-renders)
+  const shuffledOptionsMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const q of questions) {
+      if (q.randomize_choices && Array.isArray(q.options) && q.options.length > 0) {
+        const shuffled = [...q.options];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        map[q.id] = shuffled;
+      }
+    }
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions.map(q => q.id).join(",")]);
+
   const [phase, setPhase] = useState<Phase>("quiz");
   const [current, setCurrent] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers ?? {});
   const [openAnswer, setOpenAnswer] = useState(""); // for text/number/email/phone/date
+  const [otherMultiText, setOtherMultiText] = useState(""); // for multiple_select_with_other
   const [personalScore, setPersonalScore] = useState(0);
   const [economicScore, setEconomicScore] = useState(0);
   const [result, setResult] = useState<QuizResult>("moderate");
@@ -298,6 +322,7 @@ export default function SurveyPanel({
   function selectAnswer(ans: string) {
     const updated = { ...answers, [currentQuestion.id]: ans };
     setAnswers(updated);
+    saveAnswerNow(currentQuestion.id, ans);
     setOpenAnswer(""); // reset open input for next question
     const next = nextVisibleIdx(current + 1, updated);
     if (next !== "end") {
@@ -319,6 +344,7 @@ export default function SurveyPanel({
     if (!val && currentQuestion.required) return;
     const updated = { ...answers, [currentQuestion.id]: val };
     setAnswers(updated);
+    saveAnswerNow(currentQuestion.id, val);
     setOpenAnswer("");
     const next = nextVisibleIdx(current + 1, updated);
     if (next !== "end") {
@@ -326,6 +352,24 @@ export default function SurveyPanel({
     } else {
       setPhase("results");
     }
+  }
+
+  // ── Save-as-you-go ──────────────────────────────────────────────────────────
+  // When contactId is known, persist each answer immediately so responses are
+  // saved even if the user abandons before final submission.
+  function saveAnswerNow(questionId: string, answerValue: string, answerText?: string) {
+    if (!contactId) return;
+    fetch("/api/survey/response", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        crm_contact_id: contactId,
+        survey_id: surveyId,
+        question_id: questionId,
+        answer_value: answerValue,
+        answer_text: answerText ?? null,
+      }),
+    }).catch(() => {}); // fire-and-forget, don't block UX
   }
 
   const OPEN_TYPES = ["text", "text_short", "number", "email", "phone", "date"];
@@ -356,7 +400,7 @@ export default function SurveyPanel({
         const res = await fetch("/api/survey/panel-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ survey_id: surveyId, tenant_id: tenantId, answers, delivery: deliveryPayload }),
+          body: JSON.stringify({ survey_id: surveyId, tenant_id: tenantId, answers, delivery: deliveryPayload, contact_id: contactId || undefined }),
         });
         const data = await res.json().catch(() => ({}));
         if (data.opportunity_id) setOpportunityId(data.opportunity_id);
@@ -491,13 +535,17 @@ export default function SurveyPanel({
                     const isDropdown = q.display_format === "dropdown";
                     const isMulti = ["multiple_select", "multiple_select_with_other"].includes(qType);
                     const multiVals: string[] = (() => { try { return val ? JSON.parse(val) : []; } catch { return []; } })();
-                    const choiceOpts = q.options ?? [];
+                    const choiceOpts = shuffledOptionsMap[q.id] ?? q.options ?? [];
                     return (
                       <div key={q.id} style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ color: textColor, fontSize: 14, fontWeight: 600, margin: "0 0 8px" }}>
+                        <p style={{ color: textColor, fontSize: 14, fontWeight: 600, margin: "0 0 4px" }}>
                           {q.question_text}
                           {q.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
                         </p>
+                        {q.description && (
+                          <p style={{ color: textColor, fontSize: 12, opacity: 0.6, margin: "0 0 8px", lineHeight: 1.4 }}>{q.description}</p>
+                        )}
+                        {!q.description && <div style={{ marginBottom: 8 }} />}
                         {["multiple_choice", "multiple_choice_with_other"].includes(qType) && (
                           isDropdown ? (
                             <select value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} style={{ ...input, fontSize: 15 }}>
@@ -597,9 +645,12 @@ export default function SurveyPanel({
     const progress = (Object.keys(answers).length / Math.max(visibleTotal, 1)) * 100;
     const qType = currentQuestion?.question_type ?? "multiple_choice";
     const isDropdown = currentQuestion?.display_format === "dropdown";
+    const currentOpts = currentQuestion
+      ? (shuffledOptionsMap[currentQuestion.id] ?? currentQuestion.options ?? [])
+      : [];
     const choiceOptions = isWspq
       ? wspqOptions
-      : (currentQuestion?.options ?? []).map(o => ({ value: o, label: o, color: primaryColor }));
+      : currentOpts.map(o => ({ value: o, label: o, color: primaryColor }));
     const isMultiSelect = ["multiple_select", "multiple_select_with_other"].includes(qType);
     const [multiVals, setMultiVals] = [
       answers[currentQuestion?.id] ? (() => { try { return JSON.parse(answers[currentQuestion.id]); } catch { return []; } })() : [],
@@ -630,10 +681,13 @@ export default function SurveyPanel({
               </span>
             )}
           </div>
-          <p style={{ fontSize: 20, fontWeight: 600, color: textColor, lineHeight: 1.45, margin: "0 0 28px" }}>
+          <p style={{ fontSize: 20, fontWeight: 600, color: textColor, lineHeight: 1.45, margin: currentQuestion?.description ? "0 0 8px" : "0 0 28px" }}>
             {currentQuestion?.question_text}
             {currentQuestion?.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
           </p>
+          {currentQuestion?.description && (
+            <p style={{ fontSize: 14, color: textColor, opacity: 0.65, lineHeight: 1.5, margin: "0 0 22px" }}>{currentQuestion.description}</p>
+          )}
 
           {/* Choice questions */}
           {(isWspq || ["multiple_choice", "multiple_choice_with_other"].includes(qType)) && !isMultiSelect && (
@@ -681,19 +735,63 @@ export default function SurveyPanel({
           {/* Multi-select */}
           {isMultiSelect && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {(currentQuestion?.options ?? []).map((opt: string) => {
-                const checked = multiVals.includes(opt);
-                return (
-                  <label key={opt} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", padding: "12px 16px", borderRadius: 10, border: `2px solid ${checked ? primaryColor : borderColor}`, background: checked ? `${primaryColor}15` : "transparent" }}>
-                    <input type="checkbox" checked={checked} onChange={() => {
-                      const next = checked ? multiVals.filter((v: string) => v !== opt) : [...multiVals, opt];
-                      setMultiVals(next);
-                    }} style={{ width: 18, height: 18 }} />
-                    <span style={{ fontSize: 16, color: textColor }}>{opt}</span>
-                  </label>
-                );
-              })}
-              <button onClick={() => selectAnswer(answers[currentQuestion.id] || "[]")} style={btn(primaryColor)} disabled={!multiVals.length && currentQuestion?.required}>
+              {isDropdown ? (
+                <select
+                  multiple
+                  value={multiVals}
+                  onChange={(e) => setMultiVals(Array.from(e.target.selectedOptions, (o) => o.value))}
+                  style={{ ...input, fontSize: 16, minHeight: 140 }}
+                >
+                  {currentOpts.map((o: string) => <option key={o} value={o}>{o}</option>)}
+                  {qType === "multiple_select_with_other" && <option value="other">Other…</option>}
+                </select>
+              ) : (
+                <>
+                  {currentOpts.map((opt: string) => {
+                    const checked = multiVals.includes(opt);
+                    return (
+                      <label key={opt} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", padding: "12px 16px", borderRadius: 10, border: `2px solid ${checked ? primaryColor : borderColor}`, background: checked ? `${primaryColor}15` : "transparent" }}>
+                        <input type="checkbox" checked={checked} onChange={() => {
+                          setMultiVals(checked ? multiVals.filter((v: string) => v !== opt) : [...multiVals, opt]);
+                        }} style={{ width: 18, height: 18 }} />
+                        <span style={{ fontSize: 16, color: textColor }}>{opt}</span>
+                      </label>
+                    );
+                  })}
+                  {qType === "multiple_select_with_other" && (
+                    <>
+                      <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", padding: "12px 16px", borderRadius: 10, border: `2px solid ${multiVals.includes("other") ? primaryColor : borderColor}`, background: multiVals.includes("other") ? `${primaryColor}15` : "transparent" }}>
+                        <input type="checkbox" checked={multiVals.includes("other")} onChange={() => {
+                          setMultiVals(multiVals.includes("other") ? multiVals.filter((v: string) => v !== "other") : [...multiVals, "other"]);
+                          if (multiVals.includes("other")) setOtherMultiText("");
+                        }} style={{ width: 18, height: 18 }} />
+                        <span style={{ fontSize: 16, color: textColor }}>Other…</span>
+                      </label>
+                      {multiVals.includes("other") && (
+                        <input
+                          type="text"
+                          value={otherMultiText}
+                          onChange={(e) => setOtherMultiText(e.target.value)}
+                          placeholder="Please specify…"
+                          autoFocus
+                          style={{ ...input, fontSize: 15 }}
+                        />
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+              <button
+                onClick={() => {
+                  const val = JSON.stringify(multiVals);
+                  const txt = multiVals.includes("other") && otherMultiText ? otherMultiText : undefined;
+                  saveAnswerNow(currentQuestion.id, val, txt);
+                  selectAnswer(val);
+                  setOtherMultiText("");
+                }}
+                style={btn(primaryColor)}
+                disabled={!multiVals.length && currentQuestion?.required}
+              >
                 Next →
               </button>
             </div>
@@ -821,7 +919,7 @@ export default function SurveyPanel({
                     fetch("/api/survey/panel-submit", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ survey_id: postSubmitSurveyId, tenant_id: tenantId, answers: psAnswers }),
+                      body: JSON.stringify({ survey_id: postSubmitSurveyId, tenant_id: tenantId, answers: psAnswers, contact_id: contactId || undefined }),
                     }),
                   ]);
                   setSubmitting(false);
@@ -840,10 +938,13 @@ export default function SurveyPanel({
 
                     return (
                       <div key={psQ.id}>
-                        <p style={{ color: textColor, fontSize: 14, fontWeight: 600, margin: "0 0 8px" }}>
+                        <p style={{ color: textColor, fontSize: 14, fontWeight: 600, margin: psQ.description ? "0 0 4px" : "0 0 8px" }}>
                           {psQ.question_text}
                           {psQ.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
                         </p>
+                        {psQ.description && (
+                          <p style={{ color: textColor, fontSize: 12, opacity: 0.6, margin: "0 0 8px", lineHeight: 1.4 }}>{psQ.description}</p>
+                        )}
                         {isOpen && (
                           psType === "text" ? (
                             <textarea rows={2} style={{ ...input, resize: "vertical" }} placeholder="Your answer…"

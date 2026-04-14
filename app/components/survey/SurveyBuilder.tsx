@@ -37,9 +37,11 @@ type QuestionCondition = {
 type LocalQuestion = {
   id: string;
   question_text: string;
+  description: string;
   question_type: QuestionType;
   options: string[];
   display_format: DisplayFormat;
+  randomize_choices: boolean;
   crm_field: CrmField | null;
   required: boolean;
   order_index: number;
@@ -88,9 +90,11 @@ function blankQuestion(order_index: number): LocalQuestion {
   return {
     id: newTmpId(),
     question_text: "",
+    description: "",
     question_type: "multiple_choice",
     options: ["", ""],
     display_format: null,
+    randomize_choices: false,
     crm_field: null,
     required: true,
     order_index,
@@ -141,6 +145,9 @@ export default function SurveyBuilder({
 
   // Op intake channels
   const [opIntakeChannels, setOpIntakeChannels] = useState<Set<string>>(new Set());
+
+  // Contact prefill
+  const [prefillContact, setPrefillContact] = useState(false);
 
   // Payment
   const [paymentEnabled, setPaymentEnabled] = useState(false);
@@ -212,6 +219,7 @@ export default function SurveyBuilder({
           setOppTitleTemplate(ot.title_template ?? "{{last_name}} — {{date}}");
         }
         setOpIntakeChannels(new Set(s.op_intake_channels ?? []));
+        setPrefillContact(Boolean(s.prefill_contact));
         setPaymentEnabled(Boolean(s.payment_enabled));
         setDeliveryEnabled(Boolean(s.delivery_enabled));
         const af = Array.isArray(s.auto_fields) ? s.auto_fields : [];
@@ -225,9 +233,11 @@ export default function SurveyBuilder({
         const qs: LocalQuestion[] = (data.questions ?? []).map((q: any) => ({
           id: q.id,
           question_text: q.question_text,
+          description: q.description ?? "",
           question_type: q.question_type as QuestionType,
           options: q.options ?? [],
           display_format: q.display_format ?? null,
+          randomize_choices: Boolean(q.randomize_choices),
           crm_field: q.crm_field ?? null,
           required: Boolean(q.required),
           order_index: q.order_index,
@@ -495,6 +505,7 @@ export default function SurveyBuilder({
               title_template: oppTitleTemplate || "{{last_name}} — {{date}}",
             } : null,
             op_intake_channels: [...opIntakeChannels],
+            prefill_contact: prefillContact,
             payment_enabled: paymentEnabled,
             storefront_mode: activeChannels.has("storefront") ? "take_order" : null,
             delivery_enabled: deliveryEnabled,
@@ -525,9 +536,11 @@ export default function SurveyBuilder({
         const q = { ...questions[i], order_index: i + 1 };
         const body = {
           question_text: q.question_text,
+          description: q.description || null,
           question_type: q.question_type,
           options: q.options.filter((o) => o.trim()),
           display_format: q.display_format ?? null,
+          randomize_choices: q.randomize_choices,
           crm_field: q.crm_field ?? null,
           required: q.required,
           order_index: q.order_index,
@@ -991,6 +1004,19 @@ export default function SurveyBuilder({
                 </button>
               </div>
 
+              {/* ── Contact prefill ── */}
+              <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input type="checkbox" checked={prefillContact} onChange={(e) => setPrefillContact(e.target.checked)} />
+                  Pre-fill known contact info
+                </label>
+                {prefillContact && (
+                  <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                    When a survey link includes a contact ID, the respondent's name, email, and phone will be automatically filled into matching questions. Disable this if you'd rather not reveal that you already have their information.
+                  </p>
+                )}
+              </div>
+
               {/* ── Payment Gate ── */}
               <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
                 <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
@@ -1096,6 +1122,18 @@ export default function SurveyBuilder({
                     />
                   </div>
 
+                  {/* Description / help text */}
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <label style={labelStyle}>Description <span style={{ opacity: 0.45, fontWeight: 400 }}>(optional — shown below the question in smaller text)</span></label>
+                    <textarea
+                      rows={2}
+                      value={q.description}
+                      onChange={(e) => updateQuestion(q.id, { description: e.target.value })}
+                      placeholder="Add clarifying text, instructions, or context…"
+                      style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5, fontSize: 12 }}
+                    />
+                  </div>
+
                   {/* Type + Required + Display format row */}
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
                     <div style={{ display: "grid", gap: 6, flex: 1, minWidth: 200 }}>
@@ -1170,6 +1208,18 @@ export default function SurveyBuilder({
                           <option value="10">1 – 10</option>
                         </select>
                       </div>
+                    )}
+
+                    {isChoice && (
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer", paddingBottom: 2 }}>
+                        <input
+                          type="checkbox"
+                          checked={q.randomize_choices}
+                          onChange={(e) => updateQuestion(q.id, { randomize_choices: e.target.checked })}
+                          style={{ width: 16, height: 16, cursor: "pointer" }}
+                        />
+                        Randomize choices
+                      </label>
                     )}
 
                     <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer", paddingBottom: 2 }}>

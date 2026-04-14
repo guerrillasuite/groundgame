@@ -6,7 +6,7 @@ type Ctx = { params: Promise<{ surveyId: string }> };
 export async function POST(request: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
-    const { question_text, question_type, options, display_format, crm_field, required, order_index, conditions } =
+    const { question_text, description, question_type, options, display_format, randomize_choices, crm_field, required, order_index, conditions } =
       await request.json();
 
     if (!question_text?.trim() || !question_type) {
@@ -25,9 +25,11 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     await createQuestion(surveyId, {
       id: question_id,
       question_text: question_text.trim(),
+      description: description || null,
       question_type,
       options: options?.length ? options : null,
       display_format: display_format ?? null,
+      randomize_choices: Boolean(randomize_choices),
       crm_field: crm_field ?? null,
       required: Boolean(required),
       order_index: order_index ?? 999,

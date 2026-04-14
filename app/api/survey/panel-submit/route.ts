@@ -106,9 +106,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-  const { survey_id, answers, delivery } = body as {
+  const { survey_id, answers, delivery, contact_id } = body as {
     survey_id: string;
     answers: Record<string, string>;
+    contact_id?: string;
     delivery?: {
       address_line1: string;
       city?: string;
@@ -163,24 +164,44 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Find or create person ─────────────────────────────────────────────────
-  const hasContact = Object.values(tableFields.people).some((v) => v?.trim());
   let personId: string;
 
-  if (hasContact) {
-    personId = await findOrCreatePerson(sb, tenant.id, tableFields.people);
+  if (contact_id) {
+    // Caller supplied a pre-existing person UUID — verify it belongs to this tenant
+    const { data: tpRow } = await sb
+      .from("tenant_people")
+      .select("person_id")
+      .eq("tenant_id", tenant.id)
+      .eq("person_id", contact_id)
+      .maybeSingle();
+    if (tpRow) {
+      personId = contact_id;
+      // Still apply any collected people field updates (e.g. from crm_field mappings)
+      if (Object.values(tableFields.people).some((v) => v?.trim())) {
+        await updatePersonFields(sb, personId, tableFields.people);
+      }
+    } else {
+      // contact_id not found for this tenant — fall through to normal lookup
+      personId = await findOrCreatePerson(sb, tenant.id, tableFields.people);
+    }
   } else {
-    // Anonymous — still create a person record to link responses
-    personId = crypto.randomUUID();
-    await sb.from("people").insert({
-      id: personId,
-      data_source: "survey",
-      data_updated_at: new Date().toISOString(),
-    });
-    await sb.from("tenant_people").insert({
-      tenant_id: tenant.id,
-      person_id: personId,
-      linked_at: new Date().toISOString(),
-    });
+    const hasContact = Object.values(tableFields.people).some((v) => v?.trim());
+    if (hasContact) {
+      personId = await findOrCreatePerson(sb, tenant.id, tableFields.people);
+    } else {
+      // Anonymous — still create a person record to link responses
+      personId = crypto.randomUUID();
+      await sb.from("people").insert({
+        id: personId,
+        data_source: "survey",
+        data_updated_at: new Date().toISOString(),
+      });
+      await sb.from("tenant_people").insert({
+        tenant_id: tenant.id,
+        person_id: personId,
+        linked_at: new Date().toISOString(),
+      });
+    }
   }
 
   const now = new Date().toISOString();

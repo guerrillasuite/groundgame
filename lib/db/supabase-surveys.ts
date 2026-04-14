@@ -219,6 +219,7 @@ export async function updateSurvey(
     post_submit_survey_id?: string | null;
     opp_trigger?: OppTrigger | null;
     op_intake_channels?: string[];
+    prefill_contact?: boolean;
     payment_enabled?: boolean;
     storefront_mode?: "take_order" | null;
     delivery_enabled?: boolean;
@@ -241,6 +242,7 @@ export async function updateSurvey(
   if ("post_submit_survey_id" in params) update.post_submit_survey_id = params.post_submit_survey_id ?? null;
   if ("opp_trigger" in params) update.opp_trigger = params.opp_trigger ?? null;
   if ("op_intake_channels" in params) update.op_intake_channels = params.op_intake_channels ?? [];
+  if ("prefill_contact" in params) update.prefill_contact = params.prefill_contact ?? false;
   if ("payment_enabled" in params) update.payment_enabled = params.payment_enabled ?? false;
   if ("storefront_mode" in params) update.storefront_mode = params.storefront_mode ?? null;
   if ("delivery_enabled" in params) update.delivery_enabled = params.delivery_enabled ?? false;
@@ -263,9 +265,11 @@ export async function createQuestion(
   params: {
     id: string;
     question_text: string;
+    description?: string | null;
     question_type: string;
     options: string[] | null;
     display_format?: "list" | "dropdown" | null;
+    randomize_choices?: boolean;
     crm_field?: CrmField | null;
     required: boolean;
     order_index: number;
@@ -277,9 +281,11 @@ export async function createQuestion(
     id: params.id,
     survey_id: surveyId,
     question_text: params.question_text,
+    description: params.description ?? null,
     question_type: params.question_type,
     options: params.options?.length ? params.options : null,
     display_format: params.display_format ?? null,
+    randomize_choices: params.randomize_choices ?? false,
     crm_field: params.crm_field ?? null,
     required: params.required,
     order_index: params.order_index,
@@ -292,9 +298,11 @@ export async function updateQuestion(
   questionId: string,
   params: {
     question_text: string;
+    description?: string | null;
     question_type: string;
     options: string[] | null;
     display_format?: "list" | "dropdown" | null;
+    randomize_choices?: boolean;
     crm_field?: CrmField | null;
     required: boolean;
     order_index: number;
@@ -306,9 +314,11 @@ export async function updateQuestion(
     .from("questions")
     .update({
       question_text: params.question_text,
+      description: params.description ?? null,
       question_type: params.question_type,
       options: params.options?.length ? params.options : null,
       display_format: params.display_format ?? null,
+      randomize_choices: params.randomize_choices ?? false,
       crm_field: params.crm_field ?? null,
       required: params.required,
       order_index: params.order_index,
@@ -427,7 +437,7 @@ export async function getSurveyResults(surveyId: string, tenantId: string) {
   ] = await Promise.all([
     sb.from("surveys").select("id, title, description").eq("id", surveyId).single(),
     sb.from("survey_sessions").select("completed_at").eq("survey_id", surveyId),
-    sb.from("questions").select("id, question_text, order_index").eq("survey_id", surveyId).order("order_index"),
+    sb.from("questions").select("id, question_text, question_type, order_index").eq("survey_id", surveyId).order("order_index"),
     sb.from("responses").select("question_id, answer_value, answer_text").eq("survey_id", surveyId),
   ]);
 
@@ -436,21 +446,37 @@ export async function getSurveyResults(surveyId: string, tenantId: string) {
   const totalStarted = sessions?.length ?? 0;
   const totalCompleted = sessions?.filter((s) => s.completed_at).length ?? 0;
 
+  const MULTI_SELECT_TYPES = new Set(["multiple_select", "multiple_select_with_other"]);
+
   const questionResults = (questions ?? []).map((q) => {
     const qResponses = (responses ?? []).filter((r) => r.question_id === q.id);
-    const counts = new Map<string, number>();
-    for (const r of qResponses) {
-      const key =
-        r.answer_value === "other" && r.answer_text
-          ? `Other: ${r.answer_text}`
-          : r.answer_value;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
     const total = qResponses.length;
+    const isMultiSelect = MULTI_SELECT_TYPES.has(q.question_type);
+    const counts = new Map<string, number>();
+
+    for (const r of qResponses) {
+      if (isMultiSelect) {
+        // answer_value is a JSON array e.g. '["Option A","Option B"]'
+        let vals: string[] = [];
+        try { vals = JSON.parse(r.answer_value); } catch { vals = [r.answer_value]; }
+        for (const v of vals) {
+          const key = v === "other" && r.answer_text ? `Other: ${r.answer_text}` : v;
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+      } else {
+        const key =
+          r.answer_value === "other" && r.answer_text
+            ? `Other: ${r.answer_text}`
+            : r.answer_value;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+
     const answers = Array.from(counts.entries())
       .map(([value, count]) => ({
         value,
         count,
+        // For multi-select, percentage is out of total respondents (not total selections)
         percentage: total > 0 ? (count / total) * 100 : 0,
       }))
       .sort((a, b) => b.count - a.count);
