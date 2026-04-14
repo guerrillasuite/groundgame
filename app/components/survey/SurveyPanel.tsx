@@ -34,8 +34,12 @@ interface SurveyPanelProps {
   surveyId: string;
   tenantId: string;
   title: string;
+  displayDescription?: string | null;
   websiteUrl: string | null;
+  learnMoreLabel?: string | null;
   footerText: string | null;
+  postSubmitHeader?: string | null;
+  thankyouMessage?: string | null;
   questions: Question[];
   postSubmitSurveyId?: string | null;
   postSubmitQuestions?: Question[] | null;
@@ -216,8 +220,12 @@ export default function SurveyPanel({
   surveyId,
   tenantId,
   title,
+  displayDescription,
   websiteUrl,
+  learnMoreLabel,
   footerText,
+  postSubmitHeader,
+  thankyouMessage,
   questions,
   postSubmitSurveyId,
   postSubmitQuestions,
@@ -527,7 +535,8 @@ export default function SurveyPanel({
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minHeight: "100vh", padding: "32px 16px", background: bgColor }}>
         {logoUrl && <img src={logoUrl} alt="" style={{ height: 40, marginBottom: 20, objectFit: "contain", maxWidth: 160 }} />}
         <div style={{ ...card, maxWidth: hasTwoCol ? 840 : 520, width: "100%" }}>
-          <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 20px", textTransform: "uppercase" }}>{title}</p>
+          <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: displayDescription ? "0 0 6px" : "0 0 20px", textTransform: "uppercase" }}>{title}</p>
+          {displayDescription && <p style={{ color: mutedText, fontSize: 14, margin: "0 0 20px", lineHeight: 1.5 }}>{displayDescription}</p>}
           <form onSubmit={async (e) => {
             e.preventDefault();
             setSubmitting(true);
@@ -677,6 +686,7 @@ export default function SurveyPanel({
           <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 4px", textTransform: "uppercase" }}>
             {title}
           </p>
+          {displayDescription && <p style={{ color: mutedText, fontSize: 13, margin: "2px 0 8px", lineHeight: 1.5 }}>{displayDescription}</p>}
           <div style={{ height: 4, background: borderColor, borderRadius: 2, margin: "8px 0 20px" }}>
             <div style={{ height: "100%", width: `${progress}%`, background: primaryColor, borderRadius: 2, transition: "width 0.3s" }} />
           </div>
@@ -902,7 +912,10 @@ export default function SurveyPanel({
                 </p>
               </>
             ) : (
-              <h1 style={{ fontSize: 26, fontWeight: 800, color: textColor, margin: "0 0 8px" }}>All done!</h1>
+              <>
+                <h1 style={{ fontSize: 26, fontWeight: 800, color: textColor, margin: "0 0 8px" }}>All done!</h1>
+                {postSubmitHeader && <p style={{ color: mutedText, fontSize: 14, margin: "4px 0 0", lineHeight: 1.5 }}>{postSubmitHeader}</p>}
+              </>
             )}
           </div>
 
@@ -1061,14 +1074,14 @@ export default function SurveyPanel({
           {isWspq && meta ? (
             <>You scored <strong style={{ color: meta.color }}>{meta.label}</strong>. Share this quiz with your friends and see where they stand!</>
           ) : (
-            "Your response has been recorded."
+            thankyouMessage || "Your response has been recorded."
           )}
         </p>
         {!isKiosk && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {websiteUrl && (
               <a href={websiteUrl} target="_blank" rel="noopener noreferrer" style={{ ...btn(primaryColor), textDecoration: "none" }}>
-                Learn More →
+                {learnMoreLabel || "Learn More →"}
               </a>
             )}
             <div style={{ position: "relative" }}>

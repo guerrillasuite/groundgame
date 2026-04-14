@@ -127,8 +127,13 @@ export default function SurveyBuilder({
   const [description, setDescription] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [footerText, setFooterText] = useState("");
+  const [displayTitle, setDisplayTitle] = useState("");
+  const [displayDescription, setDisplayDescription] = useState("");
   const [postSubmitSurveyId, setPostSubmitSurveyId] = useState<string>("");
   const [postSubmitRequired, setPostSubmitRequired] = useState(false);
+  const [postSubmitHeader, setPostSubmitHeader] = useState("");
+  const [thankyouMessage, setThankyouMessage] = useState("");
+  const [learnMoreLabel, setLearnMoreLabel] = useState("");
   const [embeddableSurveys, setEmbeddableSurveys] = useState<{ id: string; title: string }[]>([]);
   const [activeChannels, setActiveChannels] = useState<Set<string>>(new Set(["embedded","hosted","doors","dials","texts"]));
 
@@ -206,8 +211,13 @@ export default function SurveyBuilder({
           : (s.active ? ["embedded","hosted","doors","dials","texts"] : []);
         setActiveChannels(new Set(channels));
         setPublicSlug(s.public_slug ?? s.id ?? "");
+        setDisplayTitle(s.display_title ?? "");
+        setDisplayDescription(s.display_description ?? "");
         setPostSubmitSurveyId(s.post_submit_survey_id ?? "");
         setPostSubmitRequired(Boolean(s.post_submit_required));
+        setPostSubmitHeader(s.post_submit_header ?? "");
+        setThankyouMessage(s.thankyou_message ?? "");
+        setLearnMoreLabel(s.learn_more_label ?? "");
         // Opp trigger
         const ot = s.opp_trigger as any;
         if (ot?.enabled) {
@@ -495,8 +505,13 @@ export default function SurveyBuilder({
             footer_text: footerText || null,
             active_channels: [...activeChannels],
             public_slug: publicSlug.trim() || null,
+            display_title: displayTitle || null,
+            display_description: displayDescription || null,
             post_submit_survey_id: postSubmitSurveyId || null,
             post_submit_required: postSubmitRequired,
+            post_submit_header: postSubmitHeader || null,
+            thankyou_message: thankyouMessage || null,
+            learn_more_label: learnMoreLabel || null,
             opp_trigger: oppEnabled ? {
               enabled: true,
               mode: oppMode,
@@ -685,9 +700,9 @@ export default function SurveyBuilder({
           />
         </div>
 
-        {/* Description */}
+        {/* Description (internal) */}
         <div style={{ display: "grid", gap: 6 }}>
-          <label style={labelStyle}>Description (optional)</label>
+          <label style={labelStyle}>Description <span style={{ fontWeight: 400, opacity: 0.5 }}>(internal only)</span></label>
           <input
             type="text"
             value={description}
@@ -695,6 +710,31 @@ export default function SurveyBuilder({
             placeholder="Short description for canvassers"
             style={inputStyle}
           />
+        </div>
+
+        {/* Front-facing header / description */}
+        <div style={{ display: "grid", gap: 10, paddingTop: 12, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.5, letterSpacing: 1, textTransform: "uppercase" }}>Front-facing text</div>
+          <div style={{ display: "grid", gap: 6 }}>
+            <label style={labelStyle}>Header <span style={{ fontWeight: 400, opacity: 0.5 }}>(shown to respondents; defaults to survey title)</span></label>
+            <input
+              type="text"
+              value={displayTitle}
+              onChange={(e) => setDisplayTitle(e.target.value)}
+              placeholder={title || "e.g. Help us understand your priorities"}
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ display: "grid", gap: 6 }}>
+            <label style={labelStyle}>Description <span style={{ fontWeight: 400, opacity: 0.5 }}>(shown below the header)</span></label>
+            <textarea
+              rows={2}
+              value={displayDescription}
+              onChange={(e) => setDisplayDescription(e.target.value)}
+              placeholder="Optional introductory text shown at the top of the survey"
+              style={{ ...inputStyle, resize: "vertical" }}
+            />
+          </div>
         </div>
 
         {/* Active channel toggles */}
@@ -848,9 +888,21 @@ export default function SurveyBuilder({
                 )}
               </div>
 
-              {/* Learn More URL */}
+              {/* Thank you message */}
               <div style={{ display: "grid", gap: 6 }}>
-                <label style={labelStyle}>"Learn More" URL (optional)</label>
+                <label style={labelStyle}>Thank you message <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+                <input
+                  type="text"
+                  value={thankyouMessage}
+                  onChange={(e) => setThankyouMessage(e.target.value)}
+                  placeholder="Your response has been recorded."
+                  style={inputStyle}
+                />
+              </div>
+
+              {/* Learn More URL + label */}
+              <div style={{ display: "grid", gap: 6 }}>
+                <label style={labelStyle}>"Learn More" URL <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
                 <input
                   type="url"
                   value={websiteUrl}
@@ -858,6 +910,15 @@ export default function SurveyBuilder({
                   placeholder="https://example.com"
                   style={inputStyle}
                 />
+                {websiteUrl && (
+                  <input
+                    type="text"
+                    value={learnMoreLabel}
+                    onChange={(e) => setLearnMoreLabel(e.target.value)}
+                    placeholder='Button label (default: "Learn More →")'
+                    style={inputStyle}
+                  />
+                )}
               </div>
 
               {/* Footer text */}
@@ -900,6 +961,18 @@ export default function SurveyBuilder({
                     <option key={s.id} value={s.id}>{s.title}</option>
                   ))}
                 </select>
+                {postSubmitSurveyId && (
+                  <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                    <label style={labelStyle}>Message shown above the form <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+                    <input
+                      type="text"
+                      value={postSubmitHeader}
+                      onChange={(e) => setPostSubmitHeader(e.target.value)}
+                      placeholder="e.g. Want to stay in the loop? Fill out your contact info below."
+                      style={inputStyle}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* ── Opportunity Creation Trigger ── */}

@@ -21,7 +21,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
 export async function PUT(request: NextRequest, { params }: Ctx) {
   const { surveyId } = await params;
   try {
-    const { title, description, website_url, footer_text, active_channels, public_slug, post_submit_survey_id, post_submit_required, opp_trigger, op_intake_channels, prefill_contact, payment_enabled, storefront_mode, delivery_enabled, order_products, auto_fields } = await request.json();
+    const { title, description, website_url, footer_text, active_channels, public_slug, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, display_title, display_description, opp_trigger, op_intake_channels, prefill_contact, payment_enabled, storefront_mode, delivery_enabled, order_products, auto_fields } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
@@ -35,6 +35,11 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
         public_slug: public_slug?.trim() || undefined,
         post_submit_survey_id: post_submit_survey_id || null,
         post_submit_required: Boolean(post_submit_required),
+        post_submit_header: post_submit_header || null,
+        thankyou_message: thankyou_message || null,
+        learn_more_label: learn_more_label || null,
+        display_title: display_title || null,
+        display_description: display_description || null,
         opp_trigger: opp_trigger ?? null,
         op_intake_channels: Array.isArray(op_intake_channels) ? op_intake_channels : [],
         prefill_contact: Boolean(prefill_contact),

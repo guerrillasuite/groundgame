@@ -57,6 +57,11 @@ export type Survey = {
   active_channels: ActiveChannel[] | null;
   post_submit_survey_id: string | null;
   post_submit_required: boolean;
+  post_submit_header: string | null;
+  thankyou_message: string | null;
+  learn_more_label: string | null;
+  display_title: string | null;
+  display_description: string | null;
   opp_trigger: OppTrigger | null;
   op_intake_channels: string[];
   payment_enabled: boolean;
@@ -219,6 +224,11 @@ export async function updateSurvey(
     public_slug?: string;
     post_submit_survey_id?: string | null;
     post_submit_required?: boolean;
+    post_submit_header?: string | null;
+    thankyou_message?: string | null;
+    learn_more_label?: string | null;
+    display_title?: string | null;
+    display_description?: string | null;
     opp_trigger?: OppTrigger | null;
     op_intake_channels?: string[];
     prefill_contact?: boolean;
@@ -243,6 +253,11 @@ export async function updateSurvey(
   if (params.public_slug !== undefined) update.public_slug = params.public_slug || null;
   if ("post_submit_survey_id" in params) update.post_submit_survey_id = params.post_submit_survey_id ?? null;
   if ("post_submit_required" in params) update.post_submit_required = params.post_submit_required ?? false;
+  if ("post_submit_header" in params) update.post_submit_header = params.post_submit_header || null;
+  if ("thankyou_message" in params) update.thankyou_message = params.thankyou_message || null;
+  if ("learn_more_label" in params) update.learn_more_label = params.learn_more_label || null;
+  if ("display_title" in params) update.display_title = params.display_title || null;
+  if ("display_description" in params) update.display_description = params.display_description || null;
   if ("opp_trigger" in params) update.opp_trigger = params.opp_trigger ?? null;
   if ("op_intake_channels" in params) update.op_intake_channels = params.op_intake_channels ?? [];
   if ("prefill_contact" in params) update.prefill_contact = params.prefill_contact ?? false;

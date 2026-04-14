@@ -57,7 +57,7 @@ export default async function SurveyPage({ params, searchParams }: Props) {
     { data: contactRow },
   ] = await Promise.all([
     sb.from("surveys")
-      .select("id, tenant_id, title, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, payment_enabled, delivery_enabled, order_products, opp_trigger, auto_fields")
+      .select("id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, payment_enabled, delivery_enabled, order_products, opp_trigger, auto_fields")
       .eq("id", surveyId)
       .eq("active", true)
       .maybeSingle(),
@@ -140,13 +140,17 @@ export default async function SurveyPage({ params, searchParams }: Props) {
       <SurveyPanel
         surveyId={survey.id}
         tenantId={survey.tenant_id}
-        title={survey.title}
+        title={survey.display_title ?? survey.title}
         websiteUrl={survey.website_url ?? null}
+        learnMoreLabel={survey.learn_more_label ?? null}
         footerText={survey.footer_text ?? null}
         questions={(questions ?? []).map(mapQ)}
         postSubmitSurveyId={survey.post_submit_survey_id ?? null}
         postSubmitQuestions={postSubmitQuestions ? postSubmitQuestions.map(mapQ) : null}
         postSubmitRequired={Boolean(survey.post_submit_required)}
+        postSubmitHeader={survey.post_submit_header ?? null}
+        thankyouMessage={survey.thankyou_message ?? null}
+        displayDescription={survey.display_description ?? null}
         isKiosk={kiosk === "1"}
         contactId={contact_id}
         initialAnswers={Object.keys(initialAnswers).length > 0 ? initialAnswers : undefined}
