@@ -22,6 +22,7 @@ export const ALL_FEATURE_KEYS = [
   "pwa_storefront_orders",      // View Orders tab
   "pwa_storefront_inventory",   // View Inventory tab
   "pwa_storefront_survey",      // Take Survey tab
+  "crm_dispatch",               // Dispatch bulk email
 ] as const;
 
 export type FeatureKey = (typeof ALL_FEATURE_KEYS)[number];
@@ -48,11 +49,11 @@ export const PLAN_FEATURES: Record<Exclude<Plan, "custom">, readonly FeatureKey[
     "pwa_storefront", "pwa_storefront_take_order", "pwa_storefront_make_sale",
     "pwa_storefront_orders", "pwa_storefront_inventory", "pwa_storefront_survey",
   ],
-  // Full suite — adds companies, data tools, branding
+  // Full suite — adds companies, data tools, branding, dispatch
   war_chest: [
     "crm", "crm_companies", "crm_opportunities", "crm_lists",
     "crm_surveys", "crm_survey_branding", "crm_stops",
-    "crm_import", "crm_dedupe", "crm_cleanup",
+    "crm_import", "crm_dedupe", "crm_cleanup", "crm_dispatch",
     "pwa_doors", "pwa_dials", "pwa_texts",
     "pwa_storefront", "pwa_storefront_take_order", "pwa_storefront_make_sale",
     "pwa_storefront_orders", "pwa_storefront_inventory", "pwa_storefront_survey",
@@ -82,6 +83,7 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   pwa_storefront_orders:      { label: "Storefront — View Orders tab",    group: "App Settings" },
   pwa_storefront_inventory:   { label: "Storefront — Inventory tab",      group: "App Settings" },
   pwa_storefront_survey:      { label: "Storefront — Take Survey tab",    group: "App Settings" },
+  crm_dispatch:               { label: "Dispatch (Bulk Email)",            group: "CRM Data" },
 };
 
 export function hasFeature(features: readonly FeatureKey[], key: FeatureKey): boolean {

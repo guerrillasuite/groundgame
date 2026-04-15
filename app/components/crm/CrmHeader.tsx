@@ -42,6 +42,11 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
     nav.push({ href: "/crm/reminders", label: "Reminders" });
   }
 
+  // Dispatch: flat link, WarChest+
+  if (f("crm_dispatch") || isSuperAdmin) {
+    nav.push({ href: "/crm/dispatch", label: "Dispatch" });
+  }
+
   // Data: show dropdown if any child is enabled
   const dataItems: NavItem[] = [];
   if (f("crm_import"))  dataItems.push({ href: "/crm/import",     label: "Import" });
@@ -60,6 +65,9 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
   }
   if (f("crm")) {
     settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
+  }
+  if (f("crm_dispatch") || isSuperAdmin) {
+    settingsItems.push({ href: "/crm/settings/dispatch", label: "Dispatch" });
   }
   if (isSuperAdmin) {
     settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });

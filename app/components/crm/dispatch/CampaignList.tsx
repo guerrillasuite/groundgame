@@ -1,0 +1,242 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+
+export type Campaign = {
+  id: string;
+  name: string;
+  subject: string;
+  status: "draft" | "scheduled" | "sending" | "sent" | "cancelled";
+  audience_count: number | null;
+  from_name: string;
+  from_email: string;
+  scheduled_at: string | null;
+  sent_at: string | null;
+  created_at: string;
+};
+
+const STATUS_COLORS: Record<Campaign["status"], { bg: string; text: string }> = {
+  draft:     { bg: "rgba(148,163,184,0.15)", text: "#94a3b8" },
+  scheduled: { bg: "rgba(251,191,36,0.12)",  text: "#d97706" },
+  sending:   { bg: "rgba(59,130,246,0.12)",  text: "#2563eb" },
+  sent:      { bg: "rgba(34,197,94,0.12)",   text: "#16a34a" },
+  cancelled: { bg: "rgba(239,68,68,0.1)",    text: "#dc2626" },
+};
+
+const STATUS_LABELS: Record<Campaign["status"], string> = {
+  draft:     "Draft",
+  scheduled: "Scheduled",
+  sending:   "Sending…",
+  sent:      "Sent",
+  cancelled: "Cancelled",
+};
+
+function formatDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
+  const [filter, setFilter] = useState<Campaign["status"] | "all">("all");
+
+  const visible = filter === "all" ? campaigns : campaigns.filter((c) => c.status === filter);
+
+  const counts = campaigns.reduce<Record<string, number>>((acc, c) => {
+    acc[c.status] = (acc[c.status] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const tabs: Array<{ key: Campaign["status"] | "all"; label: string }> = [
+    { key: "all",       label: `All (${campaigns.length})` },
+    { key: "draft",     label: `Drafts (${counts.draft ?? 0})` },
+    { key: "scheduled", label: `Scheduled (${counts.scheduled ?? 0})` },
+    { key: "sent",      label: `Sent (${counts.sent ?? 0})` },
+  ];
+
+  if (campaigns.length === 0) {
+    return (
+      <div
+        style={{
+          background: "var(--gg-card, white)",
+          borderRadius: 12,
+          padding: 56,
+          textAlign: "center",
+          border: "1px solid var(--gg-border, #e5e7eb)",
+        }}
+      >
+        <div style={{ fontSize: 40, marginBottom: 16 }}>✉️</div>
+        <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No campaigns yet</h3>
+        <p style={{ opacity: 0.7, marginBottom: 24 }}>
+          Create your first email campaign to start reaching your contacts.
+        </p>
+        <Link
+          href="/crm/dispatch/new"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "10px 20px",
+            background: "var(--gg-primary, #2563eb)",
+            color: "white",
+            borderRadius: 8,
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          + New Campaign
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Tab filter */}
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          marginBottom: 16,
+          borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+        }}
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setFilter(tab.key)}
+            style={{
+              padding: "8px 14px",
+              border: "none",
+              borderBottom: filter === tab.key ? "2px solid var(--gg-primary, #2563eb)" : "2px solid transparent",
+              background: "transparent",
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: filter === tab.key ? 600 : 400,
+              color: filter === tab.key ? "var(--gg-primary, #2563eb)" : "inherit",
+              marginBottom: -1,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Campaign rows */}
+      <div style={{ display: "grid", gap: 8 }}>
+        {visible.map((c) => {
+          const colors = STATUS_COLORS[c.status];
+          const href =
+            c.status === "draft" ? `/crm/dispatch/${c.id}/edit` : `/crm/dispatch/${c.id}`;
+          return (
+            <Link
+              key={c.id}
+              href={href}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                padding: "14px 18px",
+                background: "var(--gg-card, white)",
+                border: "1px solid var(--gg-border, #e5e7eb)",
+                borderRadius: 8,
+                textDecoration: "none",
+                color: "inherit",
+              }}
+            >
+              {/* Status badge */}
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "3px 9px",
+                  borderRadius: 10,
+                  background: colors.bg,
+                  color: colors.text,
+                  minWidth: 70,
+                  textAlign: "center",
+                }}
+              >
+                {STATUS_LABELS[c.status]}
+              </span>
+
+              {/* Campaign info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    opacity: 0.6,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    marginTop: 2,
+                  }}
+                >
+                  {c.subject}
+                </div>
+              </div>
+
+              {/* From */}
+              <div
+                style={{
+                  fontSize: 13,
+                  opacity: 0.7,
+                  minWidth: 160,
+                  flexShrink: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {c.from_name}
+              </div>
+
+              {/* Recipients */}
+              <div
+                style={{
+                  fontSize: 13,
+                  opacity: 0.7,
+                  minWidth: 80,
+                  flexShrink: 0,
+                  textAlign: "right",
+                }}
+              >
+                {c.audience_count != null ? `${c.audience_count.toLocaleString()} rcpts` : "—"}
+              </div>
+
+              {/* Date */}
+              <div
+                style={{
+                  fontSize: 13,
+                  opacity: 0.6,
+                  minWidth: 90,
+                  flexShrink: 0,
+                  textAlign: "right",
+                }}
+              >
+                {formatDate(c.sent_at ?? c.scheduled_at ?? c.created_at)}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      {visible.length === 0 && (
+        <p style={{ textAlign: "center", opacity: 0.5, padding: "32px 0" }}>
+          No {filter} campaigns.
+        </p>
+      )}
+    </div>
+  );
+}
