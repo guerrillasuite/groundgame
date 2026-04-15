@@ -136,7 +136,11 @@ const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
     { column: "suffix",             label: "Suffix (Jr./Sr./III)",           data_type: "text",     is_join: false },
     // Contact
     { column: "email",              label: "Email",                          data_type: "text",     is_join: false },
+    { column: "email2",             label: "Email 2",                        data_type: "text",     is_join: false },
+    { column: "email3",             label: "Email 3",                        data_type: "text",     is_join: false },
     { column: "phone",              label: "Phone (primary)",                data_type: "text",     is_join: false },
+    { column: "phone2",             label: "Phone 2",                        data_type: "text",     is_join: false },
+    { column: "phone3",             label: "Phone 3",                        data_type: "text",     is_join: false },
     { column: "phone_cell",         label: "Cell Phone",                     data_type: "text",     is_join: false },
     { column: "phone_landline",     label: "Landline",                       data_type: "text",     is_join: false },
     { column: "phone_cell_confidence", label: "Cell Phone Confidence",       data_type: "text",     is_join: false },
@@ -306,7 +310,10 @@ const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
 };
 
 function toLabel(col: string): string {
-  return col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return col
+    .replace(/_/g, " ")
+    .replace(/([a-z])(\d)/g, "$1 $2")  // "email2" → "email 2"
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export async function GET(request: NextRequest) {
