@@ -1212,12 +1212,12 @@ export default function SurveyBuilder({
 
                   {/* Description / help text */}
                   <div style={{ display: "grid", gap: 6 }}>
-                    <label style={labelStyle}>Description <span style={{ opacity: 0.45, fontWeight: 400 }}>(optional — supports **bold**, *italic*, - bullet lists, blank line for paragraph break)</span></label>
+                    <label style={labelStyle}>Description <span style={{ opacity: 0.45, fontWeight: 400 }}>(optional — **bold**, *italic*, ~~strike~~, __underline__, - lists)</span></label>
                     <textarea
                       rows={3}
                       value={q.description}
                       onChange={(e) => updateQuestion(q.id, { description: e.target.value })}
-                      placeholder={"Add clarifying text, instructions, or context…\n\nSupports **bold**, *italic*, and:\n- bullet\n- lists"}
+                      placeholder={"Add clarifying text, instructions, or context…\n\nSupports **bold**, *italic*, ~~strikethrough~~, __underline__, and:\n- bullet\n- lists"}
                       style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5, fontSize: 12 }}
                     />
                   </div>

@@ -1,15 +1,17 @@
 import React from "react";
 
-// Parses inline **bold** and *italic*
+// Parses inline **bold**, *italic*, ~~strikethrough~~, __underline__
 function parseInline(text: string): React.ReactNode[] {
   const result: React.ReactNode[] = [];
-  const re = /\*\*(.+?)\*\*|\*(.+?)\*/g;
+  const re = /\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|__(.+?)__/g;
   let last = 0, key = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) result.push(text.slice(last, m.index));
     if (m[1] != null) result.push(<strong key={key++}>{m[1]}</strong>);
-    else result.push(<em key={key++}>{m[2]}</em>);
+    else if (m[2] != null) result.push(<em key={key++}>{m[2]}</em>);
+    else if (m[3] != null) result.push(<s key={key++}>{m[3]}</s>);
+    else result.push(<u key={key++}>{m[4]}</u>);
     last = m.index + m[0].length;
   }
   if (last < text.length) result.push(text.slice(last));
@@ -101,6 +103,8 @@ interface Props {
  * - 4-space or tab indent → indented block
  * - `**bold**` → bold
  * - `*italic*` → italic
+ * - `~~strikethrough~~` → strikethrough
+ * - `__underline__` → underline
  */
 export default function MarkdownText({ text, style, pStyle }: Props) {
   const paragraphs = text.split(/\n{2,}/);
