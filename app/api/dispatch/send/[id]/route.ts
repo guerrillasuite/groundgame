@@ -120,15 +120,90 @@ export async function POST(req: NextRequest, { params }: Params) {
       .not("person_id", "is", null);
     recipientPersonIds = (items ?? []).map((i: any) => i.person_id);
   } else if (campaign.audience_type === "segment") {
-    // Resolve segment filters — fetch all people with email
+    const filters: Array<{ field: string; op: string; value: string }> =
+      (campaign.audience_segment_filters as any[]) ?? [];
+
+    // Fetch all people with email
     const { data: ppl } = await sb
       .from("people")
-      .select("id, email, tenant_people!inner(tenant_id)")
+      .select("id, email, first_name, last_name, household_id, tenant_people!inner(tenant_id)")
       .eq("tenant_people.tenant_id", tenant.id)
       .not("email", "is", null)
-      .neq("email", "");
-    recipientPersonIds = (ppl ?? []).map((p: any) => p.id);
-    // TODO: apply audience_segment_filters when filter engine is wired up
+      .neq("email", "")
+      .limit(10000);
+
+    let segRows: Array<Record<string, any>> = [...((ppl as any[]) ?? [])];
+
+    // Enrich location if any filter needs it
+    const needsLocation = filters.some((f) => ["city", "state", "postal_code"].includes(f.field));
+    if (needsLocation && segRows.length > 0) {
+      const hhIds = [...new Set(segRows.map((p) => p.household_id).filter(Boolean))] as string[];
+      if (hhIds.length > 0) {
+        const { data: hh } = await sb.from("households").select("id, location_id").in("id", hhIds.slice(0, 500));
+        const locIds = (hh ?? []).map((h: any) => h.location_id).filter(Boolean);
+        if (locIds.length > 0) {
+          const { data: locs } = await sb.from("locations").select("id, city, state, postal_code").in("id", locIds.slice(0, 500));
+          const locMap = new Map((locs ?? []).map((l: any) => [l.id, l]));
+          const hhMap = new Map((hh ?? []).map((h: any) => [h.id, h]));
+          segRows = segRows.map((p) => {
+            const hhRow = p.household_id ? hhMap.get(p.household_id) : null;
+            const loc = hhRow?.location_id ? locMap.get(hhRow.location_id) : null;
+            return { ...p, city: loc?.city ?? "", state: loc?.state ?? "", postal_code: loc?.postal_code ?? "" };
+          });
+        }
+      }
+    }
+
+    // Enrich company if needed
+    const needsCompany = filters.some((f) => f.field.startsWith("company."));
+    if (needsCompany && segRows.length > 0) {
+      const pids = segRows.map((p) => p.id);
+      const { data: pcRows } = await sb
+        .from("person_companies")
+        .select("person_id, company:company_id(name, industry, status)")
+        .in("person_id", pids.slice(0, 1000));
+      const companyByPersonId = new Map((pcRows ?? []).map((pc: any) => [pc.person_id, pc.company]));
+      segRows = segRows.map((p) => ({ ...p, company: companyByPersonId.get(p.id) ?? {} }));
+    }
+
+    // Enrich opportunity if needed
+    const needsOpp = filters.some((f) => f.field.startsWith("opp."));
+    if (needsOpp && segRows.length > 0) {
+      const pids = segRows.map((p) => p.id);
+      const { data: opps } = await sb
+        .from("opportunities")
+        .select("contact_person_id, stage, pipeline, source, priority")
+        .eq("tenant_id", tenant.id)
+        .in("contact_person_id", pids.slice(0, 1000));
+      const oppByPersonId = new Map((opps ?? []).map((o: any) => [o.contact_person_id, o]));
+      segRows = segRows.map((p) => ({ ...p, opp: oppByPersonId.get(p.id) ?? {} }));
+    }
+
+    // Apply filters
+    if (filters.length > 0) {
+      segRows = segRows.filter((row) =>
+        filters.every((f) => {
+          const parts = f.field.split(".");
+          let val: any = row;
+          for (const part of parts) { val = val?.[part]; if (val == null) { val = ""; break; } }
+          const strVal = String(val ?? "").toLowerCase();
+          const fVal = f.value.toLowerCase();
+          switch (f.op) {
+            case "contains":    return strVal.includes(fVal);
+            case "equals":      return strVal === fVal;
+            case "starts_with": return strVal.startsWith(fVal);
+            case "not_contains": return !strVal.includes(fVal);
+            case "is_empty":    return strVal === "";
+            case "not_empty":   return strVal !== "";
+            case "greater_than": return parseFloat(strVal) > parseFloat(fVal);
+            case "less_than":   return parseFloat(strVal) < parseFloat(fVal);
+            default:            return true;
+          }
+        })
+      );
+    }
+
+    recipientPersonIds = segRows.map((p) => p.id);
   }
 
   if (recipientPersonIds.length === 0) {
@@ -299,7 +374,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       } else {
         await sb
           .from("email_sends")
-          .update({ resend_message_id: sent!.id })
+          .update({ status: "sent", sent_at: new Date().toISOString(), resend_message_id: sent!.id })
           .eq("id", sendId);
         sentCount++;
       }
