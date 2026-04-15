@@ -9,7 +9,7 @@ import { L2_FIELD_MAP } from "@/lib/crm/l2-field-map";
 type TargetField =
   // Core
   | "title" | "first_name" | "middle_name" | "middle_initial" | "last_name" | "suffix"
-  | "email" | "phone"
+  | "email" | "email2" | "email3" | "phone" | "phone2" | "phone3"
   | "contact_type" | "occupation" | "notes"
   | "address_line1" | "city" | "state" | "postal_code"
   // People: L2 voter identity
@@ -76,7 +76,11 @@ const TARGET_FIELDS: { value: TargetField; label: string }[] = [
   { value: "last_name",      label: "Last Name" },
   { value: "suffix",         label: "Suffix (Jr./Sr./III etc.)" },
   { value: "email",       label: "Email" },
+  { value: "email2",      label: "Email 2" },
+  { value: "email3",      label: "Email 3" },
   { value: "phone",       label: "Phone" },
+  { value: "phone2",      label: "Phone 2" },
+  { value: "phone3",      label: "Phone 3" },
   { value: "contact_type",label: "Contact Type" },
   { value: "occupation",  label: "Occupation" },
   { value: "notes",       label: "Notes" },
@@ -127,8 +131,12 @@ const AUTO_MAP: Record<string, TargetField> = {
   middle_initial: "middle_initial", middleinitial: "middle_initial", mi: "middle_initial",
   last_name: "last_name", lname: "last_name", last: "last_name", lastname: "last_name", surname: "last_name",
   suffix: "suffix", name_suffix: "suffix", namesuffix: "suffix",
-  email: "email", email_address: "email", emailaddress: "email",
-  phone: "phone", phone_number: "phone", phonenumber: "phone", cell: "phone", mobile: "phone", telephone: "phone",
+  email: "email", email_address: "email", emailaddress: "email", email1: "email",
+  email2: "email2", email_2: "email2", email_address_2: "email2", emailaddress2: "email2",
+  email3: "email3", email_3: "email3", email_address_3: "email3", emailaddress3: "email3",
+  phone: "phone", phone_number: "phone", phonenumber: "phone", cell: "phone", mobile: "phone", telephone: "phone", phone1: "phone",
+  phone2: "phone2", phone_2: "phone2", phone_number_2: "phone2", phonenumber2: "phone2", cell2: "phone2", mobile2: "phone2",
+  phone3: "phone3", phone_3: "phone3", phone_number_3: "phone3", phonenumber3: "phone3", cell3: "phone3", mobile3: "phone3",
   address: "address_line1", street: "address_line1", street_address: "address_line1",
   address1: "address_line1", addr: "address_line1", address_line1: "address_line1",
   city: "city",

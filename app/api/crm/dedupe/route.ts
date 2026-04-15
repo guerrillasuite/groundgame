@@ -32,7 +32,7 @@ async function fetchAll(buildQuery: () => any, chunkSize = 1000): Promise<any[]>
 function scoreRecord(r: Record<string, any>): number {
   // Higher score = more data filled in → preferred as "keep" candidate
   // lalvoteid is worth 3 points — canonical voter file identifier
-  let score = [r.email, r.phone, r.phone_cell, r.phone_landline, r.contact_type, r.household_id].filter(Boolean).length;
+  let score = [r.email, r.email2, r.email3, r.phone, r.phone2, r.phone3, r.phone_cell, r.phone_landline, r.contact_type, r.household_id].filter(Boolean).length;
   if (r.lalvoteid) score += 3;
   return score;
 }
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
     for (let i = 0; i < allDupIds.length; i += 200) {
       const { data } = await sb
         .from("people")
-        .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, lalvoteid, birth_date, gender")
+        .select("id, first_name, last_name, email, email2, email3, phone, phone2, phone3, phone_cell, phone_landline, contact_type, household_id, lalvoteid, birth_date, gender")
         .in("id", allDupIds.slice(i, i + 200));
       for (const p of data ?? []) fullPeopleMap.set(p.id, p);
     }
@@ -170,7 +170,11 @@ export async function GET(request: Request) {
             first_name: p.first_name ?? "",
             last_name: p.last_name ?? "",
             email: p.email ?? "",
+            email2: p.email2 ?? "",
+            email3: p.email3 ?? "",
             phone: p.phone ?? "",
+            phone2: p.phone2 ?? "",
+            phone3: p.phone3 ?? "",
             phone_cell: p.phone_cell ?? "",
             phone_landline: p.phone_landline ?? "",
             contact_type: p.contact_type ?? "",

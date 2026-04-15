@@ -11,7 +11,11 @@ export interface MappedRow {
   last_name?: string;
   suffix?: string;
   email?: string;
+  email2?: string;
+  email3?: string;
   phone?: string;
+  phone2?: string;
+  phone3?: string;
   address_line1?: string;
   address?: string; // alias for address_line1
   city?: string;
@@ -233,24 +237,28 @@ export function validateRow(row: MappedRow, rowNum: number): ValidationResult {
     return { valid: false, reason: `Row ${rowNum}: record must have at least a first or last name` };
   }
 
-  // Phone — optional, but must be valid if present
-  const rawPhone = out.phone ?? "";
-  if (rawPhone) {
-    const result = validatePhone(rawPhone);
-    if (!result.ok) {
-      return { valid: false, reason: `Row ${rowNum}: phone '${rawPhone}' is not a valid 10-digit US number` };
+  // Phone / Phone2 / Phone3 — optional, but must be valid if present
+  for (const field of ["phone", "phone2", "phone3"] as const) {
+    const raw = out[field] ?? "";
+    if (raw) {
+      const result = validatePhone(raw);
+      if (!result.ok) {
+        return { valid: false, reason: `Row ${rowNum}: ${field} '${raw}' is not a valid 10-digit US number` };
+      }
+      out[field] = result.normalized;
     }
-    out.phone = result.normalized;
   }
 
-  // Email — optional, but must be valid if present
-  const rawEmail = out.email ?? "";
-  if (rawEmail) {
-    const normalized = rawEmail.toLowerCase();
-    if (!validateEmail(normalized)) {
-      return { valid: false, reason: `Row ${rowNum}: email '${rawEmail}' is not a valid email address` };
+  // Email / Email2 / Email3 — optional, but must be valid if present
+  for (const field of ["email", "email2", "email3"] as const) {
+    const raw = out[field] ?? "";
+    if (raw) {
+      const normalized = raw.toLowerCase();
+      if (!validateEmail(normalized)) {
+        return { valid: false, reason: `Row ${rowNum}: ${field} '${raw}' is not a valid email address` };
+      }
+      out[field] = normalized;
     }
-    out.email = normalized;
   }
 
   // Address — optional, but must be valid if present
