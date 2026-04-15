@@ -28,7 +28,7 @@ export type DetailsData = {
   preview_text: string;
   from_name: string;
   from_local: string;   // local part, e.g. "jessi"
-  from_domain: string;  // domain, e.g. "mail.groundgame.digital"
+  from_domain: string;  // domain, e.g. "groundgame.digital"
   reply_to: string;
 };
 
@@ -45,7 +45,7 @@ export default function StepDetails({ data, onChange, domains }: Props) {
     : "";
 
   // Default domain list — always includes GS default
-  const allDomains = domains.length > 0 ? domains : [{ domain: "mail.groundgame.digital", verified: true }];
+  const allDomains = domains.length > 0 ? domains : [{ domain: "groundgame.digital", verified: true }];
 
   return (
     <div style={{ display: "grid", gap: 20 }}>

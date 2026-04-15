@@ -189,7 +189,7 @@ export default function SendingDomainManager({
           }}
         >
           <div>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>mail.groundgame.digital</span>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>groundgame.digital</span>
             <span
               style={{
                 marginLeft: 10,

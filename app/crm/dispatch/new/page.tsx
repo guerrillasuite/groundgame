@@ -39,7 +39,7 @@ export default async function NewCampaignPage() {
 
   // Always include the GS-managed default
   const domains: DispatchDomain[] = [
-    { domain: "mail.groundgame.digital", verified: true },
+    { domain: "groundgame.digital", verified: true },
     ...((domainRows ?? []) as DispatchDomain[]),
   ];
 

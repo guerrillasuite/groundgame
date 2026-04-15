@@ -50,7 +50,7 @@ const stepIndicatorStyle = (active: boolean, done: boolean): React.CSSProperties
   border: active ? "none" : `1px solid ${done ? "rgba(34,197,94,0.3)" : "var(--gg-border, #e5e7eb)"}`,
 });
 
-const DEFAULT_DOMAIN = "mail.groundgame.digital";
+const DEFAULT_DOMAIN = "groundgame.digital";
 
 export default function ComposeFlow({
   campaignId: initialCampaignId,

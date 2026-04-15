@@ -50,7 +50,7 @@ export default async function EditCampaignPage({ params }: Params) {
   if (campaign.status !== "draft") redirect(`/crm/dispatch/${id}`);
 
   const domains: DispatchDomain[] = [
-    { domain: "mail.groundgame.digital", verified: true },
+    { domain: "groundgame.digital", verified: true },
     ...((domainRows ?? []) as DispatchDomain[]),
   ];
 
@@ -62,7 +62,7 @@ export default async function EditCampaignPage({ params }: Params) {
   }));
 
   // Parse stored from_email into local + domain parts
-  const [fromLocal = "", fromDomain = "mail.groundgame.digital"] = (
+  const [fromLocal = "", fromDomain = "groundgame.digital"] = (
     campaign.from_email ?? ""
   ).split("@");
 
