@@ -30,7 +30,7 @@ export default async function EditCampaignPage({ params }: Params) {
   const [{ data: campaign }, { data: domainRows }, { data: wlRows }] = await Promise.all([
     sb
       .from("email_campaigns")
-      .select("id, name, subject, preview_text, from_name, from_email, reply_to, design_json, html_body, status, audience_type, audience_list_id, audience_segment_filters, audience_count")
+      .select("id, name, subject, preview_text, from_name, from_email, reply_to, design_json, html_body, status, audience_type, audience_list_id, audience_segment_filters, audience_person_ids, audience_count")
       .eq("id", id)
       .eq("tenant_id", tenant.id)
       .single(),
@@ -89,9 +89,10 @@ export default async function EditCampaignPage({ params }: Params) {
           reply_to: campaign.reply_to ?? "",
         }}
         initialAudience={{
-          audience_type: campaign.audience_type as "segment" | "list",
+          audience_type: campaign.audience_type as "segment" | "list" | "manual",
           audience_list_id: campaign.audience_list_id ?? null,
           audience_segment_filters: campaign.audience_segment_filters ?? null,
+          audience_person_ids: (campaign.audience_person_ids as string[] | null) ?? null,
         }}
         initialDesign={campaign.design_json}
         initialHtml={campaign.html_body}

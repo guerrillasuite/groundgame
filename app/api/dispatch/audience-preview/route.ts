@@ -54,11 +54,18 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { audience_type, audience_list_id, audience_segment_filters } = body as {
-    audience_type: "segment" | "list";
+  const { audience_type, audience_list_id, audience_segment_filters, audience_person_ids } = body as {
+    audience_type: "segment" | "list" | "manual";
     audience_list_id?: string | null;
     audience_segment_filters?: SegmentFilter[] | null;
+    audience_person_ids?: string[] | null;
   };
+
+  // ── Manual (hand-picked) audience ────────────────────────────────────────────
+  if (audience_type === "manual") {
+    const ids = audience_person_ids ?? [];
+    return NextResponse.json({ count: ids.length, suppressed: 0 });
+  }
 
   const sb = makeSb(tenant.id);
 

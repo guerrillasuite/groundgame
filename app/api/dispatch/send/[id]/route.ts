@@ -95,7 +95,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Load campaign
   const { data: campaign, error } = await sb
     .from("email_campaigns")
-    .select("id, name, subject, preview_text, from_name, from_email, reply_to, html_body, design_json, status, audience_type, audience_list_id, audience_segment_filters")
+    .select("id, name, subject, preview_text, from_name, from_email, reply_to, html_body, design_json, status, audience_type, audience_list_id, audience_segment_filters, audience_person_ids")
     .eq("id", campaignId)
     .eq("tenant_id", tenant.id)
     .single();
@@ -112,7 +112,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   let recipientPersonIds: string[] = [];
 
-  if (campaign.audience_type === "list" && campaign.audience_list_id) {
+  if (campaign.audience_type === "manual" && campaign.audience_person_ids) {
+    recipientPersonIds = (campaign.audience_person_ids as string[]).filter(Boolean);
+  } else if (campaign.audience_type === "list" && campaign.audience_list_id) {
     const { data: items } = await sb
       .from("walklist_items")
       .select("person_id")

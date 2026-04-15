@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const ALLOWED_FIELDS = [
   "name", "subject", "preview_text", "from_name", "from_email", "reply_to",
   "design_json", "html_body", "status",
-  "audience_type", "audience_list_id", "audience_segment_filters",
+  "audience_type", "audience_list_id", "audience_segment_filters", "audience_person_ids",
   "scheduled_at", "audience_count",
 ] as const;
 

@@ -85,6 +85,7 @@ export default function ComposeFlow({
     audience_type: initialAudience?.audience_type ?? "segment",
     audience_list_id: initialAudience?.audience_list_id ?? null,
     audience_segment_filters: initialAudience?.audience_segment_filters ?? null,
+    audience_person_ids: (initialAudience as any)?.audience_person_ids ?? null,
   });
 
   const [design, setDesign] = useState<DesignData>({
@@ -119,6 +120,9 @@ export default function ComposeFlow({
     if (audience.audience_type === "list" && !audience.audience_list_id) {
       return "Please select a list.";
     }
+    if (audience.audience_type === "manual" && (!audience.audience_person_ids || audience.audience_person_ids.length === 0)) {
+      return "No people selected. Use Preview & Select to choose recipients.";
+    }
     return null;
   }
 
@@ -136,6 +140,7 @@ export default function ComposeFlow({
       audience_type: audience.audience_type,
       audience_list_id: audience.audience_list_id,
       audience_segment_filters: audience.audience_segment_filters,
+      audience_person_ids: audience.audience_person_ids ?? null,
     };
 
     const method = campaignId ? "PATCH" : "POST";
@@ -185,18 +190,22 @@ export default function ComposeFlow({
         const id = await saveDraft({ status: "draft" });
         if (!campaignId) setCampaignId(id);
 
-        const body =
-          audience.audience_type === "list"
-            ? { audience_type: "list", audience_list_id: audience.audience_list_id }
-            : { audience_type: "segment", audience_segment_filters: audience.audience_segment_filters };
-
-        const res = await fetch("/api/dispatch/audience-preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const json = await res.json();
-        if (res.ok) setAudienceCount(json.count ?? null);
+        // For manual selection, count is just the array length — no API call needed
+        if (audience.audience_type === "manual") {
+          setAudienceCount(audience.audience_person_ids?.length ?? 0);
+        } else {
+          const previewBody =
+            audience.audience_type === "list"
+              ? { audience_type: "list", audience_list_id: audience.audience_list_id }
+              : { audience_type: "segment", audience_segment_filters: audience.audience_segment_filters };
+          const res = await fetch("/api/dispatch/audience-preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(previewBody),
+          });
+          const json = await res.json();
+          if (res.ok) setAudienceCount(json.count ?? null);
+        }
         setStep(2);
       } catch (e: any) {
         setError(e.message);
