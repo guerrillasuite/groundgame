@@ -58,11 +58,11 @@ export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
     return (
       <div
         style={{
-          background: "var(--gg-card, white)",
+          background: "rgb(var(--card-700))",
           borderRadius: 12,
           padding: 56,
           textAlign: "center",
-          border: "1px solid var(--gg-border, #e5e7eb)",
+          border: "1px solid rgb(var(--border-600))",
         }}
       >
         <div style={{ fontSize: 40, marginBottom: 16 }}>✉️</div>
@@ -98,7 +98,7 @@ export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
           display: "flex",
           gap: 4,
           marginBottom: 16,
-          borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+          borderBottom: "1px solid rgb(var(--border-600))",
         }}
       >
         {tabs.map((tab) => (
@@ -108,13 +108,14 @@ export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
             style={{
               padding: "8px 14px",
               border: "none",
-              borderBottom: filter === tab.key ? "2px solid var(--gg-primary, #2563eb)" : "2px solid transparent",
+              borderBottom: filter === tab.key ? "2px solid rgb(var(--primary-600))" : "2px solid transparent",
               background: "transparent",
               cursor: "pointer",
               fontSize: 13,
               fontWeight: filter === tab.key ? 600 : 400,
-              color: filter === tab.key ? "var(--gg-primary, #2563eb)" : "inherit",
+              color: filter === tab.key ? "rgb(var(--primary-500))" : "rgb(var(--text-300))",
               marginBottom: -1,
+              transition: "color .12s ease, border-color .12s ease",
             }}
           >
             {tab.label}
@@ -137,8 +138,8 @@ export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
                 alignItems: "center",
                 gap: 16,
                 padding: "14px 18px",
-                background: "var(--gg-card, white)",
-                border: "1px solid var(--gg-border, #e5e7eb)",
+                background: "rgb(var(--card-700))",
+                border: "1px solid rgb(var(--border-600))",
                 borderRadius: 8,
                 textDecoration: "none",
                 color: "inherit",

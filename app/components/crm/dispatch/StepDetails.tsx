@@ -5,8 +5,8 @@ import { type DispatchDomain } from "./ComposeFlow";
 const inputStyle: React.CSSProperties = {
   padding: "9px 12px",
   borderRadius: 7,
-  border: "1px solid var(--gg-border, #e5e7eb)",
-  background: "var(--gg-input, white)",
+  border: "1px solid rgb(var(--border-600))",
+  background: "rgb(var(--surface-800))",
   fontSize: 14,
   width: "100%",
   boxSizing: "border-box",
@@ -17,7 +17,7 @@ const labelStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 700,
   marginBottom: 5,
-  color: "var(--gg-text-dim, #6b7280)",
+  color: "rgb(var(--text-300))",
   textTransform: "uppercase",
   letterSpacing: "0.05em",
 };
@@ -51,7 +51,7 @@ export default function StepDetails({ data, onChange, domains }: Props) {
     <div style={{ display: "grid", gap: 20 }}>
       <div>
         <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700 }}>Campaign Details</h2>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+        <p style={{ margin: 0, fontSize: 13, color: "rgb(var(--text-300))" }}>
           Set the campaign name, subject line, and sender information.
         </p>
       </div>
@@ -68,7 +68,7 @@ export default function StepDetails({ data, onChange, domains }: Props) {
             onChange={(e) => onChange({ name: e.target.value })}
             placeholder="e.g. April Fundraising Blast"
           />
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgb(var(--text-300))" }}>
             Internal name — not shown to recipients.
           </p>
         </div>
@@ -88,7 +88,7 @@ export default function StepDetails({ data, onChange, domains }: Props) {
             style={{
               margin: "4px 0 0",
               fontSize: 12,
-              color: subjectLen > 60 ? "#d97706" : "var(--gg-text-dim, #6b7280)",
+              color: subjectLen > 60 ? "#d97706" : "rgb(var(--text-300))",
             }}
           >
             {subjectLen} characters{subjectLen > 60 ? " — over 60, may be truncated in some inboxes" : ""}
@@ -104,7 +104,7 @@ export default function StepDetails({ data, onChange, domains }: Props) {
             onChange={(e) => onChange({ preview_text: e.target.value })}
             placeholder="Optional inbox preheader text…"
           />
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgb(var(--text-300))" }}>
             Shown after the subject line in most inboxes before the email is opened.
           </p>
         </div>
@@ -153,7 +153,7 @@ export default function StepDetails({ data, onChange, domains }: Props) {
             </select>
           </div>
           {fromEmail && (
-            <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgb(var(--text-300))" }}>
               Sends as: <strong>{fromEmail}</strong>
               {!allDomains.find((d) => d.domain === data.from_domain)?.verified && (
                 <span style={{ color: "#d97706", marginLeft: 8 }}>⚠ Domain not verified</span>
@@ -172,7 +172,7 @@ export default function StepDetails({ data, onChange, domains }: Props) {
             onChange={(e) => onChange({ reply_to: e.target.value })}
             placeholder="e.g. office@cowartforhouston.com"
           />
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgb(var(--text-300))" }}>
             Optional. If set, replies from recipients go here instead of the from address.
           </p>
         </div>

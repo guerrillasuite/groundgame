@@ -48,7 +48,7 @@ const statCard = (label: string, value: number, sub?: string, warn = false) => (
   <div
     style={{
       padding: "16px 20px",
-      background: "var(--gg-card, white)",
+      background: "rgb(var(--card-700))",
       border: `1px solid ${warn && value > 0 ? "#fbbf24" : "var(--gg-border, #e5e7eb)"}`,
       borderRadius: 10,
       display: "flex",
@@ -80,14 +80,14 @@ const thStyle: React.CSSProperties = {
   fontWeight: 700,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
-  color: "var(--gg-text-dim, #6b7280)",
-  borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+  color: "rgb(var(--text-300))",
+  borderBottom: "1px solid rgb(var(--border-600))",
   whiteSpace: "nowrap",
 };
 
 const tdStyle: React.CSSProperties = {
   padding: "9px 12px",
-  borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+  borderBottom: "1px solid rgb(var(--border-600))",
   fontSize: 13,
   verticalAlign: "middle",
 };
@@ -134,8 +134,8 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
       {/* Campaign header */}
       <div
         style={{
-          background: "var(--gg-card, white)",
-          border: "1px solid var(--gg-border, #e5e7eb)",
+          background: "rgb(var(--card-700))",
+          border: "1px solid rgb(var(--border-600))",
           borderRadius: 10,
           padding: "16px 20px",
           display: "flex",
@@ -147,7 +147,7 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
       >
         <div>
           <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700 }}>{campaign.subject}</h2>
-          <p style={{ margin: "0 0 6px", fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+          <p style={{ margin: "0 0 6px", fontSize: 13, color: "rgb(var(--text-300))" }}>
             From: {campaign.from_name} &lt;{campaign.from_email}&gt;
           </p>
           <p style={{ margin: 0, fontSize: 12, opacity: 0.5 }}>
@@ -162,16 +162,8 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
           {campaign.status === "draft" && (
             <Link
               href={`/crm/dispatch/${campaign.id}/edit`}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 7,
-                border: "1px solid var(--gg-border, #e5e7eb)",
-                background: "transparent",
-                fontWeight: 600,
-                fontSize: 13,
-                textDecoration: "none",
-                color: "inherit",
-              }}
+              className="gg-btn-ghost"
+              style={{ textDecoration: "none", fontSize: 13 }}
             >
               Edit Draft
             </Link>
@@ -179,16 +171,9 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
           {sends.length > 0 && (
             <button
               type="button"
+              className="gg-btn-ghost"
               onClick={() => exportCsv(sends, campaign.name)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 7,
-                border: "1px solid var(--gg-border, #e5e7eb)",
-                background: "transparent",
-                fontWeight: 600,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
+              style={{ fontSize: 13 }}
             >
               Export CSV
             </button>
@@ -212,7 +197,7 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Recipients</span>
-            <span style={{ fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+            <span style={{ fontSize: 13, color: "rgb(var(--text-300))" }}>
               {filtered.length.toLocaleString()} total
             </span>
             <select
@@ -221,8 +206,8 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
               style={{
                 padding: "5px 28px 5px 10px",
                 borderRadius: 6,
-                border: "1px solid var(--gg-border, #e5e7eb)",
-                background: "var(--gg-input, white)",
+                border: "1px solid rgb(var(--border-600))",
+                background: "rgb(var(--surface-800))",
                 fontSize: 13,
                 cursor: "pointer",
                 marginLeft: "auto",
@@ -237,8 +222,8 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
           </div>
           <div
             style={{
-              background: "var(--gg-card, white)",
-              border: "1px solid var(--gg-border, #e5e7eb)",
+              background: "rgb(var(--card-700))",
+              border: "1px solid rgb(var(--border-600))",
               borderRadius: 10,
               overflow: "hidden",
             }}
@@ -265,7 +250,7 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
                         {s.person_name || "(No name)"}
                       </Link>
                     </td>
-                    <td style={{ ...tdStyle, color: "var(--gg-text-dim, #6b7280)" }}>{s.email_address}</td>
+                    <td style={{ ...tdStyle, color: "rgb(var(--text-300))" }}>{s.email_address}</td>
                     <td style={tdStyle}>
                       <span
                         style={{
@@ -290,7 +275,7 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
                         {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
                       </span>
                     </td>
-                    <td style={{ ...tdStyle, fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+                    <td style={{ ...tdStyle, fontSize: 12, color: "rgb(var(--text-300))" }}>
                       {s.bounce_reason ?? (s.bounce_type ? `${s.bounce_type} bounce` : "—")}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "center" }}>
@@ -315,35 +300,21 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
           {totalPages > 1 && (
             <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
               <button
+                className="gg-btn-ghost"
                 disabled={page === 0}
                 onClick={() => setPage((p) => p - 1)}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: 6,
-                  border: "1px solid var(--gg-border, #e5e7eb)",
-                  background: "transparent",
-                  cursor: page === 0 ? "default" : "pointer",
-                  opacity: page === 0 ? 0.4 : 1,
-                  fontSize: 13,
-                }}
+                style={{ fontSize: 13, padding: "6px 14px" }}
               >
                 ← Prev
               </button>
-              <span style={{ fontSize: 13, padding: "6px 8px", opacity: 0.7 }}>
+              <span style={{ fontSize: 13, padding: "6px 8px", color: "rgb(var(--text-300))" }}>
                 {page + 1} / {totalPages}
               </span>
               <button
+                className="gg-btn-ghost"
                 disabled={page >= totalPages - 1}
                 onClick={() => setPage((p) => p + 1)}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: 6,
-                  border: "1px solid var(--gg-border, #e5e7eb)",
-                  background: "transparent",
-                  cursor: page >= totalPages - 1 ? "default" : "pointer",
-                  opacity: page >= totalPages - 1 ? 0.4 : 1,
-                  fontSize: 13,
-                }}
+                style={{ fontSize: 13, padding: "6px 14px" }}
               >
                 Next →
               </button>
@@ -363,8 +334,8 @@ export default function CampaignResults({ campaign, stats, sends }: Props) {
           style={{
             padding: 32,
             textAlign: "center",
-            background: "var(--gg-card, white)",
-            border: "1px solid var(--gg-border, #e5e7eb)",
+            background: "rgb(var(--card-700))",
+            border: "1px solid rgb(var(--border-600))",
             borderRadius: 10,
           }}
         >

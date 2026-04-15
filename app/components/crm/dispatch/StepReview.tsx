@@ -20,12 +20,12 @@ const rowStyle: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 16,
   padding: "10px 0",
-  borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+  borderBottom: "1px solid rgb(var(--border-600))",
   fontSize: 14,
 };
 
 const dimStyle: React.CSSProperties = {
-  color: "var(--gg-text-dim, #6b7280)",
+  color: "rgb(var(--text-300))",
   flexShrink: 0,
   minWidth: 120,
 };
@@ -57,11 +57,13 @@ export default function StepReview({
     }
   }
 
+  const canSend = !sending && (!scheduleMode || !!scheduledAt);
+
   return (
     <div style={{ display: "grid", gap: 24 }}>
       <div>
         <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700 }}>Review & Send</h2>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+        <p style={{ margin: 0, fontSize: 13, color: "rgb(var(--text-300))" }}>
           Double-check everything before sending.
         </p>
       </div>
@@ -69,8 +71,8 @@ export default function StepReview({
       {/* Summary card */}
       <div
         style={{
-          background: "var(--gg-card, white)",
-          border: "1px solid var(--gg-border, #e5e7eb)",
+          background: "rgb(var(--card-700))",
+          border: "1px solid rgb(var(--border-600))",
           borderRadius: 10,
           padding: "4px 20px 12px",
         }}
@@ -107,12 +109,12 @@ export default function StepReview({
             {audienceCount != null ? (
               <>
                 {audienceCount.toLocaleString()} recipient{audienceCount !== 1 ? "s" : ""}
-                <span style={{ fontWeight: 400, color: "var(--gg-text-dim, #6b7280)", marginLeft: 8 }}>
+                <span style={{ fontWeight: 400, color: "rgb(var(--text-300))", marginLeft: 8 }}>
                   ({audience.audience_type === "list" ? "from walklist" : "filtered segment"})
                 </span>
               </>
             ) : (
-              <span style={{ color: "var(--gg-text-dim, #6b7280)" }}>
+              <span style={{ color: "rgb(var(--text-300))" }}>
                 Count not calculated — go back to Audience step
               </span>
             )}
@@ -133,16 +135,9 @@ export default function StepReview({
           <span style={{ fontWeight: 600, fontSize: 14 }}>Email Preview</span>
           <button
             type="button"
+            className="gg-btn-ghost"
             onClick={() => setPreviewOpen((o) => !o)}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 7,
-              border: "1px solid var(--gg-border, #e5e7eb)",
-              background: "transparent",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            style={{ fontSize: 12 }}
           >
             {previewOpen ? "Hide Preview" : "Show Preview"}
           </button>
@@ -153,7 +148,7 @@ export default function StepReview({
             style={{
               width: "100%",
               height: 500,
-              border: "1px solid var(--gg-border, #e5e7eb)",
+              border: "1px solid rgb(var(--border-600))",
               borderRadius: 8,
             }}
             sandbox="allow-same-origin"
@@ -165,8 +160,8 @@ export default function StepReview({
       {/* Send options */}
       <div
         style={{
-          background: "var(--gg-card, white)",
-          border: "1px solid var(--gg-border, #e5e7eb)",
+          background: "rgb(var(--card-700))",
+          border: "1px solid rgb(var(--border-600))",
           borderRadius: 10,
           padding: 20,
         }}
@@ -175,33 +170,15 @@ export default function StepReview({
         <div style={{ display: "flex", gap: 8, marginBottom: scheduleMode ? 16 : 0 }}>
           <button
             type="button"
+            className={!scheduleMode ? "gg-btn-tab-active" : "gg-btn-tab"}
             onClick={() => setScheduleMode(false)}
-            style={{
-              padding: "9px 20px",
-              borderRadius: 7,
-              border: scheduleMode ? "1px solid var(--gg-border, #e5e7eb)" : "none",
-              background: !scheduleMode ? "var(--gg-primary, #2563eb)" : "var(--gg-card, white)",
-              color: !scheduleMode ? "white" : "inherit",
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: "pointer",
-            }}
           >
             Send Now
           </button>
           <button
             type="button"
+            className={scheduleMode ? "gg-btn-tab-active" : "gg-btn-tab"}
             onClick={() => setScheduleMode(true)}
-            style={{
-              padding: "9px 20px",
-              borderRadius: 7,
-              border: scheduleMode ? "none" : "1px solid var(--gg-border, #e5e7eb)",
-              background: scheduleMode ? "var(--gg-primary, #2563eb)" : "transparent",
-              color: scheduleMode ? "white" : "inherit",
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: "pointer",
-            }}
           >
             Schedule
           </button>
@@ -215,7 +192,7 @@ export default function StepReview({
                 fontSize: 11,
                 fontWeight: 700,
                 marginBottom: 5,
-                color: "var(--gg-text-dim, #6b7280)",
+                color: "rgb(var(--text-300))",
                 textTransform: "uppercase",
                 letterSpacing: "0.05em",
               }}
@@ -229,8 +206,9 @@ export default function StepReview({
               style={{
                 padding: "9px 12px",
                 borderRadius: 7,
-                border: "1px solid var(--gg-border, #e5e7eb)",
-                background: "var(--gg-input, white)",
+                border: "1px solid rgb(var(--border-600))",
+                background: "rgb(var(--surface-800))",
+                color: "rgb(var(--text-100))",
                 fontSize: 14,
               }}
             />
@@ -239,30 +217,14 @@ export default function StepReview({
 
         <button
           type="button"
-          disabled={sending || (scheduleMode && !scheduledAt)}
+          className="gg-btn-success"
+          disabled={!canSend}
           onClick={() => {
             setConfirmAction(scheduleMode ? "schedule" : "now");
             setConfirmOpen(true);
           }}
-          style={{
-            padding: "11px 24px",
-            borderRadius: 8,
-            border: "none",
-            background:
-              sending || (scheduleMode && !scheduledAt)
-                ? "rgba(37,99,235,0.35)"
-                : "#16a34a",
-            color: "white",
-            fontWeight: 700,
-            fontSize: 15,
-            cursor: sending || (scheduleMode && !scheduledAt) ? "not-allowed" : "pointer",
-          }}
         >
-          {sending
-            ? "Sending…"
-            : scheduleMode
-            ? "Schedule Campaign"
-            : "Send Campaign"}
+          {sending ? "Sending…" : scheduleMode ? "Schedule Campaign" : "Send Campaign"}
         </button>
       </div>
 
@@ -272,7 +234,7 @@ export default function StepReview({
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.55)",
+            background: "rgba(0,0,0,0.65)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -284,18 +246,19 @@ export default function StepReview({
         >
           <div
             style={{
-              background: "var(--gg-card, white)",
+              background: "rgb(var(--card-700))",
+              border: "1px solid rgb(var(--border-600))",
               borderRadius: 14,
               padding: 28,
               width: "100%",
               maxWidth: 420,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
             }}
           >
             <h3 style={{ margin: "0 0 12px", fontWeight: 700 }}>
               {confirmAction === "now" ? "Send Campaign?" : "Schedule Campaign?"}
             </h3>
-            <p style={{ margin: "0 0 24px", color: "var(--gg-text-dim, #6b7280)", fontSize: 14 }}>
+            <p style={{ margin: "0 0 24px", color: "rgb(var(--text-300))", fontSize: 14 }}>
               {confirmAction === "now" ? (
                 <>
                   You are about to send to{" "}
@@ -311,34 +274,10 @@ export default function StepReview({
               )}
             </p>
             <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={handleConfirm}
-                style={{
-                  flex: 1,
-                  padding: "11px 20px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "#16a34a",
-                  color: "white",
-                  fontWeight: 700,
-                  fontSize: 14,
-                  cursor: "pointer",
-                }}
-              >
+              <button className="gg-btn-success" onClick={handleConfirm} style={{ flex: 1, fontSize: 14 }}>
                 {confirmAction === "now" ? "Yes, Send Now" : "Yes, Schedule It"}
               </button>
-              <button
-                onClick={() => setConfirmOpen(false)}
-                style={{
-                  padding: "11px 16px",
-                  borderRadius: 8,
-                  border: "1px solid var(--gg-border, #e5e7eb)",
-                  background: "transparent",
-                  fontWeight: 600,
-                  fontSize: 14,
-                  cursor: "pointer",
-                }}
-              >
+              <button className="gg-btn-ghost" onClick={() => setConfirmOpen(false)}>
                 Cancel
               </button>
             </div>

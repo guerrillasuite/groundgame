@@ -860,3 +860,106 @@ table thead :is(th,[role="columnheader"]):has([aria-sort="none"])::after {
 @media (min-width: 1100px) {
   .crm-board-inner { width: 100% !important; }
 }
+
+/* ── Dispatch / shared button system ──────────────────────────────────────── */
+
+/* Ghost: transparent bg, border, always-readable text */
+.gg-btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 8px 16px; border-radius: 7px;
+  border: 1px solid rgb(var(--border-600));
+  background: transparent;
+  color: rgb(var(--text-100));
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.gg-btn-ghost:hover:not(:disabled) {
+  background: rgba(255,255,255,.07);
+  border-color: rgba(255,255,255,.18);
+}
+.gg-btn-ghost:active:not(:disabled) { background: rgba(255,255,255,.11); }
+.gg-btn-ghost:disabled { opacity: 0.38; cursor: not-allowed; }
+
+/* Primary: blue fill, white text */
+.gg-btn-primary {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 10px 22px; border-radius: 8px; border: none;
+  background: rgb(var(--primary-600)); color: #fff;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: background .12s ease;
+}
+.gg-btn-primary:hover:not(:disabled) { background: rgb(var(--primary-500)); }
+.gg-btn-primary:active:not(:disabled) { background: rgb(var(--primary-700)); }
+.gg-btn-primary:disabled { opacity: 0.38; cursor: not-allowed; }
+
+/* Success: green fill, white text */
+.gg-btn-success {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 11px 24px; border-radius: 8px; border: none;
+  background: rgb(var(--success-600)); color: #fff;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: filter .12s ease;
+}
+.gg-btn-success:hover:not(:disabled) { filter: brightness(1.1); }
+.gg-btn-success:active:not(:disabled) { filter: brightness(0.9); }
+.gg-btn-success:disabled { background: rgba(22,163,74,0.35); cursor: not-allowed; }
+
+/* Danger: red tint ghost */
+.gg-btn-danger {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 6px 12px; border-radius: 6px;
+  border: 1px solid rgba(220,38,38,0.35);
+  background: transparent; color: rgb(var(--error-600));
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .12s ease;
+}
+.gg-btn-danger:hover { background: rgba(220,38,38,0.1); }
+
+/* Tab inactive */
+.gg-btn-tab {
+  padding: 8px 18px; border-radius: 7px;
+  border: 1px solid rgb(var(--border-600));
+  background: transparent; color: rgb(var(--text-100));
+  font-size: 14px; font-weight: 400; cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.gg-btn-tab:hover {
+  background: rgba(255,255,255,.07);
+  border-color: rgba(255,255,255,.18);
+}
+
+/* Tab active */
+.gg-btn-tab-active {
+  padding: 8px 18px; border-radius: 7px; border: none;
+  background: rgb(var(--primary-600)); color: #fff;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: background .12s ease;
+}
+.gg-btn-tab-active:hover { background: rgb(var(--primary-500)); }
+
+/* Icon/remove button (square) */
+.gg-btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 37px; border-radius: 6px;
+  border: 1px solid rgb(var(--border-600));
+  background: transparent; color: rgb(var(--text-100));
+  font-size: 16px; cursor: pointer;
+  transition: background .12s ease;
+}
+.gg-btn-icon:hover:not(:disabled) { background: rgba(255,255,255,.07); }
+.gg-btn-icon:disabled { opacity: 0.2; cursor: default; }
+
+/* Merge tag button */
+.gg-btn-tag {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 7px 10px; border-radius: 6px; width: 100%;
+  border: 1px solid rgb(var(--border-600));
+  background: rgba(255,255,255,.03);
+  color: rgb(var(--text-100));
+  cursor: pointer; text-align: left;
+  transition: background .12s ease, border-color .12s ease;
+}
+.gg-btn-tag:hover {
+  background: rgba(255,255,255,.07);
+  border-color: rgba(255,255,255,.14);
+}

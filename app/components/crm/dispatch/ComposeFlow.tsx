@@ -42,12 +42,12 @@ const stepIndicatorStyle = (active: boolean, done: boolean): React.CSSProperties
   fontSize: 13,
   fontWeight: active ? 700 : 500,
   background: active
-    ? "var(--gg-primary, #2563eb)"
+    ? "rgb(var(--primary-600))"
     : done
     ? "rgba(34,197,94,0.12)"
-    : "var(--gg-card, white)",
-  color: active ? "white" : done ? "#16a34a" : "var(--gg-text-dim, #6b7280)",
-  border: active ? "none" : `1px solid ${done ? "rgba(34,197,94,0.3)" : "var(--gg-border, #e5e7eb)"}`,
+    : "rgb(var(--card-700))",
+  color: active ? "white" : done ? "#16a34a" : "rgb(var(--text-300))",
+  border: active ? "none" : `1px solid ${done ? "rgba(34,197,94,0.3)" : "rgb(var(--border-600))"}`,
 });
 
 const DEFAULT_DOMAIN = "groundgame.digital";
@@ -307,18 +307,9 @@ export default function ComposeFlow({
           <div>
             <button
               type="button"
+              className="gg-btn-primary"
               onClick={advanceStep}
               disabled={saving}
-              style={{
-                padding: "10px 24px",
-                borderRadius: 8,
-                border: "none",
-                background: saving ? "rgba(37,99,235,0.35)" : "var(--gg-primary, #2563eb)",
-                color: "white",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: saving ? "not-allowed" : "pointer",
-              }}
             >
               {saving ? "Saving…" : "Next: Audience →"}
             </button>
@@ -330,35 +321,14 @@ export default function ComposeFlow({
         <>
           <StepAudience data={audience} onChange={patchAudience} walklists={walklists} />
           <div style={{ display: "flex", gap: 10 }}>
-            <button
-              type="button"
-              onClick={() => setStep(0)}
-              style={{
-                padding: "10px 20px",
-                borderRadius: 8,
-                border: "1px solid var(--gg-border, #e5e7eb)",
-                background: "transparent",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: "pointer",
-              }}
-            >
+            <button type="button" className="gg-btn-ghost" onClick={() => setStep(0)}>
               ← Back
             </button>
             <button
               type="button"
+              className="gg-btn-primary"
               onClick={advanceStep}
               disabled={saving}
-              style={{
-                padding: "10px 24px",
-                borderRadius: 8,
-                border: "none",
-                background: saving ? "rgba(37,99,235,0.35)" : "var(--gg-primary, #2563eb)",
-                color: "white",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: saving ? "not-allowed" : "pointer",
-              }}
             >
               {saving ? "Saving…" : "Next: Design →"}
             </button>
@@ -370,17 +340,9 @@ export default function ComposeFlow({
         <>
           <button
             type="button"
+            className="gg-btn-ghost"
             onClick={() => setStep(1)}
-            style={{
-              alignSelf: "flex-start",
-              padding: "8px 16px",
-              borderRadius: 7,
-              border: "1px solid var(--gg-border, #e5e7eb)",
-              background: "transparent",
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
+            style={{ alignSelf: "flex-start", fontSize: 13 }}
           >
             ← Back to Audience
           </button>

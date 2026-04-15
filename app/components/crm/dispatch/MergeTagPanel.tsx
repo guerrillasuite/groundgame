@@ -16,8 +16,8 @@ export default function MergeTagPanel({ onInsert }: { onInsert: (tag: string) =>
   return (
     <div
       style={{
-        background: "var(--gg-card, white)",
-        border: "1px solid var(--gg-border, #e5e7eb)",
+        background: "var(--gg-card, rgb(16 19 27))",
+        border: "1px solid var(--gg-border, rgb(34 40 55))",
         borderRadius: 10,
         padding: 16,
         minWidth: 180,
@@ -30,7 +30,7 @@ export default function MergeTagPanel({ onInsert }: { onInsert: (tag: string) =>
           fontWeight: 700,
           textTransform: "uppercase",
           letterSpacing: "0.05em",
-          color: "var(--gg-text-dim, #6b7280)",
+          color: "rgb(var(--text-300))",
         }}
       >
         Merge Tags
@@ -40,34 +40,18 @@ export default function MergeTagPanel({ onInsert }: { onInsert: (tag: string) =>
           <button
             key={tag.value}
             type="button"
+            className="gg-btn-tag"
             onClick={() => onInsert(tag.value)}
             title={`Insert ${tag.value}`}
-            style={{
-              padding: "7px 10px",
-              borderRadius: 6,
-              border: "1px solid var(--gg-border, #e5e7eb)",
-              background: "transparent",
-              cursor: "pointer",
-              textAlign: "left",
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-            }}
           >
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                lineHeight: 1.3,
-              }}
-            >
+            <span style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>
               {tag.label}
             </span>
             <code
               style={{
                 fontSize: 10,
-                background: "rgba(37,99,235,0.08)",
-                color: "var(--gg-primary, #2563eb)",
+                background: "rgba(37,99,235,0.15)",
+                color: "rgb(var(--primary-500))",
                 padding: "1px 5px",
                 borderRadius: 4,
                 alignSelf: "flex-start",
@@ -83,7 +67,7 @@ export default function MergeTagPanel({ onInsert }: { onInsert: (tag: string) =>
         style={{
           margin: "12px 0 0",
           fontSize: 11,
-          color: "var(--gg-text-dim, #6b7280)",
+          color: "rgb(var(--text-300))",
           lineHeight: 1.5,
         }}
       >

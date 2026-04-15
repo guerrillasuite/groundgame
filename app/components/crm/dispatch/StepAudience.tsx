@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 
 const labelStyle: React.CSSProperties = {
   display: "block",
   fontSize: 11,
   fontWeight: 700,
   marginBottom: 5,
-  color: "var(--gg-text-dim, #6b7280)",
+  color: "rgb(var(--text-300))",
   textTransform: "uppercase",
   letterSpacing: "0.05em",
 };
@@ -15,8 +15,9 @@ const labelStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   padding: "9px 12px",
   borderRadius: 7,
-  border: "1px solid var(--gg-border, #e5e7eb)",
-  background: "var(--gg-input, white)",
+  border: "1px solid rgb(var(--border-600))",
+  background: "rgb(var(--surface-800))",
+  color: "rgb(var(--text-100))",
   fontSize: 14,
   width: "100%",
   boxSizing: "border-box",
@@ -53,31 +54,27 @@ interface Props {
 }
 
 const FILTER_FIELDS = [
-  // People
-  { key: "email",           label: "Email",                group: "Person" },
-  { key: "first_name",      label: "First Name",           group: "Person" },
-  { key: "last_name",       label: "Last Name",            group: "Person" },
-  // Location (via household → location)
-  { key: "city",            label: "City",                 group: "Location" },
-  { key: "state",           label: "State",                group: "Location" },
-  { key: "postal_code",     label: "ZIP Code",             group: "Location" },
-  // Company (via person_companies → companies)
-  { key: "company.name",    label: "Company Name",         group: "Company" },
-  { key: "company.industry", label: "Company Industry",   group: "Company" },
-  { key: "company.status",  label: "Company Status",       group: "Company" },
-  // Opportunity (via opportunities.contact_person_id)
-  { key: "opp.stage",       label: "Opportunity Stage",    group: "Opportunity" },
-  { key: "opp.pipeline",    label: "Opportunity Pipeline", group: "Opportunity" },
-  { key: "opp.source",      label: "Opportunity Source",   group: "Opportunity" },
-  { key: "opp.priority",    label: "Opportunity Priority", group: "Opportunity" },
+  { key: "email",            label: "Email",                group: "Person" },
+  { key: "first_name",       label: "First Name",           group: "Person" },
+  { key: "last_name",        label: "Last Name",            group: "Person" },
+  { key: "city",             label: "City",                 group: "Location" },
+  { key: "state",            label: "State",                group: "Location" },
+  { key: "postal_code",      label: "ZIP Code",             group: "Location" },
+  { key: "company.name",     label: "Company Name",         group: "Company" },
+  { key: "company.industry", label: "Company Industry",     group: "Company" },
+  { key: "company.status",   label: "Company Status",       group: "Company" },
+  { key: "opp.stage",        label: "Opportunity Stage",    group: "Opportunity" },
+  { key: "opp.pipeline",     label: "Opportunity Pipeline", group: "Opportunity" },
+  { key: "opp.source",       label: "Opportunity Source",   group: "Opportunity" },
+  { key: "opp.priority",     label: "Opportunity Priority", group: "Opportunity" },
 ];
 
 const FILTER_OPS = [
-  { value: "contains",   label: "Contains" },
-  { value: "equals",     label: "Is" },
+  { value: "contains",    label: "Contains" },
+  { value: "equals",      label: "Is" },
   { value: "starts_with", label: "Starts with" },
-  { value: "not_empty",  label: "Has a value" },
-  { value: "is_empty",   label: "Is empty" },
+  { value: "not_empty",   label: "Has a value" },
+  { value: "is_empty",    label: "Is empty" },
 ];
 
 const NO_VALUE_OPS = new Set(["is_empty", "not_empty"]);
@@ -91,7 +88,6 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
   const [preview, setPreview] = useState<AudiencePreview>(null);
   const [previewing, setPreviewing] = useState(false);
 
-  // Internal filter rows with local IDs for keying
   const [filterRows, setFilterRows] = useState<FilterRow[]>(() =>
     data.audience_segment_filters?.map((f) => ({ ...f, _id: uid() })) ?? [
       { _id: uid(), field: "email", op: "not_empty", value: "" },
@@ -143,28 +139,17 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
       const json = await res.json();
       if (res.ok) setPreview(json);
     } catch {
-      // preview is non-critical
+      // non-critical
     } finally {
       setPreviewing(false);
     }
   }
 
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: "8px 18px",
-    borderRadius: 7,
-    border: active ? "none" : "1px solid var(--gg-border, #e5e7eb)",
-    background: active ? "var(--gg-primary, #2563eb)" : "var(--gg-card, white)",
-    color: active ? "white" : "inherit",
-    fontWeight: active ? 600 : 400,
-    fontSize: 14,
-    cursor: "pointer",
-  });
-
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <div>
         <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700 }}>Audience</h2>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+        <p style={{ margin: 0, fontSize: 13, color: "rgb(var(--text-300))" }}>
           Choose who receives this campaign.
         </p>
       </div>
@@ -173,14 +158,14 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
       <div style={{ display: "flex", gap: 8 }}>
         <button
           type="button"
-          style={tabStyle(data.audience_type === "segment")}
+          className={data.audience_type === "segment" ? "gg-btn-tab-active" : "gg-btn-tab"}
           onClick={() => onChange({ audience_type: "segment" })}
         >
           Filter by Field
         </button>
         <button
           type="button"
-          style={tabStyle(data.audience_type === "list")}
+          className={data.audience_type === "list" ? "gg-btn-tab-active" : "gg-btn-tab"}
           onClick={() => onChange({ audience_type: "list" })}
         >
           Saved List
@@ -191,8 +176,8 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
       {data.audience_type === "segment" && (
         <div
           style={{
-            background: "var(--gg-card, white)",
-            border: "1px solid var(--gg-border, #e5e7eb)",
+            background: "rgb(var(--card-700))",
+            border: "1px solid rgb(var(--border-600))",
             borderRadius: 10,
             padding: 20,
           }}
@@ -242,8 +227,7 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
                     <div
                       style={{
                         ...inputStyle,
-                        background: "var(--gg-bg, #f9fafb)",
-                        color: "var(--gg-text-dim, #9ca3af)",
+                        color: "rgb(var(--text-300))",
                         fontStyle: "italic",
                       }}
                     >
@@ -260,38 +244,17 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
                 </div>
                 <button
                   type="button"
+                  className="gg-btn-icon"
                   disabled={filterRows.length <= 1}
                   onClick={() => removeFilter(f._id)}
-                  style={{
-                    padding: 6,
-                    background: "none",
-                    border: "1px solid var(--gg-border, #e5e7eb)",
-                    borderRadius: 6,
-                    cursor: filterRows.length <= 1 ? "default" : "pointer",
-                    color: filterRows.length <= 1 ? "var(--gg-border, #d1d5db)" : "var(--gg-text-dim, #6b7280)",
-                    height: 37,
-                    fontSize: 16,
-                    lineHeight: 1,
-                  }}
+                  style={{ alignSelf: "flex-end" }}
                 >
                   ×
                 </button>
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={addFilter}
-            style={{
-              padding: "7px 14px",
-              borderRadius: 7,
-              border: "1px solid var(--gg-border, #e5e7eb)",
-              background: "transparent",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
+          <button type="button" className="gg-btn-ghost" onClick={addFilter} style={{ fontSize: 13 }}>
             + Add Filter
           </button>
         </div>
@@ -314,9 +277,9 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
             ))}
           </select>
           {walklists.length === 0 && (
-            <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+            <p style={{ margin: "6px 0 0", fontSize: 13, color: "rgb(var(--text-300))" }}>
               No walklists found. Create one in{" "}
-              <a href="/crm/lists" style={{ color: "var(--gg-primary, #2563eb)" }}>
+              <a href="/crm/lists" style={{ color: "rgb(var(--primary-600))" }}>
                 Lists
               </a>{" "}
               first.
@@ -325,30 +288,23 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
         </div>
       )}
 
-      {/* Preview count button */}
+      {/* Preview count */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button
           type="button"
+          className="gg-btn-ghost"
           onClick={fetchPreview}
           disabled={previewing}
-          style={{
-            padding: "8px 16px",
-            borderRadius: 7,
-            border: "1px solid var(--gg-border, #e5e7eb)",
-            background: "transparent",
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: previewing ? "wait" : "pointer",
-          }}
+          style={{ cursor: previewing ? "wait" : undefined }}
         >
           {previewing ? "Counting…" : "Preview Count"}
         </button>
         {preview && (
-          <span style={{ fontSize: 14 }}>
+          <span style={{ fontSize: 14, color: "rgb(var(--text-100))" }}>
             <strong>{preview.count.toLocaleString()}</strong> recipient
             {preview.count !== 1 ? "s" : ""}
             {preview.suppressed > 0 && (
-              <span style={{ color: "var(--gg-text-dim, #6b7280)", marginLeft: 8 }}>
+              <span style={{ color: "rgb(var(--text-300))", marginLeft: 8 }}>
                 · {preview.suppressed.toLocaleString()} excluded (unsubscribed or no email)
               </span>
             )}

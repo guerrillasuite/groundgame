@@ -22,7 +22,7 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 700,
   textTransform: "uppercase",
   letterSpacing: "0.05em",
-  color: "var(--gg-text-dim, #6b7280)",
+  color: "rgb(var(--text-300))",
   marginBottom: 5,
   display: "block",
 };
@@ -30,16 +30,16 @@ const labelStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   padding: "9px 12px",
   borderRadius: 7,
-  border: "1px solid var(--gg-border, #e5e7eb)",
-  background: "var(--gg-input, white)",
+  border: "1px solid rgb(var(--border-600))",
+  background: "rgb(var(--surface-800))",
   fontSize: 14,
   width: "100%",
   boxSizing: "border-box",
 };
 
 const cardStyle: React.CSSProperties = {
-  background: "var(--gg-card, white)",
-  border: "1px solid var(--gg-border, #e5e7eb)",
+  background: "rgb(var(--card-700))",
+  border: "1px solid rgb(var(--border-600))",
   borderRadius: 10,
   overflow: "hidden",
 };
@@ -78,7 +78,7 @@ function CopyButton({ value }: { value: string }) {
       style={{
         padding: "3px 10px",
         borderRadius: 5,
-        border: "1px solid var(--gg-border, #e5e7eb)",
+        border: "1px solid rgb(var(--border-600))",
         background: copied ? "rgba(34,197,94,0.1)" : "transparent",
         fontSize: 11,
         fontWeight: 600,
@@ -197,7 +197,7 @@ export default function SendingDomainManager({
                 padding: "2px 8px",
                 borderRadius: 8,
                 background: "rgba(37,99,235,0.1)",
-                color: "var(--gg-primary, #2563eb)",
+                color: "rgb(var(--primary-600))",
                 fontWeight: 600,
               }}
             >
@@ -209,9 +209,9 @@ export default function SendingDomainManager({
         <div
           style={{
             padding: "8px 18px",
-            borderTop: "1px solid var(--gg-border, #e5e7eb)",
+            borderTop: "1px solid rgb(var(--border-600))",
             fontSize: 12,
-            color: "var(--gg-text-dim, #6b7280)",
+            color: "rgb(var(--text-300))",
           }}
         >
           Managed by GuerrillaSuite — available to all tenants. No DNS setup required.
@@ -240,7 +240,7 @@ export default function SendingDomainManager({
                   cursor: "pointer",
                   fontSize: 12,
                   padding: 4,
-                  color: "var(--gg-text-dim, #6b7280)",
+                  color: "rgb(var(--text-100))",
                 }}
                 aria-label={expandedId === d.id ? "Collapse" : "Expand"}
               >
@@ -253,34 +253,19 @@ export default function SendingDomainManager({
               {!d.verified && (
                 <button
                   type="button"
+                  className="gg-btn-ghost"
                   onClick={() => handleManualCheck(d.id)}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 6,
-                    border: "1px solid var(--gg-border, #e5e7eb)",
-                    background: "transparent",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  style={{ fontSize: 11, padding: "4px 10px" }}
                 >
                   Check
                 </button>
               )}
               <button
                 type="button"
+                className="gg-btn-danger"
                 onClick={() => handleDelete(d.id)}
                 disabled={deletingId === d.id}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  border: "1px solid rgba(239,68,68,0.3)",
-                  background: "transparent",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: "#ef4444",
-                  cursor: deletingId === d.id ? "wait" : "pointer",
-                }}
+                style={{ cursor: deletingId === d.id ? "wait" : undefined }}
               >
                 Remove
               </button>
@@ -291,7 +276,7 @@ export default function SendingDomainManager({
           {expandedId === d.id && d.dns_records && d.dns_records.length > 0 && (
             <div
               style={{
-                borderTop: "1px solid var(--gg-border, #e5e7eb)",
+                borderTop: "1px solid rgb(var(--border-600))",
                 padding: "16px 18px",
               }}
             >
@@ -316,7 +301,7 @@ export default function SendingDomainManager({
                     Resend's Domain Connect integration — no manual copy-paste needed.
                   </div>
 
-                  <p style={{ margin: "0 0 6px", fontSize: 11, color: "var(--gg-text-dim, #6b7280)" }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 11, color: "rgb(var(--text-300))" }}>
                     ⏳ Verification typically takes minutes on Cloudflare, up to 24–48 hours on
                     other registrars. This page will update automatically when verified.
                   </p>
@@ -342,8 +327,8 @@ export default function SendingDomainManager({
                           fontWeight: 700,
                           textTransform: "uppercase",
                           letterSpacing: "0.05em",
-                          color: "var(--gg-text-dim, #6b7280)",
-                          borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+                          color: "rgb(var(--text-300))",
+                          borderBottom: "1px solid rgb(var(--border-600))",
                         }}
                       >
                         {h}
@@ -393,7 +378,7 @@ export default function SendingDomainManager({
       {addOpen ? (
         <div style={{ ...cardStyle, padding: 20 }}>
           <p style={{ margin: "0 0 6px", fontWeight: 600, fontSize: 14 }}>Add Sending Domain</p>
-          <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+          <p style={{ margin: "0 0 14px", fontSize: 12, color: "rgb(var(--text-300))" }}>
             💡 We recommend using a subdomain like{" "}
             <code
               style={{
@@ -420,34 +405,17 @@ export default function SendingDomainManager({
             </div>
             <button
               type="button"
+              className="gg-btn-primary"
               onClick={handleAddDomain}
               disabled={adding || !newDomain.trim()}
-              style={{
-                padding: "9px 18px",
-                borderRadius: 7,
-                border: "none",
-                background: adding || !newDomain.trim() ? "rgba(37,99,235,0.35)" : "var(--gg-primary, #2563eb)",
-                color: "white",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: adding || !newDomain.trim() ? "not-allowed" : "pointer",
-                whiteSpace: "nowrap",
-              }}
+              style={{ whiteSpace: "nowrap" }}
             >
               {adding ? "Adding…" : "Add Domain"}
             </button>
             <button
               type="button"
+              className="gg-btn-ghost"
               onClick={() => { setAddOpen(false); setAddError(null); }}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 7,
-                border: "1px solid var(--gg-border, #e5e7eb)",
-                background: "transparent",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: "pointer",
-              }}
             >
               Cancel
             </button>
@@ -459,16 +427,12 @@ export default function SendingDomainManager({
       ) : (
         <button
           type="button"
+          className="gg-btn-ghost"
           onClick={() => setAddOpen(true)}
           style={{
-            padding: "10px 18px",
-            borderRadius: 8,
-            border: "1.5px dashed var(--gg-border, #d1d5db)",
-            background: "transparent",
+            border: "1.5px dashed rgb(var(--border-600))",
             fontSize: 14,
-            fontWeight: 600,
-            cursor: "pointer",
-            color: "var(--gg-text-dim, #6b7280)",
+            padding: "10px 18px",
           }}
         >
           + Add Client Domain

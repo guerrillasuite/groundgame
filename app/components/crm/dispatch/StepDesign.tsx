@@ -15,10 +15,10 @@ const EmailEditor = dynamic(() => import("react-email-editor"), {
         alignItems: "center",
         justifyContent: "center",
         height: 600,
-        background: "var(--gg-card, white)",
-        border: "1px solid var(--gg-border, #e5e7eb)",
+        background: "rgb(var(--card-700))",
+        border: "1px solid rgb(var(--border-600))",
         borderRadius: 10,
-        color: "var(--gg-text-dim, #6b7280)",
+        color: "rgb(var(--text-300))",
         fontSize: 14,
       }}
     >
@@ -85,7 +85,7 @@ export default function StepDesign({ initialDesign, onExport, saving }: Props) {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
         <div>
           <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700 }}>Design Your Email</h2>
-          <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+          <p style={{ margin: 0, fontSize: 13, color: "rgb(var(--text-300))" }}>
             Drag and drop blocks to build your email. Use merge tags for personalization.
           </p>
         </div>
@@ -98,7 +98,7 @@ export default function StepDesign({ initialDesign, onExport, saving }: Props) {
               padding: "9px 18px",
               borderRadius: 7,
               border: "none",
-              background: !ready || saving ? "rgba(37,99,235,0.35)" : "var(--gg-primary, #2563eb)",
+              background: !ready || saving ? "rgba(37,99,235,0.35)" : "rgb(var(--primary-600))",
               color: "white",
               fontWeight: 600,
               fontSize: 14,
@@ -140,7 +140,7 @@ export default function StepDesign({ initialDesign, onExport, saving }: Props) {
         {/* Unlayer editor */}
         <div
           style={{
-            border: "1px solid var(--gg-border, #e5e7eb)",
+            border: "1px solid rgb(var(--border-600))",
             borderRadius: 10,
             overflow: "hidden",
           }}
@@ -172,7 +172,7 @@ export default function StepDesign({ initialDesign, onExport, saving }: Props) {
             style={{
               margin: "10px 0 0",
               fontSize: 11,
-              color: "var(--gg-text-dim, #6b7280)",
+              color: "rgb(var(--text-300))",
               lineHeight: 1.5,
             }}
           >
