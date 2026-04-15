@@ -43,6 +43,7 @@ function mergeHtml(
   html: string,
   recipient: {
     send_id: string;
+    person_id: string;
     first_name: string;
     last_name: string;
     email: string;
@@ -60,6 +61,7 @@ function mergeHtml(
     .replace(/\{Email\}/g, recipient.email || "")
     .replace(/\{City\}/g, recipient.city || "")
     .replace(/\{State\}/g, recipient.state || "")
+    .replace(/\{Person_ID\}/g, recipient.person_id || "")
     .replace(/\{Unsubscribe_Link\}/g, unsubUrl)
     .replace(/\{Trackable_Link_URL\}/g, ""); // handled separately per campaign
 }
@@ -262,6 +264,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Mail-merge
     let html = mergeHtml(baseHtml, {
       send_id: sendId,
+      person_id: person.id,
       first_name: person.first_name ?? "",
       last_name: person.last_name ?? "",
       email: person.email ?? "",

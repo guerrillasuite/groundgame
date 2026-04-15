@@ -7,6 +7,7 @@ const TAGS = [
   { label: "Email Address",    value: "{Email}" },
   { label: "City",             value: "{City}" },
   { label: "State",            value: "{State}" },
+  { label: "Person ID",        value: "{Person_ID}" },
   { label: "Unsubscribe Link", value: "{Unsubscribe_Link}" },
   { label: "Trackable Link",   value: "{Trackable_Link_URL}" },
 ];
@@ -19,7 +20,7 @@ export default function MergeTagPanel({ onInsert }: { onInsert: (tag: string) =>
         border: "1px solid var(--gg-border, #e5e7eb)",
         borderRadius: 10,
         padding: 16,
-        minWidth: 200,
+        minWidth: 180,
       }}
     >
       <p
@@ -34,7 +35,7 @@ export default function MergeTagPanel({ onInsert }: { onInsert: (tag: string) =>
       >
         Merge Tags
       </p>
-      <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "grid", gap: 5 }}>
         {TAGS.map((tag) => (
           <button
             key={tag.value}
@@ -46,25 +47,31 @@ export default function MergeTagPanel({ onInsert }: { onInsert: (tag: string) =>
               borderRadius: 6,
               border: "1px solid var(--gg-border, #e5e7eb)",
               background: "transparent",
-              fontSize: 12,
-              fontWeight: 500,
               cursor: "pointer",
               textAlign: "left",
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 8,
+              flexDirection: "column",
+              gap: 2,
             }}
           >
-            <span>{tag.label}</span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                lineHeight: 1.3,
+              }}
+            >
+              {tag.label}
+            </span>
             <code
               style={{
                 fontSize: 10,
                 background: "rgba(37,99,235,0.08)",
                 color: "var(--gg-primary, #2563eb)",
-                padding: "2px 6px",
+                padding: "1px 5px",
                 borderRadius: 4,
-                flexShrink: 0,
+                alignSelf: "flex-start",
+                wordBreak: "break-all",
               }}
             >
               {tag.value}
