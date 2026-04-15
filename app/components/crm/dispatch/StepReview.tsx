@@ -124,22 +124,15 @@ export default function StepReview({
 
       {/* Email preview */}
       <div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 8,
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>Email Preview</span>
           <button
             type="button"
             className="gg-btn-ghost"
             onClick={() => setPreviewOpen((o) => !o)}
-            style={{ fontSize: 12 }}
+            style={{ fontSize: 12, padding: "5px 12px" }}
           >
-            {previewOpen ? "Hide Preview" : "Show Preview"}
+            {previewOpen ? "Hide" : "Show"}
           </button>
         </div>
         {previewOpen && htmlBody && (
@@ -158,16 +151,9 @@ export default function StepReview({
       </div>
 
       {/* Send options */}
-      <div
-        style={{
-          background: "rgb(var(--card-700))",
-          border: "1px solid rgb(var(--border-600))",
-          borderRadius: 10,
-          padding: 20,
-        }}
-      >
-        <p style={{ margin: "0 0 16px", fontWeight: 600, fontSize: 14 }}>Send Options</p>
-        <div style={{ display: "flex", gap: 8, marginBottom: scheduleMode ? 16 : 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        {/* Mode toggles */}
+        <div style={{ display: "flex", gap: 8 }}>
           <button
             type="button"
             className={!scheduleMode ? "gg-btn-tab-active" : "gg-btn-tab"}
@@ -184,37 +170,24 @@ export default function StepReview({
           </button>
         </div>
 
+        {/* Datetime input — only shown in schedule mode */}
         {scheduleMode && (
-          <div style={{ marginBottom: 16 }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: 11,
-                fontWeight: 700,
-                marginBottom: 5,
-                color: "rgb(var(--text-300))",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Send At
-            </label>
-            <input
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              style={{
-                padding: "9px 12px",
-                borderRadius: 7,
-                border: "1px solid rgb(var(--border-600))",
-                background: "rgb(var(--surface-800))",
-                color: "rgb(var(--text-100))",
-                fontSize: 14,
-              }}
-            />
-          </div>
+          <input
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            style={{
+              padding: "9px 12px",
+              borderRadius: 7,
+              border: "1px solid rgb(var(--border-600))",
+              background: "rgb(var(--surface-800))",
+              color: "rgb(var(--text-100))",
+              fontSize: 14,
+            }}
+          />
         )}
 
+        {/* Send button */}
         <button
           type="button"
           className="gg-btn-success"
