@@ -860,304 +860,321 @@ export default function SurveyBuilder({
           </button>
 
           {showAdvanced && (
-            <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
-              {/* Public slug */}
-              <div style={{ display: "grid", gap: 6 }}>
-                <label style={labelStyle}>Public URL Slug</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13, opacity: 0.5, whiteSpace: "nowrap" }}>/s/</span>
-                  <input
-                    type="text"
-                    value={publicSlug}
-                    onChange={(e) => {
-                      setSlugManual(true);
-                      setPublicSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""));
-                    }}
-                    placeholder="my-survey-slug"
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  {publicSlug && (
-                    <button
-                      type="button"
-                      title="Copy URL"
-                      onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/s/${publicSlug}`)}
-                      style={{ ...ghostBtnStyle, padding: "6px 12px", whiteSpace: "nowrap" }}
-                    >
-                      Copy URL
-                    </button>
-                  )}
-                </div>
-                {!isNew && (
-                  <p style={{ margin: 0, fontSize: 12, opacity: 0.5 }}>
-                    Old URL (<code>/s/{surveyId}</code>) still works after renaming.
-                  </p>
-                )}
-              </div>
+            <div style={{ display: "grid", gap: 0, marginTop: 16 }}>
 
-              {/* Thank you message */}
-              <div style={{ display: "grid", gap: 6 }}>
-                <label style={labelStyle}>Thank you message <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
-                <input
-                  type="text"
-                  value={thankyouMessage}
-                  onChange={(e) => setThankyouMessage(e.target.value)}
-                  placeholder="Your response has been recorded."
-                  style={inputStyle}
-                />
-              </div>
+              {/* ── PRESENTATION ─────────────────────────────────────────── */}
+              <div style={{ display: "grid", gap: 14, paddingBottom: 20 }}>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.35 }}>Presentation</p>
 
-              {/* Learn More URL + label */}
-              <div style={{ display: "grid", gap: 6 }}>
-                <label style={labelStyle}>"Learn More" URL <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
-                <input
-                  type="url"
-                  value={websiteUrl}
-                  onChange={(e) => setWebsiteUrl(e.target.value)}
-                  placeholder="https://example.com"
-                  style={inputStyle}
-                />
-                {websiteUrl && (
-                  <input
-                    type="text"
-                    value={learnMoreLabel}
-                    onChange={(e) => setLearnMoreLabel(e.target.value)}
-                    placeholder='Button label (default: "Learn More →")'
-                    style={inputStyle}
-                  />
-                )}
-              </div>
-
-              {/* End-of-survey button toggles */}
-              <div style={{ display: "grid", gap: 8 }}>
-                <label style={labelStyle}>End-of-survey buttons</label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                  <input type="checkbox" checked={showShare} onChange={(e) => setShowShare(e.target.checked)} />
-                  Show "Share" button
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                  <input type="checkbox" checked={showTakeAgain} onChange={(e) => setShowTakeAgain(e.target.checked)} />
-                  Show "Take Again" button
-                </label>
-              </div>
-
-              {/* Footer text */}
-              <div style={{ display: "grid", gap: 6 }}>
-                <label style={labelStyle}>Footer text (optional)</label>
-                <input
-                  type="text"
-                  value={footerText}
-                  onChange={(e) => setFooterText(e.target.value)}
-                  placeholder="Paid for by…"
-                  style={inputStyle}
-                />
-              </div>
-
-              {/* Post-submit embedded form */}
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <label style={labelStyle}>Post-submit form (optional)</label>
-                  {postSubmitSurveyId && (
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
-                      <input
-                        type="checkbox"
-                        checked={postSubmitRequired}
-                        onChange={(e) => setPostSubmitRequired(e.target.checked)}
-                      />
-                      Required (no skip)
-                    </label>
-                  )}
-                </div>
-                <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                  After completing this survey, show another embeddable form (e.g. a contact form). Only surveys active for the Embedded channel appear here.
-                </p>
-                <select
-                  value={postSubmitSurveyId}
-                  onChange={(e) => { setPostSubmitSurveyId(e.target.value); if (!e.target.value) setPostSubmitRequired(false); }}
-                  style={{ ...inputStyle, cursor: "pointer" }}
-                >
-                  <option value="">(None)</option>
-                  {embeddableSurveys.map((s) => (
-                    <option key={s.id} value={s.id}>{s.title}</option>
-                  ))}
-                </select>
-                {postSubmitSurveyId && (
-                  <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-                    <label style={labelStyle}>Message shown above the form <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+                {/* Public slug */}
+                <div style={{ display: "grid", gap: 6 }}>
+                  <label style={labelStyle}>Public URL Slug</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 13, opacity: 0.5, whiteSpace: "nowrap" }}>/s/</span>
                     <input
                       type="text"
-                      value={postSubmitHeader}
-                      onChange={(e) => setPostSubmitHeader(e.target.value)}
-                      placeholder="e.g. Want to stay in the loop? Fill out your contact info below."
-                      style={inputStyle}
+                      value={publicSlug}
+                      onChange={(e) => {
+                        setSlugManual(true);
+                        setPublicSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""));
+                      }}
+                      placeholder="my-survey-slug"
+                      style={{ ...inputStyle, flex: 1 }}
                     />
-                  </div>
-                )}
-              </div>
-
-              {/* ── Opportunity Creation Trigger ── */}
-              <div style={{ display: "grid", gap: 8, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input type="checkbox" checked={oppEnabled} onChange={(e) => setOppEnabled(e.target.checked)} />
-                  Opportunity Creation Trigger
-                </label>
-                {oppEnabled && (
-                  <div style={{ display: "grid", gap: 10, paddingLeft: 4 }}>
-                    {/* Mode */}
-                    <div style={{ display: "flex", gap: 16 }}>
-                      {(["always", "condition"] as const).map((m) => (
-                        <label key={m} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
-                          <input type="radio" name="opp-mode" checked={oppMode === m} onChange={() => setOppMode(m)} />
-                          {m === "always" ? "Always" : "When condition met"}
-                        </label>
-                      ))}
-                    </div>
-
-                    {/* Condition row */}
-                    {oppMode === "condition" && (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
-                        <select value={oppQuestionId} onChange={(e) => setOppQuestionId(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
-                          <option value="">(Select question)</option>
-                          {questions.map((q) => <option key={q.id} value={q.id}>{(q.question_text || "Untitled").slice(0, 50)}</option>)}
-                        </select>
-                        <select value={oppOperator} onChange={(e) => setOppOperator(e.target.value as any)} style={{ ...inputStyle, fontSize: 13, width: "auto" }}>
-                          <option value="equals">equals</option>
-                          <option value="not_equals">≠</option>
-                          <option value="contains">contains</option>
-                        </select>
-                        <input value={oppValue} onChange={(e) => setOppValue(e.target.value)} placeholder="value to match" style={{ ...inputStyle, fontSize: 13 }} />
-                      </div>
+                    {publicSlug && (
+                      <button
+                        type="button"
+                        title="Copy URL"
+                        onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/s/${publicSlug}`)}
+                        style={{ ...ghostBtnStyle, padding: "6px 12px", whiteSpace: "nowrap" }}
+                      >
+                        Copy URL
+                      </button>
                     )}
-
-                    {/* Pipeline + Stage */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <div>
-                        <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Pipeline (optional)</label>
-                        <select value={oppContactType} onChange={(e) => setOppContactType(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
-                          <option value="">(Default)</option>
-                          {contactTypes.map((ct) => <option key={ct.key} value={ct.key}>{ct.label}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Stage</label>
-                        <select value={oppStage} onChange={(e) => setOppStage(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
-                          <option value="">(First stage)</option>
-                          {oppStages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Title template */}
-                    <OppTitleTemplateEditor value={oppTitleTemplate} onChange={setOppTitleTemplate} />
-
-                    {/* Op intake channels */}
-                    <div>
-                      <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Use this survey as default intake form for</label>
-                      <p style={{ margin: "0 0 6px", fontSize: 12, opacity: 0.6 }}>After an opportunity is created in a field session, this form will be shown to capture details.</p>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"], ["take_survey", "Take Survey"], ["storefront", "Storefront"]].map(([ch, label]) => (
-                          <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
-                            <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
-                              const next = new Set(opIntakeChannels);
-                              if (e.target.checked) next.add(ch); else next.delete(ch);
-                              setOpIntakeChannels(next);
-                            }} style={{ display: "none" }} />
-                            {label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
                   </div>
-                )}
-              </div>
-
-              {/* ── Auto Pre-filled Fields ── */}
-              <div style={{ display: "grid", gap: 10, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                <div>
-                  <div style={{ ...labelStyle, display: "block", marginBottom: 2 }}>Auto Pre-filled Fields</div>
-                  <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                    Values set automatically on every submission — not shown to the respondent.
-                    Use this to tag all responses from this form (e.g. Contact Type = Volunteer).
-                  </p>
-                </div>
-                {autoFields.map((af, idx) => (
-                  <div key={af.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "center" }}>
-                    <CrmFieldPicker
-                      value={af.crm_field || null}
-                      onChange={(val) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, crm_field: val ?? "" } : f))}
-                    />
-                    <input
-                      type="text"
-                      value={af.value}
-                      onChange={(e) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, value: e.target.value } : f))}
-                      placeholder="Value"
-                      style={{ ...inputStyle, fontSize: 13 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setAutoFields(prev => prev.filter((_, i) => i !== idx))}
-                      style={{ border: "none", background: "none", cursor: "pointer", padding: 4, opacity: 0.4, color: "#dc2626", lineHeight: 1 }}
-                      title="Remove"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setAutoFields(prev => [...prev, { id: newTmpId(), crm_field: "", value: "" }])}
-                  style={{ ...ghostBtnStyle, padding: "6px 12px", width: "fit-content" }}
-                >
-                  <Plus size={13} /> Add field
-                </button>
-              </div>
-
-              {/* ── Contact prefill ── */}
-              <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input type="checkbox" checked={prefillContact} onChange={(e) => setPrefillContact(e.target.checked)} />
-                  Pre-fill known contact info
-                </label>
-                {prefillContact && (
-                  <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                    When a survey link includes a contact ID, the respondent's name, email, and phone will be automatically filled into matching questions. Disable this if you'd rather not reveal that you already have their information.
-                  </p>
-                )}
-              </div>
-
-              {/* ── Payment Gate ── */}
-              <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input type="checkbox" checked={paymentEnabled} onChange={(e) => setPaymentEnabled(e.target.checked)} />
-                  Require payment after submission
-                </label>
-                {paymentEnabled && (
-                  <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                    After submitting, respondents will be directed to a payment page. Payment processor configuration is set up separately.
-                  </p>
-                )}
-              </div>
-
-              {/* ── Delivery ── shown when opportunity trigger is enabled (works for all channels) */}
-              {oppEnabled && (
-                <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                  <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <input type="checkbox" checked={deliveryEnabled} onChange={(e) => setDeliveryEnabled(e.target.checked)} />
-                    Enable Delivery option
-                  </label>
-                  {deliveryEnabled && (
-                    <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                      Respondents can choose Pickup or Delivery. When Delivery is selected, an address form is shown and required before submit.
+                  {!isNew && (
+                    <p style={{ margin: 0, fontSize: 12, opacity: 0.5 }}>
+                      Old URL (<code>/s/{surveyId}</code>) still works after renaming.
                     </p>
                   )}
                 </div>
-              )}
 
-              {/* Branding (FieldPack+) */}
-              {!hasSurveyBranding && (
-                <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px dashed var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.6 }}>
-                  <strong>Tenant Branding</strong> — custom colors, logo, and fonts on hosted/embedded forms. Available on FieldPack and above.
+                {/* Thank you message */}
+                <div style={{ display: "grid", gap: 6 }}>
+                  <label style={labelStyle}>Thank You Message <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+                  <input
+                    type="text"
+                    value={thankyouMessage}
+                    onChange={(e) => setThankyouMessage(e.target.value)}
+                    placeholder="Your response has been recorded."
+                    style={inputStyle}
+                  />
                 </div>
-              )}
+
+                {/* Footer text */}
+                <div style={{ display: "grid", gap: 6 }}>
+                  <label style={labelStyle}>Footer Text <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+                  <input
+                    type="text"
+                    value={footerText}
+                    onChange={(e) => setFooterText(e.target.value)}
+                    placeholder="Paid for by…"
+                    style={inputStyle}
+                  />
+                </div>
+
+                {/* Learn More URL + label */}
+                <div style={{ display: "grid", gap: 6 }}>
+                  <label style={labelStyle}>"Learn More" URL <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+                  <input
+                    type="url"
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    style={inputStyle}
+                  />
+                  {websiteUrl && (
+                    <input
+                      type="text"
+                      value={learnMoreLabel}
+                      onChange={(e) => setLearnMoreLabel(e.target.value)}
+                      placeholder='Button label (default: "Learn More →")'
+                      style={inputStyle}
+                    />
+                  )}
+                </div>
+
+                {/* End-of-survey button toggles */}
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={labelStyle}>End-of-Survey Buttons</label>
+                  <div style={{ display: "flex", gap: 16 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                      <input type="checkbox" checked={showShare} onChange={(e) => setShowShare(e.target.checked)} />
+                      Show "Share" button
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                      <input type="checkbox" checked={showTakeAgain} onChange={(e) => setShowTakeAgain(e.target.checked)} />
+                      Show "Take Again" button
+                    </label>
+                  </div>
+                </div>
+
+                {/* Branding (FieldPack+) */}
+                {!hasSurveyBranding && (
+                  <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px dashed var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.6 }}>
+                    <strong>Tenant Branding</strong> — custom colors, logo, and fonts on hosted/embedded forms. Available on FieldPack and above.
+                  </div>
+                )}
+              </div>
+
+              {/* ── BEHAVIOR ─────────────────────────────────────────────── */}
+              <div style={{ display: "grid", gap: 14, paddingTop: 20, paddingBottom: 20, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.35 }}>Behavior</p>
+
+                {/* Contact prefill */}
+                <div style={{ display: "grid", gap: 6 }}>
+                  <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={prefillContact} onChange={(e) => setPrefillContact(e.target.checked)} />
+                    Pre-fill Known Contact Info
+                  </label>
+                  {prefillContact && (
+                    <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                      When a survey link includes a contact ID, the respondent's name, email, and phone will be automatically filled into matching questions. Disable this if you'd rather not reveal that you already have their information.
+                    </p>
+                  )}
+                </div>
+
+                {/* Auto Pre-filled Fields */}
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div>
+                    <div style={{ ...labelStyle, display: "block", marginBottom: 2 }}>Auto-Tagged Fields</div>
+                    <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                      Values written automatically on every submission — not shown to the respondent.
+                      Use this to tag all responses from this form (e.g. Contact Type = Volunteer).
+                    </p>
+                  </div>
+                  {autoFields.map((af, idx) => (
+                    <div key={af.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "center" }}>
+                      <CrmFieldPicker
+                        value={af.crm_field || null}
+                        onChange={(val) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, crm_field: val ?? "" } : f))}
+                      />
+                      <input
+                        type="text"
+                        value={af.value}
+                        onChange={(e) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, value: e.target.value } : f))}
+                        placeholder="Value"
+                        style={{ ...inputStyle, fontSize: 13 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setAutoFields(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ border: "none", background: "none", cursor: "pointer", padding: 4, opacity: 0.4, color: "#dc2626", lineHeight: 1 }}
+                        title="Remove"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setAutoFields(prev => [...prev, { id: newTmpId(), crm_field: "", value: "" }])}
+                    style={{ ...ghostBtnStyle, padding: "6px 12px", width: "fit-content" }}
+                  >
+                    <Plus size={13} /> Add field
+                  </button>
+                </div>
+
+                {/* Post-submit embedded form */}
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <label style={labelStyle}>Post-Submit Form <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+                    {postSubmitSurveyId && (
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        <input
+                          type="checkbox"
+                          checked={postSubmitRequired}
+                          onChange={(e) => setPostSubmitRequired(e.target.checked)}
+                        />
+                        Required (no skip)
+                      </label>
+                    )}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                    After completing this survey, show another embeddable form (e.g. a contact form). Only surveys active for the Embedded channel appear here.
+                  </p>
+                  <select
+                    value={postSubmitSurveyId}
+                    onChange={(e) => { setPostSubmitSurveyId(e.target.value); if (!e.target.value) setPostSubmitRequired(false); }}
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                  >
+                    <option value="">(None)</option>
+                    {embeddableSurveys.map((s) => (
+                      <option key={s.id} value={s.id}>{s.title}</option>
+                    ))}
+                  </select>
+                  {postSubmitSurveyId && (
+                    <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
+                      <label style={labelStyle}>Message shown above the form <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+                      <input
+                        type="text"
+                        value={postSubmitHeader}
+                        onChange={(e) => setPostSubmitHeader(e.target.value)}
+                        placeholder="e.g. Want to stay in the loop? Fill out your contact info below."
+                        style={inputStyle}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── INTEGRATIONS ─────────────────────────────────────────── */}
+              <div style={{ display: "grid", gap: 14, paddingTop: 20, paddingBottom: 20, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.35 }}>Integrations</p>
+
+                {/* Opportunity Creation Trigger */}
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={oppEnabled} onChange={(e) => setOppEnabled(e.target.checked)} />
+                    Opportunity Creation Trigger
+                  </label>
+                  {oppEnabled && (
+                    <div style={{ display: "grid", gap: 10, paddingLeft: 4 }}>
+                      {/* Mode */}
+                      <div style={{ display: "flex", gap: 16 }}>
+                        {(["always", "condition"] as const).map((m) => (
+                          <label key={m} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                            <input type="radio" name="opp-mode" checked={oppMode === m} onChange={() => setOppMode(m)} />
+                            {m === "always" ? "Always" : "When condition met"}
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Condition row */}
+                      {oppMode === "condition" && (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
+                          <select value={oppQuestionId} onChange={(e) => setOppQuestionId(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                            <option value="">(Select question)</option>
+                            {questions.map((q) => <option key={q.id} value={q.id}>{(q.question_text || "Untitled").slice(0, 50)}</option>)}
+                          </select>
+                          <select value={oppOperator} onChange={(e) => setOppOperator(e.target.value as any)} style={{ ...inputStyle, fontSize: 13, width: "auto" }}>
+                            <option value="equals">equals</option>
+                            <option value="not_equals">≠</option>
+                            <option value="contains">contains</option>
+                          </select>
+                          <input value={oppValue} onChange={(e) => setOppValue(e.target.value)} placeholder="value to match" style={{ ...inputStyle, fontSize: 13 }} />
+                        </div>
+                      )}
+
+                      {/* Pipeline + Stage */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <div>
+                          <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Pipeline (optional)</label>
+                          <select value={oppContactType} onChange={(e) => setOppContactType(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                            <option value="">(Default)</option>
+                            {contactTypes.map((ct) => <option key={ct.key} value={ct.key}>{ct.label}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Stage</label>
+                          <select value={oppStage} onChange={(e) => setOppStage(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                            <option value="">(First stage)</option>
+                            {oppStages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Title template */}
+                      <OppTitleTemplateEditor value={oppTitleTemplate} onChange={setOppTitleTemplate} />
+
+                      {/* Op intake channels */}
+                      <div>
+                        <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Default intake form for</label>
+                        <p style={{ margin: "0 0 6px", fontSize: 12, opacity: 0.6 }}>After an opportunity is created in a field session, this form will be shown to capture details.</p>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"], ["take_survey", "Take Survey"], ["storefront", "Storefront"]].map(([ch, label]) => (
+                            <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
+                              <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
+                                const next = new Set(opIntakeChannels);
+                                if (e.target.checked) next.add(ch); else next.delete(ch);
+                                setOpIntakeChannels(next);
+                              }} style={{ display: "none" }} />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Delivery — only shown when opp trigger is enabled */}
+                      <div style={{ display: "grid", gap: 6, paddingTop: 10, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                        <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                          <input type="checkbox" checked={deliveryEnabled} onChange={(e) => setDeliveryEnabled(e.target.checked)} />
+                          Enable Delivery Option
+                        </label>
+                        {deliveryEnabled && (
+                          <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                            Respondents can choose Pickup or Delivery. When Delivery is selected, an address form is shown and required before submit.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment Gate */}
+                <div style={{ display: "grid", gap: 6 }}>
+                  <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={paymentEnabled} onChange={(e) => setPaymentEnabled(e.target.checked)} />
+                    Require Payment After Submission
+                  </label>
+                  {paymentEnabled && (
+                    <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
+                      After submitting, respondents will be directed to a payment page. Payment processor configuration is set up separately.
+                    </p>
+                  )}
+                </div>
+              </div>
+
             </div>
           )}
         </div>
