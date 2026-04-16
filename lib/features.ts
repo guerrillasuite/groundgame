@@ -23,6 +23,10 @@ export const ALL_FEATURE_KEYS = [
   "pwa_storefront_inventory",   // View Inventory tab
   "pwa_storefront_survey",      // Take Survey tab
   "crm_dispatch",               // Dispatch bulk email
+  "sitrep_core",                // SitRep: tasks, widget, basic list view
+  "sitrep_calendar",            // SitRep: calendar view (week/month)
+  "sitrep_team",                // SitRep: assignable tasks, meetings, team calendar
+  "sitrep_missions",            // SitRep: Missions container and detail page
 ] as const;
 
 export type FeatureKey = (typeof ALL_FEATURE_KEYS)[number];
@@ -41,6 +45,7 @@ export const PLAN_FEATURES: Record<Exclude<Plan, "custom">, readonly FeatureKey[
   scout_kit: [
     "crm", "crm_lists",
     "pwa_doors", "pwa_dials", "pwa_texts",
+    "sitrep_core", "sitrep_calendar", "sitrep_team", "sitrep_missions",
   ],
   // Mid tier — adds pipeline, surveys, storefront
   field_pack: [
@@ -48,6 +53,7 @@ export const PLAN_FEATURES: Record<Exclude<Plan, "custom">, readonly FeatureKey[
     "pwa_doors", "pwa_dials", "pwa_texts",
     "pwa_storefront", "pwa_storefront_take_order", "pwa_storefront_make_sale",
     "pwa_storefront_orders", "pwa_storefront_inventory", "pwa_storefront_survey",
+    "sitrep_core", "sitrep_calendar", "sitrep_team", "sitrep_missions",
   ],
   // Full suite — adds companies, data tools, branding, dispatch
   war_chest: [
@@ -57,6 +63,7 @@ export const PLAN_FEATURES: Record<Exclude<Plan, "custom">, readonly FeatureKey[
     "pwa_doors", "pwa_dials", "pwa_texts",
     "pwa_storefront", "pwa_storefront_take_order", "pwa_storefront_make_sale",
     "pwa_storefront_orders", "pwa_storefront_inventory", "pwa_storefront_survey",
+    "sitrep_core", "sitrep_calendar", "sitrep_team", "sitrep_missions",
   ],
   // Everything including enrichment
   enterprise: ALL_FEATURE_KEYS,
@@ -84,6 +91,10 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   pwa_storefront_inventory:   { label: "Storefront — Inventory tab",      group: "App Settings" },
   pwa_storefront_survey:      { label: "Storefront — Take Survey tab",    group: "App Settings" },
   crm_dispatch:               { label: "Dispatch (Bulk Email)",            group: "CRM Data" },
+  sitrep_core:                { label: "SitRep (Tasks & Widget)",          group: "SitRep" },
+  sitrep_calendar:            { label: "SitRep Calendar View",             group: "SitRep" },
+  sitrep_team:                { label: "SitRep Team Features",             group: "SitRep" },
+  sitrep_missions:            { label: "SitRep Missions",                  group: "SitRep" },
 };
 
 export function hasFeature(features: readonly FeatureKey[], key: FeatureKey): boolean {

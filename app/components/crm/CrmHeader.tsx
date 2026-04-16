@@ -41,9 +41,9 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
   if (f("crm_stops"))   fieldItems.push({ href: "/crm/stops",   label: "Stops" });
   if (fieldItems.length > 0) nav.push({ label: "Field", items: fieldItems });
 
-  // Reminders: flat link
-  if (f("crm")) {
-    nav.push({ href: "/crm/reminders", label: "Reminders" });
+  // SitRep: flat link
+  if (f("sitrep_core")) {
+    nav.push({ href: "/crm/sitrep", label: "SitRep" });
   }
 
   // Dispatch: flat link, WarChest+ — Support can send campaigns
