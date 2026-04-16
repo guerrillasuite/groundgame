@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
-import { hasFeature } from "@/lib/features";
+import { hasFeature, ALL_FEATURE_KEYS } from "@/lib/features";
 import { Resend } from "resend";
 import { createHash } from "crypto";
 
@@ -84,20 +84,38 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { id: campaignId } = await params;
-  const [tenant, user] = await Promise.all([getTenant(), getCrmUser()]);
 
-  if (!hasFeature(tenant.features, "crm_dispatch") && !user?.isSuperAdmin) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // ── Cron bypass: trusted internal call from /api/cron/dispatch ────────────────
+  const incomingCronSecret = req.headers.get("x-cron-secret");
+  const expectedCronSecret = process.env.CRON_SECRET;
+  const isCronCall =
+    expectedCronSecret &&
+    incomingCronSecret === expectedCronSecret;
+
+  let tenantId: string;
+  if (isCronCall) {
+    const headerTenantId = req.headers.get("x-tenant-id");
+    if (!headerTenantId) {
+      return NextResponse.json({ error: "Missing x-tenant-id" }, { status: 400 });
+    }
+    tenantId = headerTenantId;
+  } else {
+    // Normal user-initiated send
+    const [tenant, user] = await Promise.all([getTenant(), getCrmUser()]);
+    if (!hasFeature(tenant.features, "crm_dispatch") && !user?.isSuperAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    tenantId = tenant.id;
   }
 
-  const sb = makeSb(tenant.id);
+  const sb = makeSb(tenantId);
 
   // Load campaign
   const { data: campaign, error } = await sb
     .from("email_campaigns")
     .select("id, name, subject, preview_text, from_name, from_email, reply_to, html_body, design_json, status, audience_type, audience_list_id, audience_segment_filters, audience_person_ids")
     .eq("id", campaignId)
-    .eq("tenant_id", tenant.id)
+    .eq("tenant_id", tenantId)
     .single();
 
   if (error || !campaign) {
@@ -129,7 +147,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { data: ppl } = await sb
       .from("people")
       .select("id, email, first_name, last_name, household_id, tenant_people!inner(tenant_id)")
-      .eq("tenant_people.tenant_id", tenant.id)
+      .eq("tenant_people.tenant_id", tenantId)
       .not("email", "is", null)
       .neq("email", "")
       .limit(10000);
@@ -175,7 +193,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       const { data: opps } = await sb
         .from("opportunities")
         .select("contact_person_id, stage, pipeline, source, priority")
-        .eq("tenant_id", tenant.id)
+        .eq("tenant_id", tenantId)
         .in("contact_person_id", pids.slice(0, 1000));
       const oppByPersonId = new Map((opps ?? []).map((o: any) => [o.contact_person_id, o]));
       segRows = segRows.map((p) => ({ ...p, opp: oppByPersonId.get(p.id) ?? {} }));
@@ -228,7 +246,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { data } = await sb
       .from("people")
       .select("id, first_name, last_name, email, household_id, tenant_people!inner(tenant_id)")
-      .eq("tenant_people.tenant_id", tenant.id)
+      .eq("tenant_people.tenant_id", tenantId)
       .in("id", chunk)
       .not("email", "is", null)
       .neq("email", "");
@@ -240,7 +258,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const { data: unsubRows } = await sb
     .from("email_unsubscribes")
     .select("email_address")
-    .eq("tenant_id", tenant.id);
+    .eq("tenant_id", tenantId);
 
   const unsubEmails = new Set((unsubRows ?? []).map((u: any) => u.email_address.toLowerCase()));
 
@@ -307,7 +325,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const sendInserts = eligible.map((p) => ({
     campaign_id: campaignId,
-    tenant_id: tenant.id,
+    tenant_id: tenantId,
     person_id: p.id,
     email_address: p.email!,
     status: "queued",
