@@ -55,6 +55,38 @@ function isOverdue(dateStr: string | null): boolean {
   return new Date(dateStr) < new Date();
 }
 
+function sitrepEffectiveDate(item: any): string | null {
+  return item.item_type === "task" ? item.due_date : item.start_at;
+}
+
+function fmtSitrepDate(item: any): string {
+  const d = sitrepEffectiveDate(item);
+  if (!d) return "—";
+  const date = new Date(d);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const tmr = new Date(now); tmr.setDate(now.getDate() + 1);
+  const timeStr = item.item_type !== "task"
+    ? " · " + date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    : "";
+  if (isToday)                         return "Today" + timeStr;
+  if (date.toDateString() === tmr.toDateString()) return "Tomorrow" + timeStr;
+  return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + timeStr;
+}
+
+function sitrepIcon(item: any, overdue: boolean): string {
+  if (overdue) return "⚠";
+  if (item.status === "in_progress") return "▶";
+  if (item.item_type === "task")    return "○";
+  return "📅";
+}
+
+function sitrepIconColor(item: any, overdue: boolean): string {
+  if (overdue)                        return "#ef4444";
+  if (item.status === "in_progress") return "#f59e0b";
+  return "var(--gg-text-dim, #6b7280)";
+}
+
 // ── Stage color by position ───────────────────────────────────────────────────
 const STAGE_COLORS = [
   "#6366f1", "#8b5cf6", "#3b82f6", "#06b6d4", "#10b981", "#22c55e",
@@ -108,25 +140,25 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     { count: hhCount },
     { count: openOppCount },
     { count: listCount },
-    { count: pendingReminderCount },
+    { count: openSitrepCount },
     { data: stages },
     { data: opps },
     { data: recentLists },
     { data: surveys },
     { data: recentStopsRaw },
-    { data: remindersRaw },
+    { data: sitrepItemsRaw },
   ] = await Promise.all([
     sb.from("tenant_people").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     sb.from("households").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     sb.from("opportunities").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).not("stage", "in", "(won,lost)"),
     sb.from("walklists").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
-    sb.from("reminders").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "pending"),
+    sb.from("sitrep_items").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).in("status", ["open", "in_progress"]),
     sb.from("opportunity_stages").select("key, label, order_index").eq("tenant_id", tenantId).order("order_index"),
     sb.from("opportunities").select("stage, amount_cents").eq("tenant_id", tenantId),
     sb.from("walklists").select("id, name, mode").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(10),
     sb.from("surveys").select("id, title").eq("tenant_id", tenantId).eq("active", true).limit(8),
     sb.from("stops").select("id, stop_at, result, person_id, channel, walklist_id").eq("tenant_id", tenantId).order("stop_at", { ascending: false }).limit(20),
-    sb.from("reminders").select("id, title, type, due_at, person_id, household_id, opportunity_id").eq("tenant_id", tenantId).eq("status", "pending").order("due_at", { ascending: true }).limit(12),
+    sb.from("sitrep_items").select("id, item_type, title, status, priority, due_date, start_at").eq("tenant_id", tenantId).in("status", ["open", "in_progress"]).neq("visibility", "private").order("due_date", { ascending: true, nullsFirst: false }).order("start_at", { ascending: true, nullsFirst: false }).limit(10),
   ]);
 
   const listIds = (recentLists ?? []).map((l: any) => l.id);
@@ -184,14 +216,14 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
   }
 
   // Red flags
-  const overdueMeta = (remindersRaw ?? []).filter((r: any) => isOverdue(r.due_at));
+  const overdueItems = (sitrepItemsRaw ?? []).filter((r: any) => isOverdue(sitrepEffectiveDate(r)));
   const staleLists = (recentLists ?? []).filter((l: any) => !stopCounts.has(l.id));
   const nearlyDoneLists = (recentLists ?? []).filter((l: any) => {
     const total = itemCounts.get(l.id) ?? 0;
     const done = stopCounts.get(l.id) ?? 0;
     return total > 0 && done / total >= 0.9;
   });
-  const hasRedFlags = overdueMeta.length > 0 || staleLists.length > 0 || nearlyDoneLists.length > 0;
+  const hasRedFlags = overdueItems.length > 0 || staleLists.length > 0 || nearlyDoneLists.length > 0;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -221,7 +253,7 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
           { label: "Households", value: (hhCount ?? 0).toLocaleString(), href: "/crm/households", color: "#8b5cf6", icon: "🏠" },
           { label: "Open Opps", value: (openOppCount ?? 0).toLocaleString(), href: "/crm/opportunities", color: "#f59e0b", icon: "🎯" },
           { label: "Active Lists", value: (listCount ?? 0).toLocaleString(), href: "/crm/lists", color: "#10b981", icon: "📋" },
-          { label: "Reminders Due", value: (pendingReminderCount ?? 0).toLocaleString(), href: "/crm/reminders", color: (pendingReminderCount ?? 0) > 0 ? "#ef4444" : "#10b981", icon: "🔔" },
+          { label: "SitRep Items", value: (openSitrepCount ?? 0).toLocaleString(), href: "/crm/sitrep", color: (openSitrepCount ?? 0) > 0 ? "#6366f1" : "#10b981", icon: "📋" },
         ].map(({ label, value, href, color, icon }) => (
           <Link key={href} href={href} className="db-kpi" style={{
             ...card,
@@ -243,9 +275,9 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
         <div style={{ ...card, borderLeft: "3px solid #f59e0b", background: "rgba(245,158,11,0.06)" }}>
           <p style={{ ...sectionLabel, color: "#b45309" }}>⚠ Attention Needed</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {overdueMeta.length > 0 && (
-              <Link href="/crm/reminders" style={{ textDecoration: "none", color: "#b45309", fontSize: 13, fontWeight: 600 }}>
-                🔴 {overdueMeta.length} overdue reminder{overdueMeta.length !== 1 ? "s" : ""} — act now →
+            {overdueItems.length > 0 && (
+              <Link href="/crm/sitrep" style={{ textDecoration: "none", color: "#b45309", fontSize: 13, fontWeight: 600 }}>
+                🔴 {overdueItems.length} past-due item{overdueItems.length !== 1 ? "s" : ""} on the board — act now →
               </Link>
             )}
             {staleLists.map((l: any) => (
@@ -406,37 +438,32 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
           }
         </div>
 
-        {/* Pending Reminders */}
+        {/* SitRep Widget */}
         <div style={card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <p style={{ ...sectionLabel, margin: 0 }}>🔔 Reminders</p>
-            <Link href="/crm/reminders" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>All →</Link>
+            <p style={{ ...sectionLabel, margin: 0 }}>📋 SitRep</p>
+            <Link href="/crm/sitrep" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>Full SitRep →</Link>
           </div>
-          {(remindersRaw ?? []).length === 0
-            ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear — no pending reminders! 🎉</p>
+          {(sitrepItemsRaw ?? []).length === 0
+            ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
             : (
               <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {(remindersRaw as any[]).map((r, i) => {
-                  const overdue = isOverdue(r.due_at);
+                {(sitrepItemsRaw as any[]).map((item, i) => {
+                  const overdue = isOverdue(sitrepEffectiveDate(item));
+                  const icon = sitrepIcon(item, overdue);
+                  const iconColor = sitrepIconColor(item, overdue);
                   return (
-                    <div key={r.id} className="db-reminder-row" style={{
-                      padding: "8px 10px", borderRadius: 6,
+                    <Link key={item.id} href={`/crm/sitrep`} className="db-reminder-row" style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "8px 10px", borderRadius: 6, textDecoration: "none", color: "inherit",
                       borderTop: i > 0 ? "1px solid var(--gg-border, #f3f4f6)" : "none",
-                      borderLeft: overdue ? "3px solid #ef4444" : "3px solid transparent",
                     }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 4 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
-                        <span style={{
-                          fontSize: 11, fontWeight: 700, flexShrink: 0,
-                          color: overdue ? "#ef4444" : "var(--gg-text-dim, #6b7280)",
-                        }}>
-                          {overdue ? "OVERDUE" : fmtDate(r.due_at)}
-                        </span>
-                      </div>
-                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--gg-text-dim, #9ca3af)" }}>
-                        {r.type?.replace(/_/g, " ")}
-                      </p>
-                    </div>
+                      <span style={{ fontSize: 13, color: iconColor, flexShrink: 0, width: 16 }}>{icon}</span>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#ef4444" : "var(--gg-text-dim, #6b7280)" }}>
+                        {overdue ? "PAST DUE" : fmtSitrepDate(item)}
+                      </span>
+                    </Link>
                   );
                 })}
               </div>
@@ -466,7 +493,7 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
   const myListIds = (assignments ?? []).map((a: any) => a.walklist_id).filter(Boolean);
 
   // Parallel fetches
-  const [myListsRaw, myItemsRaw, myStopsRaw, myRemindersRaw, myRecentStopsRaw] = await Promise.all([
+  const [myListsRaw, myItemsRaw, myStopsRaw, mySitrepRaw, myRecentStopsRaw] = await Promise.all([
     myListIds.length
       ? sb.from("walklists").select("id, name, mode").in("id", myListIds)
       : Promise.resolve({ data: [] }),
@@ -476,7 +503,7 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
     myListIds.length
       ? sb.from("stops").select("walklist_id, stop_at").eq("tenant_id", tenantId).in("walklist_id", myListIds).gte("stop_at", yesterday)
       : Promise.resolve({ data: [] }),
-    sb.from("reminders").select("id, title, type, due_at, person_id, household_id").eq("tenant_id", tenantId).eq("assigned_to_user_id", userId).eq("status", "pending").order("due_at", { ascending: true }).limit(15),
+    sb.from("sitrep_items").select("id, item_type, title, status, priority, due_date, start_at, created_by, sitrep_assignments(user_id)").eq("tenant_id", tenantId).in("status", ["open", "in_progress"]).order("due_date", { ascending: true, nullsFirst: false }).order("start_at", { ascending: true, nullsFirst: false }).limit(30),
     myListIds.length
       ? sb.from("stops").select("id, stop_at, result, person_id, channel").eq("tenant_id", tenantId).in("walklist_id", myListIds).order("stop_at", { ascending: false }).limit(10)
       : Promise.resolve({ data: [] }),
@@ -500,7 +527,10 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
 
   // Quick stats
   const myListCount = myListIds.length;
-  const overdueCount = (myRemindersRaw ?? []).filter((r: any) => isOverdue(r.due_at)).length;
+  const myItems = ((mySitrepRaw as any)?.data ?? mySitrepRaw ?? []).filter((item: any) =>
+    item.created_by === userId || (item.sitrep_assignments ?? []).some((a: any) => a.user_id === userId)
+  );
+  const overdueCount = myItems.filter((item: any) => isOverdue(sitrepEffectiveDate(item))).length;
 
   // Count all stops today (reuse myStopsRaw which is last 24h)
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
@@ -536,7 +566,7 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
         {[
           { label: "My Lists", value: myListCount, href: "/crm/lists", color: "#10b981", icon: "📋" },
-          { label: "Overdue Reminders", value: overdueCount, href: "/crm/reminders", color: overdueCount > 0 ? "#ef4444" : "#10b981", icon: "🔔" },
+          { label: "Past Due", value: overdueCount, href: "/crm/sitrep", color: overdueCount > 0 ? "#ef4444" : "#10b981", icon: "⚠" },
           { label: "Stops Today", value: stopsToday, href: "/crm/stops", color: "#6366f1", icon: "⚡" },
         ].map(({ label, value, href, color, icon }) => (
           <Link key={href} href={href} className="db-kpi" style={{
@@ -596,30 +626,29 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
       {/* Reminders + Recent Stops side by side */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
 
-        {/* My Reminders */}
+        {/* SitRep Widget */}
         <div style={card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <p style={{ ...sectionLabel, margin: 0 }}>🔔 My Reminders</p>
-            <Link href="/crm/reminders" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>All →</Link>
+            <p style={{ ...sectionLabel, margin: 0 }}>📋 SitRep</p>
+            <Link href="/crm/sitrep" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>Full SitRep →</Link>
           </div>
-          {(myRemindersRaw ?? []).length === 0
-            ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear! 🎉</p>
-            : (myRemindersRaw as any[]).map((r, i) => {
-                const overdue = isOverdue(r.due_at);
-                const href = r.person_id ? `/crm/people/${r.person_id}` : r.household_id ? `/crm/households/${r.household_id}` : "/crm/reminders";
+          {myItems.length === 0
+            ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
+            : myItems.slice(0, 8).map((item: any, i: number) => {
+                const overdue = isOverdue(sitrepEffectiveDate(item));
+                const icon = sitrepIcon(item, overdue);
+                const iconColor = sitrepIconColor(item, overdue);
                 return (
-                  <Link key={r.id} href={href} className="db-reminder-row" style={{
-                    display: "block", padding: "9px 10px", borderRadius: 6, textDecoration: "none", color: "inherit",
+                  <Link key={item.id} href="/crm/sitrep" className="db-reminder-row" style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 10px", borderRadius: 6, textDecoration: "none", color: "inherit",
                     borderTop: i > 0 ? "1px solid var(--gg-border, #f3f4f6)" : "none",
-                    borderLeft: overdue ? "3px solid #ef4444" : "3px solid transparent",
                   }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#ef4444" : "#f59e0b" }}>
-                        {overdue ? "OVERDUE" : fmtDate(r.due_at)}
-                      </span>
-                    </div>
-                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--gg-text-dim, #9ca3af)" }}>{r.type?.replace(/_/g, " ")}</p>
+                    <span style={{ fontSize: 13, color: iconColor, flexShrink: 0, width: 16 }}>{icon}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#ef4444" : "var(--gg-text-dim, #6b7280)" }}>
+                      {overdue ? "PAST DUE" : fmtSitrepDate(item)}
+                    </span>
                   </Link>
                 );
               })
