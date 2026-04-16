@@ -11,7 +11,7 @@ function makeSb() {
 
 async function fetchSurveyByIdOrSlug(surveyId: string) {
   const sb = makeSb();
-  const cols = "id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact";
+  const cols = "id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, show_share, show_take_again";
   // Try by ID first
   let { data: survey } = await sb
     .from("surveys")
@@ -151,6 +151,8 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
       initialPostSubmitAnswers={Object.keys(initialPostSubmitAnswers).length > 0 ? initialPostSubmitAnswers : undefined}
       branding={branding ? { primaryColor: branding.primaryColor, bgColor: branding.bgColor, textColor: branding.textColor, logoUrl: branding.logoUrl } : undefined}
       viewConfig={viewConfig}
+      showShare={survey.show_share !== false}
+      showTakeAgain={survey.show_take_again !== false}
     />
   );
 }

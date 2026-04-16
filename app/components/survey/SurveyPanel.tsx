@@ -44,6 +44,8 @@ interface SurveyPanelProps {
   postSubmitSurveyId?: string | null;
   postSubmitQuestions?: Question[] | null;
   postSubmitRequired?: boolean;
+  showShare?: boolean;
+  showTakeAgain?: boolean;
   isKiosk: boolean;
   contactId?: string | null;
   initialAnswers?: Record<string, string>;
@@ -231,6 +233,8 @@ export default function SurveyPanel({
   postSubmitSurveyId,
   postSubmitQuestions,
   postSubmitRequired,
+  showShare = true,
+  showTakeAgain = true,
   isKiosk,
   contactId,
   initialAnswers,
@@ -1086,17 +1090,21 @@ export default function SurveyPanel({
                 {learnMoreLabel || "Learn More →"}
               </a>
             )}
-            <div style={{ position: "relative" }}>
-              <button onClick={handleShare} style={btn(isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)", textColor)}>
-                Share
-              </button>
-              {shareToast && (
-                <div style={{ position: "absolute", top: -36, left: "50%", transform: "translateX(-50%)", background: "#16a34a", color: "#fff", padding: "4px 12px", borderRadius: 6, fontSize: 13, whiteSpace: "nowrap" }}>
-                  Link copied!
-                </div>
-              )}
-            </div>
-            <button onClick={resetSurvey} style={{ ...ghostBtn, marginTop: 4 }}>Take Again</button>
+            {showShare && (
+              <div style={{ position: "relative" }}>
+                <button onClick={handleShare} style={btn(isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)", textColor)}>
+                  Share
+                </button>
+                {shareToast && (
+                  <div style={{ position: "absolute", top: -36, left: "50%", transform: "translateX(-50%)", background: "#16a34a", color: "#fff", padding: "4px 12px", borderRadius: 6, fontSize: 13, whiteSpace: "nowrap" }}>
+                    Link copied!
+                  </div>
+                )}
+              </div>
+            )}
+            {showTakeAgain && (
+              <button onClick={resetSurvey} style={{ ...ghostBtn, marginTop: 4 }}>Take Again</button>
+            )}
           </div>
         )}
         {isKiosk && countdown !== null && (

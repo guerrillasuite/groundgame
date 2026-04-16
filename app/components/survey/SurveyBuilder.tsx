@@ -134,6 +134,8 @@ export default function SurveyBuilder({
   const [postSubmitHeader, setPostSubmitHeader] = useState("");
   const [thankyouMessage, setThankyouMessage] = useState("");
   const [learnMoreLabel, setLearnMoreLabel] = useState("");
+  const [showShare, setShowShare] = useState(true);
+  const [showTakeAgain, setShowTakeAgain] = useState(true);
   const [embeddableSurveys, setEmbeddableSurveys] = useState<{ id: string; title: string }[]>([]);
   const [activeChannels, setActiveChannels] = useState<Set<string>>(new Set(["embedded","hosted","doors","dials","texts"]));
 
@@ -218,6 +220,8 @@ export default function SurveyBuilder({
         setPostSubmitHeader(s.post_submit_header ?? "");
         setThankyouMessage(s.thankyou_message ?? "");
         setLearnMoreLabel(s.learn_more_label ?? "");
+        setShowShare(s.show_share !== false);
+        setShowTakeAgain(s.show_take_again !== false);
         // Opp trigger
         const ot = s.opp_trigger as any;
         if (ot?.enabled) {
@@ -512,6 +516,8 @@ export default function SurveyBuilder({
             post_submit_header: postSubmitHeader || null,
             thankyou_message: thankyouMessage || null,
             learn_more_label: learnMoreLabel || null,
+            show_share: showShare,
+            show_take_again: showTakeAgain,
             opp_trigger: oppEnabled ? {
               enabled: true,
               mode: oppMode,
@@ -919,6 +925,19 @@ export default function SurveyBuilder({
                     style={inputStyle}
                   />
                 )}
+              </div>
+
+              {/* End-of-survey button toggles */}
+              <div style={{ display: "grid", gap: 8 }}>
+                <label style={labelStyle}>End-of-survey buttons</label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked={showShare} onChange={(e) => setShowShare(e.target.checked)} />
+                  Show "Share" button
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked={showTakeAgain} onChange={(e) => setShowTakeAgain(e.target.checked)} />
+                  Show "Take Again" button
+                </label>
               </div>
 
               {/* Footer text */}

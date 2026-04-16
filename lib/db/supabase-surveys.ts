@@ -69,6 +69,8 @@ export type Survey = {
   storefront_mode: "take_order" | null;
   delivery_enabled: boolean;
   order_products: string[] | null; // null = all active; array = curated product IDs
+  show_share: boolean;
+  show_take_again: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -237,6 +239,8 @@ export async function updateSurvey(
     delivery_enabled?: boolean;
     order_products?: string[] | null;
     auto_fields?: { crm_field: string; value: string }[] | null;
+    show_share?: boolean;
+    show_take_again?: boolean;
   }
 ): Promise<void> {
   const sb = getAdminClient();
@@ -266,6 +270,8 @@ export async function updateSurvey(
   if ("delivery_enabled" in params) update.delivery_enabled = params.delivery_enabled ?? false;
   if ("order_products" in params) update.order_products = params.order_products ?? null;
   if ("auto_fields" in params) update.auto_fields = params.auto_fields?.length ? params.auto_fields : null;
+  if ("show_share" in params) update.show_share = params.show_share ?? true;
+  if ("show_take_again" in params) update.show_take_again = params.show_take_again ?? true;
   const { error } = await sb.from("surveys").update(update).eq("id", surveyId);
   if (error) throw error;
 }
