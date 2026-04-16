@@ -3,7 +3,7 @@ import { getCrmUser } from "@/lib/crm-auth";
 
 export async function GET() {
   const crmUser = await getCrmUser();
-  if (!crmUser || (crmUser.role !== "admin" && crmUser.role !== "manager")) {
+  if (!crmUser || (crmUser.role !== "director" && crmUser.role !== "support")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

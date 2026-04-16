@@ -63,7 +63,7 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "tenantId and role are required" }, { status: 400 });
     }
 
-    const dbRole = role === "admin" ? "admin" : "staff";
+    const dbRole = role; // director | support | operative
 
     const { error } = await sb()
       .from("user_tenants")

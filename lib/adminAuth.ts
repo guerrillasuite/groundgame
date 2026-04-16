@@ -10,7 +10,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-export type AdminRole = "super_admin" | "admin" | "field" | null;
+export type AdminRole = "super_admin" | "director" | "support" | "operative" | null;
 
 export type AdminIdentity = {
   userId: string;
@@ -76,8 +76,9 @@ export async function getAdminIdentity(
 
   const role: AdminRole = isSuperAdmin
     ? "super_admin"
-    : dbRole === "admin" || dbRole === "owner" ? "admin"
-    : dbRole === "staff" || dbRole === "manager" ? "field"
+    : dbRole === "director" || dbRole === "admin" || dbRole === "owner" ? "director"
+    : dbRole === "support" || dbRole === "manager" ? "support"
+    : dbRole === "operative" || dbRole === "staff" || dbRole === "field" ? "operative"
     : null;
 
   const tenantMemberships = (memberships ?? []).map((m) => ({
@@ -105,7 +106,7 @@ export function assertCanManageTenant(
   if (!identity) throw new UnauthorizedError("Not authenticated");
   if (identity.isSuperAdmin) return;
   const canManage = identity.tenantMemberships.some(
-    (m) => m.tenantId === tenantId && ["admin", "owner"].includes(m.role)
+    (m) => m.tenantId === tenantId && ["director", "support", "admin", "owner"].includes(m.role)
   );
   if (!canManage) throw new ForbiddenError("Not authorized for this tenant");
 }

@@ -138,8 +138,8 @@ export default function PwaSettingsPage() {
           <p style={{ margin: '0 0 2px', fontSize: 12, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Signed in as</p>
           <p style={{ margin: 0, fontWeight: 600, fontSize: 15 }}>{email ?? '—'}</p>
           {role && (
-            <span style={{ display: 'inline-block', marginTop: 8, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: role === 'admin' ? 'color-mix(in srgb, var(--gg-primary, #2563eb) 25%, transparent)' : 'rgba(255,255,255,.08)', color: role === 'admin' ? 'var(--gg-accent, #93c5fd)' : '#ccc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {role}
+            <span style={{ display: 'inline-block', marginTop: 8, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: role === 'director' ? 'rgba(124,58,237,.35)' : role === 'support' ? 'color-mix(in srgb, var(--gg-primary, #2563eb) 25%, transparent)' : 'rgba(255,255,255,.08)', color: role === 'director' ? '#c4b5fd' : role === 'support' ? 'var(--gg-accent, #93c5fd)' : '#ccc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {role === 'director' ? 'Director' : role === 'support' ? 'Support' : role === 'operative' ? 'Operative' : role}
             </span>
           )}
         </div>

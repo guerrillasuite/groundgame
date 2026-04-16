@@ -18,7 +18,7 @@ type CrmUser = {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "field" | null;
+  role: "director" | "support" | "operative" | null;
   tenantId: string | null;
   lastSignIn: string | null;
   createdAt: string | null;
@@ -48,9 +48,13 @@ function relativeTime(iso: string | null): string {
 
 function RoleBadge({ role }: { role: string | null }) {
   const styles: Record<string, { bg: string; color: string; label: string }> = {
-    super_admin: { bg: "#1d4ed8", color: "#fff", label: "Super Admin" },
-    admin:       { bg: "#7c3aed", color: "#fff", label: "Admin" },
-    field:       { bg: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.7)", label: "Field" },
+    super_admin: { bg: "#1d4ed8",             color: "#fff",               label: "Super Admin" },
+    director:    { bg: "#7c3aed",             color: "#fff",               label: "Director" },
+    support:     { bg: "rgba(37,99,235,.5)",  color: "#bfdbfe",            label: "Support" },
+    operative:   { bg: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.7)", label: "Operative" },
+    // legacy fallbacks during migration
+    admin:       { bg: "#7c3aed",             color: "#fff",               label: "Director" },
+    field:       { bg: "rgba(255,255,255,.1)", color: "rgba(255,255,255,.7)", label: "Operative" },
   };
   const s = styles[role ?? ""] ?? { bg: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.4)", label: "—" };
   return (
@@ -145,7 +149,7 @@ export default function UsersPanel() {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "field">("field");
+  const [inviteRole, setInviteRole] = useState<"director" | "support" | "operative">("operative");
   const [inviteTenant, setInviteTenant] = useState<string>("");
   const [invitePassword, setInvitePassword] = useState("");
   const [inviting, setInviting] = useState(false);
@@ -155,7 +159,7 @@ export default function UsersPanel() {
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [editRole, setEditRole] = useState<"admin" | "field">("field");
+  const [editRole, setEditRole] = useState<"director" | "support" | "operative">("operative");
   const [editPassword, setEditPassword] = useState("");
   const [editConfirm, setEditConfirm] = useState("");
   const [editSaving, setEditSaving] = useState(false);
@@ -168,7 +172,7 @@ export default function UsersPanel() {
   const [userTenants, setUserTenants] = useState<TenantMembership[]>([]);
   const [userTenantsLoading, setUserTenantsLoading] = useState(false);
   const [addTenantId, setAddTenantId] = useState("");
-  const [addTenantRole, setAddTenantRole] = useState<"admin" | "field">("field");
+  const [addTenantRole, setAddTenantRole] = useState<"director" | "support" | "operative">("operative");
   const [tenantMgmtErr, setTenantMgmtErr] = useState<string | null>(null);
 
   // Delete state
@@ -304,7 +308,7 @@ export default function UsersPanel() {
   function startEdit(u: CrmUser) {
     setEditingId(u.id);
     setEditName(u.name);
-    setEditRole(u.role ?? "field");
+    setEditRole(u.role ?? "operative");
     setEditPassword("");
     setEditConfirm("");
     setEditErr(null);
@@ -473,7 +477,7 @@ export default function UsersPanel() {
     );
   }
 
-  if (identity && identity.role !== "admin" && !identity.isSuperAdmin) {
+  if (identity && identity.role !== "director" && identity.role !== "support" && !identity.isSuperAdmin) {
     return (
       <section className="stack" style={{ padding: "2rem" }}>
         <h1 style={{ margin: 0 }}>Users</h1>
@@ -541,9 +545,10 @@ export default function UsersPanel() {
             <div style={{ display: "grid", gridTemplateColumns: identity?.isSuperAdmin ? "1fr 1fr 1fr" : "1fr 1fr", gap: 10 }}>
               <div>
                 <label style={{ fontSize: 11, opacity: 0.6, display: "block", marginBottom: 4 }}>Role *</label>
-                <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as "admin" | "field")} style={SELECT}>
-                  <option value="field">Field</option>
-                  <option value="admin">Admin</option>
+                <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as "director" | "support" | "operative")} style={SELECT}>
+                  <option value="operative">Operative</option>
+                  <option value="support">Support</option>
+                  <option value="director">Director</option>
                 </select>
               </div>
 
@@ -665,9 +670,10 @@ export default function UsersPanel() {
                     </div>
                     <div>
                       <label style={{ fontSize: 11, opacity: 0.6, display: "block", marginBottom: 4 }}>Role</label>
-                      <select value={editRole} onChange={(e) => setEditRole(e.target.value as "admin" | "field")} style={SELECT}>
-                        <option value="field">Field</option>
-                        <option value="admin">Admin</option>
+                      <select value={editRole} onChange={(e) => setEditRole(e.target.value as "director" | "support" | "operative")} style={SELECT}>
+                        <option value="operative">Operative</option>
+                        <option value="support">Support</option>
+                        <option value="director">Director</option>
                       </select>
                     </div>
                   </div>
@@ -775,11 +781,12 @@ export default function UsersPanel() {
                           </select>
                           <select
                             value={addTenantRole}
-                            onChange={(e) => setAddTenantRole(e.target.value as "admin" | "field")}
+                            onChange={(e) => setAddTenantRole(e.target.value as "director" | "support" | "operative")}
                             style={{ ...SELECT, flex: 1, minWidth: 90 }}
                           >
-                            <option value="field">Field</option>
-                            <option value="admin">Admin</option>
+                            <option value="operative">Operative</option>
+                            <option value="support">Support</option>
+                            <option value="director">Director</option>
                           </select>
                           <button
                             type="button"

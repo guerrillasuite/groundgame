@@ -85,7 +85,7 @@ export async function PATCH(
     const body = await request.json();
     const { name, role, password } = body as {
       name?: string;
-      role?: "admin" | "field";
+      role?: "director" | "support" | "operative";
       password?: string;
     };
 
@@ -103,8 +103,8 @@ export async function PATCH(
         ...(target.app_metadata ?? {}),
         role,
       };
-      // Also update user_tenants.role (map app role → DB enum)
-      const dbRole = role === "admin" ? "admin" : "staff";
+      // Store role directly — new values are director/support/operative
+      const dbRole = role;
       if (targetTenantId) {
         await sb
           .from("user_tenants")

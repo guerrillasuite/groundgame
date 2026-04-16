@@ -141,8 +141,8 @@ export default function SettingsPage() {
         <h4 style={{ margin: '0 0 4px' }}>Account</h4>
         {email && <p className="muted" style={{ margin: 0 }}>{email}</p>}
         {role && (
-          <span style={{ display: 'inline-block', marginTop: 6, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: role === 'admin' ? 'rgba(37,99,235,.25)' : 'rgba(255,255,255,.08)', color: role === 'admin' ? '#93c5fd' : '#ccc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            {role}
+          <span style={{ display: 'inline-block', marginTop: 6, padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: role === 'director' ? 'rgba(124,58,237,.35)' : role === 'support' ? 'rgba(37,99,235,.25)' : 'rgba(255,255,255,.08)', color: role === 'director' ? '#c4b5fd' : role === 'support' ? '#93c5fd' : '#ccc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {role === 'director' ? 'Director' : role === 'support' ? 'Support' : role === 'operative' ? 'Operative' : role}
           </span>
         )}
       </div>

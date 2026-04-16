@@ -12,7 +12,8 @@ const SUPER_ADMIN_EMAILS = (process.env.SUPER_ADMIN_EMAILS ?? "")
 
 export type CrmUser = {
   userId: string;
-  isAdmin: boolean;
+  role: "director" | "support" | "operative" | null;
+  isAdmin: boolean;   // true for director and support (CRM access); false for operative
   isSuperAdmin: boolean;
 };
 
@@ -55,9 +56,15 @@ export async function getCrmUser(): Promise<CrmUser | null> {
     .eq("user_id", user.id)
     .in("status", ["active", "invited"]);
 
-  const isAdmin =
-    isSuperAdmin ||
-    memberships?.some((m) => ["admin", "owner", "manager"].includes(m.role)) === true;
+  const primaryRole = memberships?.[0]?.role ?? null;
+  const role =
+    isSuperAdmin ? "director" as const
+    : ["director", "admin", "owner"].includes(primaryRole ?? "") ? "director" as const
+    : ["support", "manager"].includes(primaryRole ?? "") ? "support" as const
+    : ["operative", "staff", "field"].includes(primaryRole ?? "") ? "operative" as const
+    : null;
 
-  return { userId: user.id, isAdmin, isSuperAdmin };
+  const isAdmin = isSuperAdmin || role === "director" || role === "support";
+
+  return { userId: user.id, role, isAdmin, isSuperAdmin };
 }

@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       tenantFilter = filterTenantId === "all" ? null : filterTenantId;
     } else {
       // Tenant admin: always own tenant only
-      if (identity.role !== "admin") {
+      if (identity.role !== "director" && identity.role !== "support") {
         return NextResponse.json({ error: "Not authorized" }, { status: 403 });
       }
       tenantFilter = identity.tenantId;
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
     const { email, name, role, tenantId, password } = body as {
       email: string;
       name?: string;
-      role: "admin" | "field";
+      role: "director" | "support" | "operative";
       tenantId: string;
       password?: string;
     };
@@ -198,8 +198,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Map app role → DB user_role enum
-    const dbRole = role === "admin" ? "admin" : "staff";
+    // Store role directly — new values are director/support/operative
+    const dbRole = role;
     const memberStatus = password ? "active" : "invited";
 
     // Insert into user_tenants so multi-tenant membership is tracked
@@ -218,7 +218,7 @@ export async function POST(request: Request) {
     let inviteLink: string | null = null;
     if (!password) {
       // Generate a magic-link invite so the admin can share it
-      const inviteNext = role === "admin" ? "/crm" : "/";
+      const inviteNext = (role === "director" || role === "support") ? "/crm" : "/";
       const inviteHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
       const inviteProto = request.headers.get("x-forwarded-proto") ?? "https";
       const inviteRedirectTo = `${inviteProto}://${inviteHost}/api/auth/callback?next=${encodeURIComponent(inviteNext)}`;
