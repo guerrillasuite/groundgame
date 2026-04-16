@@ -94,6 +94,21 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     .eq("tenant_id", tenant.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Assignment management
+  if (Array.isArray(body.add_assignee_ids) && body.add_assignee_ids.length > 0) {
+    const role = body.assignment_role ?? "assignee";
+    await sb.from("sitrep_assignments").upsert(
+      body.add_assignee_ids.map((uid: string) => ({ item_id: id, user_id: uid, role })),
+      { onConflict: "item_id,user_id" }
+    );
+  }
+  if (Array.isArray(body.remove_assignee_ids) && body.remove_assignee_ids.length > 0) {
+    await sb.from("sitrep_assignments").delete()
+      .eq("item_id", id)
+      .in("user_id", body.remove_assignee_ids);
+  }
+
   return NextResponse.json({ ok: true });
 }
 
