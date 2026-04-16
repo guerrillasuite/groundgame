@@ -1,4 +1,5 @@
 FROM alpine:3.19
 RUN apk add --no-cache curl
-# CMD is overridden by Railway's cron start command
-CMD ["echo", "cron container ready"]
+COPY dispatch.sh /app/dispatch.sh
+RUN chmod +x /app/dispatch.sh
+CMD ["sh", "/app/dispatch.sh"]
