@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { requireDirectorApi } from "@/lib/crm-auth";
 import { ALL_FEATURE_KEYS, type FeatureKey } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,8 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
+  const denied = await requireDirectorApi();
+  if (denied) return denied;
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
 

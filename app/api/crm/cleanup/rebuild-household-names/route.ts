@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { requireDirectorApi } from "@/lib/crm-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ async function fetchAll<T>(
 }
 
 export async function POST() {
+  const denied = await requireDirectorApi();
+  if (denied) return denied;
   const tenant = await getTenant();
   const tenantId = tenant.id;
   const sb = makeSb(tenantId);

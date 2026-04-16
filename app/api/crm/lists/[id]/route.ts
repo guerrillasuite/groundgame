@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenant } from "@/lib/tenant";
+import { requireDirectorApi } from "@/lib/crm-auth";
 import { createClient } from "@supabase/supabase-js";
 
 function makeSb(tenantId: string) {
@@ -14,6 +15,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireDirectorApi();
+  if (denied) return denied;
   const { id } = await params;
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);

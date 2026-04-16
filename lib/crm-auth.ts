@@ -1,5 +1,6 @@
 // lib/crm-auth.ts (server-only)
 // Returns the current CRM user's identity from the session cookie.
+// Also exports role-guard helpers for use in server components and API routes.
 
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
@@ -67,4 +68,61 @@ export async function getCrmUser(): Promise<CrmUser | null> {
   const isAdmin = isSuperAdmin || role === "director" || role === "support";
 
   return { userId: user.id, role, isAdmin, isSuperAdmin };
+}
+
+// ── Role guards for server components (use redirect) ─────────────────────────
+// Import `redirect` from "next/navigation" in the calling page.
+
+/**
+ * Call at the top of any CRM server component.
+ * Operatives have no CRM access — redirects them to the PWA root.
+ * Returns the CrmUser if access is allowed (may be null if not logged in —
+ * pages that need a guaranteed user should also check for null).
+ */
+export async function requireCrmAccess(): Promise<CrmUser | null> {
+  const { redirect } = await import("next/navigation");
+  const user = await getCrmUser();
+  if (user?.role === "operative") redirect("/");
+  return user;
+}
+
+/**
+ * Call at the top of Director-only server components (settings, import,
+ * dedupe, cleanup, bulk-edit, products, user management).
+ * Redirects Support and Operative users to /crm.
+ */
+export async function requireDirectorPage(): Promise<CrmUser> {
+  const { redirect } = await import("next/navigation");
+  const user = await getCrmUser();
+  if (!user || (user.role !== "director" && !user.isSuperAdmin)) redirect("/crm");
+  return user;
+}
+
+// ── Role guards for API routes (return NextResponse) ─────────────────────────
+
+import { NextResponse } from "next/server";
+
+/**
+ * Returns a 403 NextResponse if the current cookie session is not a Director.
+ * Returns null if the check passes (caller continues normally).
+ * Usage: const denied = await requireDirectorApi(); if (denied) return denied;
+ */
+export async function requireDirectorApi(): Promise<NextResponse | null> {
+  const user = await getCrmUser();
+  if (!user || (user.role !== "director" && !user.isSuperAdmin)) {
+    return NextResponse.json({ error: "Director access required" }, { status: 403 });
+  }
+  return null;
+}
+
+/**
+ * Returns a 403 NextResponse if the current session is an Operative (no CRM access).
+ * Support and Directors pass through.
+ */
+export async function requireCrmApi(): Promise<NextResponse | null> {
+  const user = await getCrmUser();
+  if (!user || user.role === "operative" || user.role === null) {
+    return NextResponse.json({ error: "CRM access required" }, { status: 403 });
+  }
+  return null;
 }

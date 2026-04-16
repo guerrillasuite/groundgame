@@ -1,5 +1,5 @@
 import { getTenant } from "@/lib/tenant";
-import { getCrmUser } from "@/lib/crm-auth";
+import { requireDirectorPage } from "@/lib/crm-auth";
 import { hasFeature } from "@/lib/features";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -7,9 +7,10 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 export default async function DispatchSettingsPage() {
-  const [tenant, user] = await Promise.all([getTenant(), getCrmUser()]);
+  const user = await requireDirectorPage();
+  const tenant = await getTenant();
 
-  if (!hasFeature(tenant.features, "crm_dispatch") && !user?.isSuperAdmin) {
+  if (!hasFeature(tenant.features, "crm_dispatch") && !user.isSuperAdmin) {
     redirect("/crm/settings");
   }
 

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { requireDirectorPage } from "@/lib/crm-auth";
 import ProductListClient from "./ui/ProductListClient";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ function makeSb(tenantId: string) {
 }
 
 export default async function ProductsPage() {
+  await requireDirectorPage();
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
 

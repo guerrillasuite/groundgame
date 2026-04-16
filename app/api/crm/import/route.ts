@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getAdminIdentity } from "@/lib/adminAuth";
+import { requireDirectorApi } from "@/lib/crm-auth";
 import { getTenant } from "@/lib/tenant";
 import { validateRow, findDuplicateEmails, type MappedRow } from "@/lib/crm/import-validation";
 import {
@@ -126,14 +126,8 @@ function normalizeDomain(d: string): string {
 
 export async function POST(request: Request) {
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const identity = await getAdminIdentity(request);
-  if (!identity) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-  const isAdmin = identity.isSuperAdmin || identity.role === "admin";
-  if (!isAdmin) {
-    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-  }
+  const denied = await requireDirectorApi();
+  if (denied) return denied;
 
   const body = await request.json();
   const rows: MappedRow[] = body.rows ?? [];

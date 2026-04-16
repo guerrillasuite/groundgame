@@ -1,5 +1,7 @@
+import { requireDirectorPage } from "@/lib/crm-auth";
 import ContactTypesClient from "./ContactTypesClient";
 
-export default function ContactTypesPage() {
+export default async function ContactTypesPage() {
+  await requireDirectorPage();
   return <ContactTypesClient />;
 }

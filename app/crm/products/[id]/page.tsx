@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { notFound } from "next/navigation";
+import { requireDirectorPage } from "@/lib/crm-auth";
 import ProductCrmPanel from "./ui/ProductCrmPanel";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ function makeSb(tenantId: string) {
 }
 
 export default async function ProductCrmDetailPage({ params }: Ctx) {
+  await requireDirectorPage();
   const { id } = await params;
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);

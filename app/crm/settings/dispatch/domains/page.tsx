@@ -1,5 +1,5 @@
 import { getTenant } from "@/lib/tenant";
-import { getCrmUser } from "@/lib/crm-auth";
+import { requireDirectorPage } from "@/lib/crm-auth";
 import { hasFeature } from "@/lib/features";
 import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -17,9 +17,10 @@ function makeSb(tenantId: string) {
 }
 
 export default async function SendingDomainsPage() {
-  const [tenant, user] = await Promise.all([getTenant(), getCrmUser()]);
+  const user = await requireDirectorPage();
+  const tenant = await getTenant();
 
-  if (!hasFeature(tenant.features, "crm_dispatch") && !user?.isSuperAdmin) {
+  if (!hasFeature(tenant.features, "crm_dispatch") && !user.isSuperAdmin) {
     redirect("/crm/settings");
   }
 

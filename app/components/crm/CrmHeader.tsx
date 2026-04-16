@@ -9,8 +9,11 @@ type NavItem  = { href: string; label: string; feature?: FeatureKey; superAdminO
 type NavGroup = { label: string; items: NavItem[] };
 type NavEntry = (NavItem & { superAdminOnly?: boolean }) | NavGroup;
 
-function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEntry[] {
+type Role = "director" | "support" | "operative" | null;
+
+function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: Role): NavEntry[] {
   const f = (key: FeatureKey) => hasFeature(features, key);
+  const isDirector = isSuperAdmin || role === "director";
 
   const nav: NavEntry[] = [];
 
@@ -19,6 +22,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
   }
 
   // Records: always show if crm is on; filter Companies by crm_companies
+  // Products are Director-only (catalog management)
   if (f("crm")) {
     const recordItems: NavItem[] = [
       { href: "/crm/people",      label: "People" },
@@ -26,7 +30,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
       { href: "/crm/locations",   label: "Locations" },
     ];
     if (f("crm_companies")) recordItems.push({ href: "/crm/companies", label: "Companies" });
-    recordItems.push({ href: "/crm/products", label: "Products" });
+    if (isDirector) recordItems.push({ href: "/crm/products", label: "Products" });
     nav.push({ label: "Records", items: recordItems });
   }
 
@@ -42,37 +46,41 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean): NavEn
     nav.push({ href: "/crm/reminders", label: "Reminders" });
   }
 
-  // Dispatch: flat link, WarChest+
+  // Dispatch: flat link, WarChest+ — Support can send campaigns
   if (f("crm_dispatch") || isSuperAdmin) {
     nav.push({ href: "/crm/dispatch", label: "Dispatch" });
   }
 
-  // Data: show dropdown if any child is enabled
-  const dataItems: NavItem[] = [];
-  if (f("crm_import"))  dataItems.push({ href: "/crm/import",     label: "Import" });
-  if (f("crm_dedupe"))  dataItems.push({ href: "/crm/dedupe",     label: "Dedupe" });
-  if (f("crm_cleanup")) dataItems.push({ href: "/crm/cleanup",    label: "Cleanup" });
-  if (f("crm"))         dataItems.push({ href: "/crm/bulk-edit",  label: "Bulk Edit" });
-  if (dataItems.length > 0) nav.push({ label: "Data", items: dataItems });
+  // Data: Director-only tools
+  if (isDirector) {
+    const dataItems: NavItem[] = [];
+    if (f("crm_import"))  dataItems.push({ href: "/crm/import",     label: "Import" });
+    if (f("crm_dedupe"))  dataItems.push({ href: "/crm/dedupe",     label: "Dedupe" });
+    if (f("crm_cleanup")) dataItems.push({ href: "/crm/cleanup",    label: "Cleanup" });
+    if (f("crm"))         dataItems.push({ href: "/crm/bulk-edit",  label: "Bulk Edit" });
+    if (dataItems.length > 0) nav.push({ label: "Data", items: dataItems });
+  }
 
-  // Settings: always show; Pipeline Stages only with crm_opportunities; Tenants for superadmin only
-  const settingsItems: NavItem[] = [
-    { href: "/crm/settings", label: "Brand Settings" },
-    { href: "/crm/settings/users", label: "Users" },
-  ];
-  if (f("crm")) {
-    settingsItems.push({ href: "/crm/settings/contact-types", label: "Pipelines" });
+  // Settings: Director-only
+  if (isDirector) {
+    const settingsItems: NavItem[] = [
+      { href: "/crm/settings", label: "Brand Settings" },
+      { href: "/crm/settings/users", label: "Users" },
+    ];
+    if (f("crm")) {
+      settingsItems.push({ href: "/crm/settings/contact-types", label: "Pipelines" });
+    }
+    if (f("crm")) {
+      settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
+    }
+    if (f("crm_dispatch") || isSuperAdmin) {
+      settingsItems.push({ href: "/crm/settings/dispatch", label: "Dispatch" });
+    }
+    if (isSuperAdmin) {
+      settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });
+    }
+    nav.push({ label: "Settings", items: settingsItems });
   }
-  if (f("crm")) {
-    settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
-  }
-  if (f("crm_dispatch") || isSuperAdmin) {
-    settingsItems.push({ href: "/crm/settings/dispatch", label: "Dispatch" });
-  }
-  if (isSuperAdmin) {
-    settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });
-  }
-  nav.push({ label: "Settings", items: settingsItems });
 
   nav.push({ href: "/crm/account", label: "Account" });
 
@@ -157,11 +165,12 @@ function NavGroupItem({ group, pathname }: { group: NavGroup; pathname: string |
 interface CrmHeaderProps {
   features: readonly FeatureKey[];
   isSuperAdmin: boolean;
+  role: Role;
 }
 
-export default function CrmHeader({ features, isSuperAdmin }: CrmHeaderProps) {
+export default function CrmHeader({ features, isSuperAdmin, role }: CrmHeaderProps) {
   const pathname = usePathname();
-  const nav = buildNav(features, isSuperAdmin);
+  const nav = buildNav(features, isSuperAdmin, role);
 
   return (
     <header className="crm-header topbar-dark sticky top-0 z-40">
