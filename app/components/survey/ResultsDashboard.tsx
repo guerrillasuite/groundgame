@@ -124,6 +124,8 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
   const [responsesData, setResponsesData] = useState<ResponsesData | null>(null);
   const [responsesLoading, setResponsesLoading] = useState(false);
   const [responseSearch, setResponseSearch] = useState("");
+  const [sortCol, setSortCol] = useState<string>("completed_at");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const fetchResults = async () => {
     try {
@@ -401,26 +403,69 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
               return <div style={{ padding: 48, textAlign: "center", opacity: 0.5 }}>No responses found.</div>;
             }
 
+            const sorted = [...filtered].sort((a, b) => {
+              let av = "", bv = "";
+              if (sortCol === "name") {
+                av = [a.last_name, a.first_name].filter(Boolean).join(" ").toLowerCase();
+                bv = [b.last_name, b.first_name].filter(Boolean).join(" ").toLowerCase();
+              } else if (sortCol === "email") {
+                av = (a.email ?? "").toLowerCase();
+                bv = (b.email ?? "").toLowerCase();
+              } else if (sortCol === "phone") {
+                av = a.phone ?? "";
+                bv = b.phone ?? "";
+              } else if (sortCol === "completed_at") {
+                av = a.completed_at ?? "";
+                bv = b.completed_at ?? "";
+              } else {
+                av = (a.answers[sortCol] ?? "").toLowerCase();
+                bv = (b.answers[sortCol] ?? "").toLowerCase();
+              }
+              const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+              return sortDir === "asc" ? cmp : -cmp;
+            });
+
+            const thStyle: React.CSSProperties = {
+              padding: "10px 14px", textAlign: "left", fontWeight: 600,
+              whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+              cursor: "pointer", userSelect: "none",
+            };
+            const sortBtn = (col: string) => {
+              const active = sortCol === col;
+              return (
+                <span style={{ marginLeft: 4, opacity: active ? 1 : 0.3, fontSize: 11 }}>
+                  {active ? (sortDir === "asc" ? "▲" : "▼") : "▲"}
+                </span>
+              );
+            };
+            const onSort = (col: string) => {
+              if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+              else { setSortCol(col); setSortDir("asc"); }
+            };
+
             return (
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: "rgba(0,0,0,0.03)" }}>
-                      <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>Name</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>Email</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>Phone</th>
-                      <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>Submitted</th>
+                      <th style={thStyle} onClick={() => onSort("name")}>Name{sortBtn("name")}</th>
+                      <th style={thStyle} onClick={() => onSort("email")}>Email{sortBtn("email")}</th>
+                      <th style={thStyle} onClick={() => onSort("phone")}>Phone{sortBtn("phone")}</th>
+                      <th style={thStyle} onClick={() => onSort("completed_at")}>Submitted{sortBtn("completed_at")}</th>
                       {responsesData.questions.map((q) => (
-                        <th key={q.id} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, maxWidth: 180, borderBottom: "1px solid var(--gg-border, #e5e7eb)" }}>
-                          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }} title={q.question_text}>
-                            {q.question_text}
+                        <th key={q.id} style={{ ...thStyle, maxWidth: 180 }} onClick={() => onSort(q.id)}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, overflow: "hidden", maxWidth: 170 }}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={q.question_text}>
+                              {q.question_text}
+                            </span>
+                            {sortBtn(q.id)}
                           </span>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((r, i) => {
+                    {sorted.map((r, i) => {
                       const name = [r.first_name, r.last_name].filter(Boolean).join(" ") || "—";
                       return (
                         <tr key={r.person_id} style={{ borderBottom: "1px solid var(--gg-border, #e5e7eb)", background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : undefined }}>
