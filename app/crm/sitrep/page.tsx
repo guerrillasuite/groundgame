@@ -43,22 +43,28 @@ export default async function SitRepPage() {
       .order("created_at", { ascending: false }),
   ]);
 
-  // Fetch CRM users for name resolution
+  // Fetch CRM users scoped to this tenant
   let users: { id: string; name: string; email: string }[] = [];
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (serviceKey && supabaseUrl) {
     try {
-      const res = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=200`, {
-        headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        users = (json.users ?? []).map((u: any) => ({
-          id: u.id,
-          email: u.email ?? "",
-          name: u.user_metadata?.name ?? u.user_metadata?.full_name ?? u.email ?? "",
-        }));
+      const [authRes, membersRes] = await Promise.all([
+        fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=1000`, {
+          headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+        }),
+        sb.from("user_tenants").select("user_id").eq("tenant_id", tenant.id).in("status", ["active", "invited"]),
+      ]);
+      if (authRes.ok) {
+        const json = await authRes.json();
+        const tenantUserIds = new Set((membersRes.data ?? []).map((m: any) => m.user_id));
+        users = (json.users ?? [])
+          .filter((u: any) => tenantUserIds.has(u.id))
+          .map((u: any) => ({
+            id: u.id,
+            email: u.email ?? "",
+            name: u.user_metadata?.name ?? u.user_metadata?.full_name ?? u.email ?? "",
+          }));
       }
     } catch {
       // ok — users list is best-effort for name display
@@ -86,6 +92,7 @@ export default async function SitRepPage() {
       missions={missions}
       users={users}
       currentUserId={crmUser.userId}
+      hasMissions={hasFeature(tenant.features, "sitrep_missions")}
     />
   );
 }

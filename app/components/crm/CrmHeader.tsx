@@ -41,19 +41,9 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
   if (f("crm_stops"))   fieldItems.push({ href: "/crm/stops",   label: "Stops" });
   if (fieldItems.length > 0) nav.push({ label: "Field", items: fieldItems });
 
-  // SitRep: flat link or dropdown when missions enabled
+  // SitRep: always a flat link; Missions is surfaced on the SitRep page itself
   if (f("sitrep_core")) {
-    if (f("sitrep_missions")) {
-      nav.push({
-        label: "SitRep",
-        items: [
-          { href: "/crm/sitrep",          label: "Board" },
-          { href: "/crm/sitrep/missions", label: "Missions" },
-        ],
-      });
-    } else {
-      nav.push({ href: "/crm/sitrep", label: "SitRep" });
-    }
+    nav.push({ href: "/crm/sitrep", label: "SitRep" });
   }
 
   // Dispatch: flat link, WarChest+ — Support can send campaigns
@@ -85,6 +75,9 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
     }
     if (f("crm_dispatch") || isSuperAdmin) {
       settingsItems.push({ href: "/crm/settings/dispatch", label: "Dispatch" });
+    }
+    if (f("sitrep_core")) {
+      settingsItems.push({ href: "/crm/settings/sitrep", label: "SitRep" });
     }
     if (isSuperAdmin) {
       settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });

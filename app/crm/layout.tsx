@@ -18,8 +18,14 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="crm-wrap bg-app">
-      {branding.primaryColor !== BASE_BRANDING.primaryColor && (
-        <style>{`:root { --gg-primary: ${branding.primaryColor}; }`}</style>
+      {(branding.primaryColor !== BASE_BRANDING.primaryColor || branding.accentColor) && (
+        <style>{`:root {${
+          branding.primaryColor !== BASE_BRANDING.primaryColor
+            ? ` --gg-primary: ${branding.primaryColor}; --primary: ${branding.primaryColor};`
+            : ""
+        }${
+          branding.accentColor ? ` --gg-accent: ${branding.accentColor};` : ""
+        } }`}</style>
       )}
       <a href="#crm-main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2">
         Skip to content

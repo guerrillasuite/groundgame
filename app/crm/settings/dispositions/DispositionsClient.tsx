@@ -7,6 +7,7 @@ import {
   type DispoItem,
   type DispositionConfig,
 } from "@/lib/dispositionConfig";
+import { ColorSwatchPicker } from "@/app/components/ColorFamilyPicker";
 
 // ── Styles (matches StagesClient pattern) ────────────────────────────────────
 
@@ -55,26 +56,12 @@ function DispoRow({
       padding: "8px 0",
       borderBottom: "1px solid rgba(255,255,255,.06)",
     }}>
-      {/* Color swatch + picker */}
-      <div style={{ position: "relative", width: 28, height: 28 }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: 6,
-          background: item.color,
-          border: "2px solid rgba(255,255,255,.2)",
-          cursor: "pointer",
-        }} />
-        <input
-          type="color"
-          value={item.color}
-          onChange={(e) => onChange({ ...item, color: e.target.value })}
-          style={{
-            position: "absolute", inset: 0,
-            opacity: 0, width: "100%", height: "100%",
-            cursor: "pointer",
-          }}
-          title="Pick color"
-        />
-      </div>
+      {/* Color swatch picker */}
+      <ColorSwatchPicker
+        value={item.color}
+        onChange={(hex) => onChange({ ...item, color: hex })}
+        size={28}
+      />
 
       {/* Label */}
       <input

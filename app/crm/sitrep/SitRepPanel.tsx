@@ -33,6 +33,7 @@ export type Props = {
   missions: Mission[];
   users: User[];
   currentUserId: string;
+  hasMissions?: boolean;
 };
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
@@ -48,7 +49,15 @@ function weekEndStr() {
 }
 
 function effectiveDate(item: SitRepItem): string | null {
-  return item.item_type === "task" ? item.due_date : item.start_at;
+  if (item.item_type === "task") return item.due_date;
+  return item.start_at ?? item.due_date;
+}
+
+// Returns true only if the stored datetime string has an explicit non-midnight time component.
+function hasExplicitTime(s: string | null | undefined): boolean {
+  if (!s || !s.includes("T")) return false;
+  const t = s.split("T")[1] ?? "";
+  return !t.startsWith("00:00");
 }
 
 function isOverdue(item: SitRepItem): boolean {
@@ -65,7 +74,7 @@ function fmtDate(item: SitRepItem): string {
   const today = todayStr();
   const tomorrow = tomorrowStr();
 
-  const withTime = item.item_type !== "task" && item.start_at && !item.is_all_day;
+  const withTime = item.item_type !== "task" && hasExplicitTime(item.start_at) && !item.is_all_day;
   const timeLabel = withTime
     ? " " + new Date(item.start_at!).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
     : "";
@@ -121,18 +130,23 @@ function groupItems(items: SitRepItem[]): Group[] {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
+// Per-type accent colors — used for badges, left borders, and dots
+const TYPE_CFG: Record<string, { label: string; bg: string; color: string; accent: string }> = {
+  task:    { label: "TASK",  bg: "rgba(59,130,246,.15)",  color: "#93c5fd", accent: "#3b82f6" },
+  event:   { label: "EVENT", bg: "rgba(139,92,246,.15)",  color: "#c4b5fd", accent: "#8b5cf6" },
+  meeting: { label: "MTG",   bg: "rgba(16,185,129,.15)",  color: "#6ee7b7", accent: "#10b981" },
+};
+
 function TypeBadge({ type }: { type: string }) {
-  const cfg: Record<string, { label: string; bg: string; color: string }> = {
-    task:    { label: "TASK",  bg: "rgba(59,130,246,.18)",   color: "#93c5fd" },
-    event:   { label: "EVENT", bg: "rgba(139,92,246,.18)",   color: "#c4b5fd" },
-    meeting: { label: "MTG",   bg: "rgba(16,185,129,.18)",   color: "#6ee7b7" },
-  };
-  const c = cfg[type] ?? cfg.task;
+  const c = TYPE_CFG[type] ?? TYPE_CFG.task;
   return (
     <span style={{
-      fontSize: 9, fontWeight: 800, letterSpacing: "0.08em",
-      padding: "2px 6px", borderRadius: 4,
-      background: c.bg, color: c.color, flexShrink: 0,
+      fontSize: 10, fontWeight: 800, letterSpacing: "0.07em",
+      padding: "3px 7px", borderRadius: 5,
+      background: c.bg,
+      color: c.color,
+      border: `1px solid ${c.color}30`,
+      flexShrink: 0,
     }}>
       {c.label}
     </span>
@@ -140,17 +154,19 @@ function TypeBadge({ type }: { type: string }) {
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
-  const cfg: Record<string, { label: string; bg: string; color: string }> = {
-    urgent: { label: "URGENT", bg: "rgba(220,38,38,.18)",   color: "#fca5a5" },
-    high:   { label: "HIGH",   bg: "rgba(245,158,11,.15)",  color: "#fcd34d" },
+  const cfg: Record<string, { label: string; bg: string; color: string; border: string }> = {
+    urgent: { label: "!! URGENT", bg: "rgba(220,38,38,.15)", color: "#fca5a5", border: "rgba(220,38,38,.35)" },
+    high:   { label: "HIGH",      bg: "rgba(245,158,11,.12)", color: "#fcd34d", border: "rgba(245,158,11,.30)" },
   };
   const c = cfg[priority];
   if (!c) return null;
   return (
     <span style={{
-      fontSize: 9, fontWeight: 800, letterSpacing: "0.06em",
-      padding: "2px 6px", borderRadius: 4,
-      background: c.bg, color: c.color, flexShrink: 0,
+      fontSize: 10, fontWeight: 800, letterSpacing: "0.05em",
+      padding: "3px 7px", borderRadius: 5,
+      background: c.bg, color: c.color,
+      border: `1px solid ${c.border}`,
+      flexShrink: 0,
     }}>
       {c.label}
     </span>
@@ -189,15 +205,16 @@ function StatusDot({
   const cancelled = item.status === "cancelled";
 
   if (item.item_type !== "task") {
-    const color = item.item_type === "event" ? "#a78bfa" : "#6ee7b7";
+    const { accent } = TYPE_CFG[item.item_type] ?? TYPE_CFG.task;
+    const icon = item.item_type === "meeting" ? "⊙" : "◆";
     return (
       <span style={{
-        width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
-        background: `${color}22`, border: `2px solid ${color}66`,
+        width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+        background: `${accent}22`, border: `2px solid ${accent}66`,
         display: "inline-flex", alignItems: "center", justifyContent: "center",
-        fontSize: 9, color,
+        fontSize: 9, color: accent,
       }}>
-        {item.item_type === "meeting" ? "M" : "E"}
+        {icon}
       </span>
     );
   }
@@ -209,7 +226,7 @@ function StatusDot({
       : overdue
         ? "rgb(220 38 38)"
         : inProg
-          ? "rgb(59 130 246)"
+          ? "var(--primary, #3b82f6)"
           : "rgba(255,255,255,.25)";
 
   return (
@@ -245,10 +262,12 @@ function FilterPill({
         padding: "5px 13px",
         borderRadius: 20,
         border: active
-          ? "1px solid rgba(59,130,246,.5)"
+          ? "1px solid color-mix(in srgb, var(--primary, #2563eb) 55%, transparent)"
           : "1px solid rgba(255,255,255,.1)",
-        background: active ? "rgba(37,99,235,.2)" : "rgba(255,255,255,.04)",
-        color: active ? "#93c5fd" : "rgb(134 150 168)",
+        background: active
+          ? "color-mix(in srgb, var(--primary, #2563eb) 22%, transparent)"
+          : "rgba(255,255,255,.04)",
+        color: active ? "#93c5fd" : "rgb(160 174 192)",
         fontSize: 12, fontWeight: 600,
         cursor: "pointer", transition: "all .12s ease",
       }}
@@ -260,7 +279,7 @@ function FilterPill({
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function SitRepPanel({ initialItems, missions, users, currentUserId }: Props) {
+export default function SitRepPanel({ initialItems, missions, users, currentUserId, hasMissions }: Props) {
   const [items, setItems] = useState<SitRepItem[]>(initialItems);
   const [scope, setScope]       = useState<"mine" | "all">("mine");
   const [typeFilter, setTypeFilter] = useState<"all" | "task" | "event" | "meeting">("all");
@@ -466,8 +485,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
     card:    "rgb(28 36 48)",
     border:  "rgb(43 53 67)",
     text:    "rgb(238 242 246)",
-    dim:     "rgb(134 150 168)",
-    primary: "#2563EB",
+    dim:     "rgb(160 174 192)",  // brightened for WCAG AA (~4.2:1 on card)
   } as const;
 
   return (
@@ -477,15 +495,42 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>SitRep</h1>
-          <p className="text-dim" style={{ marginTop: 4, fontSize: 13 }}>
-            {openItems.length} open
+          <div style={{ display: "flex", gap: 16, marginTop: 6, flexWrap: "wrap", alignItems: "baseline" }}>
+            <span style={{ fontSize: 13, color: S.dim }}>
+              <span style={{ fontWeight: 700, fontSize: 18, color: S.text, marginRight: 3 }}>{openItems.length}</span>
+              open
+            </span>
             {overdueItems.length > 0 && (
-              <> · <span style={{ color: "rgb(220 38 38)", fontWeight: 600 }}>{overdueItems.length} overdue</span></>
+              <span style={{ fontSize: 13, color: "rgba(220,38,38,.8)" }}>
+                <span style={{ fontWeight: 700, fontSize: 18, color: "rgb(248 113 113)", marginRight: 3 }}>{overdueItems.length}</span>
+                overdue
+              </span>
             )}
-            {" · "}{items.length} total
-          </p>
+            <span style={{ fontSize: 13, color: S.dim }}>
+              <span style={{ fontWeight: 600, fontSize: 15, color: S.text, marginRight: 3 }}>{items.length}</span>
+              total
+            </span>
+          </div>
         </div>
 
+        {/* Right actions: Missions link + New button */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {hasMissions && (
+          <Link
+            href="/crm/sitrep/missions"
+            style={{
+              padding: "7px 14px", fontSize: 13, borderRadius: 10,
+              border: "1px solid rgba(99,102,241,.3)",
+              background: "rgba(99,102,241,.08)",
+              color: "#a5b4fc", textDecoration: "none",
+              display: "inline-flex", alignItems: "center", gap: 6,
+              fontWeight: 500,
+            }}
+          >
+            <span style={{ fontSize: 13 }}>⬡</span>
+            Missions
+          </Link>
+        )}
         {/* New button + dropdown */}
         <div style={{ position: "relative" }}>
           <button
@@ -529,6 +574,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
             </div>
           )}
         </div>
+        </div>
       </div>
 
       {/* ── Quick-add bar ── */}
@@ -570,8 +616,10 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
           style={{
             padding: "5px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
             border: "1px solid rgba(59,130,246,.4)",
-            background: quickTitle.trim() ? "rgba(37,99,235,.25)" : "rgba(255,255,255,.05)",
-            color: quickTitle.trim() ? "#93c5fd" : S.dim,
+            background: quickTitle.trim()
+              ? "color-mix(in srgb, var(--primary, #2563eb) 25%, transparent)"
+              : "rgba(255,255,255,.05)",
+            color: quickTitle.trim() ? "color-mix(in srgb, var(--primary, #2563eb) 85%, #fff)" : S.dim,
             cursor: quickTitle.trim() ? "pointer" : "default",
             transition: "all .12s ease", flexShrink: 0,
           }}
@@ -605,13 +653,16 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
       {/* ── Item list ── */}
       {groups.length === 0 ? (
         <div style={{
-          padding: "48px 0", textAlign: "center",
+          padding: "56px 0", textAlign: "center",
           color: S.dim, fontSize: 14,
+          background: `radial-gradient(ellipse at 50% 40%, rgba(37,99,235,.06) 0%, transparent 70%)`,
+          borderRadius: 16, border: `1px solid ${S.border}`,
         }}>
-          <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.4 }}>✓</div>
-          <div style={{ fontWeight: 600 }}>All clear. Nothing on the board.</div>
-          <div style={{ fontSize: 12, marginTop: 4, opacity: 0.7 }}>
-            Add a task above or use + New to schedule an event.
+          <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.35, lineHeight: 1 }}>✓</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: S.text }}>All clear.</div>
+          <div style={{ fontSize: 13, marginTop: 6, color: S.dim, maxWidth: 280, margin: "6px auto 0" }}>
+            Nothing on the board. Add a task above or use{" "}
+            <span style={{ color: S.text, fontWeight: 600 }}>+ New</span> to schedule an event or meeting.
           </div>
         </div>
       ) : (
@@ -619,15 +670,25 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
           {groups.map((group) => (
             <div key={group.key}>
               {/* Section header */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                 <span style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
+                  fontSize: 11, fontWeight: 800, letterSpacing: "0.1em",
                   color: group.color, textTransform: "uppercase", flexShrink: 0,
                 }}>
                   {group.label}
                 </span>
-                <div style={{ flex: 1, height: 1, background: S.border, opacity: 0.5 }} />
-                <span style={{ fontSize: 11, color: S.dim, flexShrink: 0 }}>{group.items.length}</span>
+                <div style={{
+                  flex: 1, height: 1,
+                  background: `linear-gradient(to right, ${group.color}55, transparent)`,
+                }} />
+                <span style={{
+                  fontSize: 10, fontWeight: 700, flexShrink: 0,
+                  color: group.color, background: `${group.color}1a`,
+                  borderRadius: 99, padding: "2px 9px",
+                  border: `1px solid ${group.color}30`,
+                }}>
+                  {group.items.length}
+                </span>
               </div>
 
               {/* Items */}
@@ -642,20 +703,34 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                     .map((a) => userMap.get(a.user_id))
                     .filter(Boolean) as User[];
 
+                  const typeAccent = TYPE_CFG[item.item_type]?.accent ?? "#3b82f6";
+                  const cardBg = overdue
+                    ? `linear-gradient(to right, rgba(220,38,38,.07) 0%, ${S.card} 60%)`
+                    : group.key === "today"
+                      ? `linear-gradient(to right, rgba(245,158,11,.06) 0%, ${S.card} 60%)`
+                      : S.card;
+
                   return (
                     <div
                       key={item.id}
                       style={{
                         display: "flex", alignItems: "center", gap: 10,
                         padding: "10px 14px",
-                        background: S.card,
+                        background: cardBg,
                         border: `1px solid ${S.border}`,
+                        borderLeft: `3px solid ${isDone || item.status === "cancelled" ? "rgba(255,255,255,.1)" : typeAccent}`,
                         borderRadius: 10,
-                        opacity: isDone || item.status === "cancelled" ? 0.6 : 1,
-                        transition: "border-color .12s, background .12s",
+                        opacity: isDone || item.status === "cancelled" ? 0.55 : 1,
+                        transition: "border-color .12s, background .12s, box-shadow .12s",
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,.12)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = S.border)}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "rgba(255,255,255,.14)";
+                        e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,.3)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = S.border;
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
                     >
                       {/* Status dot */}
                       <StatusDot
@@ -685,7 +760,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                           <div style={{ marginTop: 3 }}>
                             <span style={{
                               fontSize: 11, fontWeight: 500,
-                              background: "rgba(37,99,235,.15)", color: "#93c5fd",
+                              background: "color-mix(in srgb, var(--primary, #2563eb) 15%, transparent)", color: "#93c5fd",
                               borderRadius: 4, padding: "1px 7px",
                             }}>
                               ⬡ {mission.title}
@@ -697,11 +772,14 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                       {/* Right meta */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                         {dateLabel && (
-                          <span style={{
-                            fontSize: 11, fontWeight: overdue ? 700 : 400,
-                            color: overdue ? "rgb(220 38 38)" : S.dim,
-                            whiteSpace: "nowrap",
-                          }}>
+                          <span
+                            suppressHydrationWarning
+                            style={{
+                              fontSize: 11, fontWeight: overdue ? 700 : 400,
+                              color: overdue ? "rgb(220 38 38)" : S.dim,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
                             {dateLabel}
                           </span>
                         )}
@@ -768,10 +846,12 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                     style={{
                       flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 600,
                       border: createType === t
-                        ? "1px solid rgba(59,130,246,.5)"
+                        ? `1px solid ${TYPE_CFG[t]?.color ?? "#93c5fd"}55`
                         : `1px solid ${S.border}`,
-                      background: createType === t ? "rgba(37,99,235,.2)" : "rgba(255,255,255,.04)",
-                      color: createType === t ? "#93c5fd" : S.dim,
+                      background: createType === t
+                        ? `${TYPE_CFG[t]?.bg ?? "rgba(37,99,235,.2)"}`
+                        : "rgba(255,255,255,.04)",
+                      color: createType === t ? (TYPE_CFG[t]?.color ?? "#93c5fd") : S.dim,
                       cursor: "pointer", transition: "all .1s",
                     }}
                   >
@@ -847,7 +927,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                   </div>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 400, cursor: "pointer" }}>
                     <input type="checkbox" checked={createIsAllDay} onChange={(e) => setCreateIsAllDay(e.target.checked)}
-                      style={{ width: 14, height: 14, accentColor: S.primary }} />
+                      style={{ width: 14, height: 14, accentColor: "var(--primary, #2563eb)" }} />
                     All day
                   </label>
                   {createType === "meeting" && (
@@ -917,8 +997,12 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                           )}
                           style={{
                             padding: "4px 10px", borderRadius: 16, fontSize: 12, fontWeight: 500,
-                            border: selected ? "1px solid rgba(59,130,246,.5)" : `1px solid ${S.border}`,
-                            background: selected ? "rgba(37,99,235,.2)" : "rgba(255,255,255,.04)",
+                            border: selected
+                              ? "1px solid color-mix(in srgb, var(--primary, #2563eb) 55%, transparent)"
+                              : `1px solid ${S.border}`,
+                            background: selected
+                              ? "color-mix(in srgb, var(--primary, #2563eb) 22%, transparent)"
+                              : "rgba(255,255,255,.04)",
                             color: selected ? "#93c5fd" : S.dim,
                             cursor: "pointer",
                           }}
