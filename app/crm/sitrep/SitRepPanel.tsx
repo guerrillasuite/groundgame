@@ -294,13 +294,18 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
 
   // New button dropdown
   const [showNewMenu, setShowNewMenu] = useState(false);
-  const newBtnRef = useRef<HTMLButtonElement>(null);
+  const newBtnRef  = useRef<HTMLButtonElement>(null);
+  const newMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside — must include the menu div itself,
+  // otherwise mousedown fires before click and collapses the menu first.
   useEffect(() => {
     if (!showNewMenu) return;
     const handler = (e: MouseEvent) => {
-      if (!newBtnRef.current?.contains(e.target as Node)) setShowNewMenu(false);
+      const t = e.target as Node;
+      if (!newBtnRef.current?.contains(t) && !newMenuRef.current?.contains(t)) {
+        setShowNewMenu(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -493,7 +498,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
             <span style={{ opacity: 0.6, fontSize: 10 }}>▾</span>
           </button>
           {showNewMenu && (
-            <div style={{
+            <div ref={newMenuRef} style={{
               position: "absolute", top: "calc(100% + 4px)", right: 0,
               background: S.card, border: `1px solid ${S.border}`,
               borderRadius: 10, padding: 4, zIndex: 100,
