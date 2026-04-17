@@ -12,23 +12,14 @@ function makeSb() {
 async function fetchSurveyByIdOrSlug(surveyId: string) {
   const sb = makeSb();
   const cols = "id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, show_share, show_take_again";
-  // Try by ID first
-  let { data: survey } = await sb
+  // Look up by public_slug only — the canonical public URL is always /s/{public_slug}.
+  // Falling back to ID would keep old slugs alive after a rename.
+  const { data: survey } = await sb
     .from("surveys")
     .select(cols)
-    .eq("id", surveyId)
+    .eq("public_slug", surveyId)
     .eq("active", true)
     .maybeSingle();
-  // Fallback: try public_slug
-  if (!survey) {
-    const { data: bySlug } = await sb
-      .from("surveys")
-      .select(cols)
-      .eq("public_slug", surveyId)
-      .eq("active", true)
-      .maybeSingle();
-    survey = bySlug;
-  }
   // If survey has channel restrictions and "hosted" is not included, treat as unavailable
   if (survey) {
     const channels: string[] | null = survey.active_channels;
@@ -162,3 +153,4 @@ export async function generateMetadata({ params }: { params: Promise<{ surveyId:
   const survey = await fetchSurveyByIdOrSlug(surveyId);
   return { title: survey?.title ?? "Survey | GroundGame" };
 }
+

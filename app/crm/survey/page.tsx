@@ -234,7 +234,7 @@ export default async function SurveyPage() {
                   </Link>
                   {isWspq && (
                     <a
-                      href={`/s/${survey.id}`}
+                      href={`/s/${survey.public_slug || survey.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{ padding: "10px 16px", background: "rgba(234,179,8,0.12)", color: "#b45309", borderRadius: 8, fontWeight: 600, textDecoration: "none", display: "block", border: "1px solid rgba(234,179,8,0.3)" }}
@@ -244,7 +244,7 @@ export default async function SurveyPage() {
                   )}
                   {!isWspq && (
                     <a
-                      href={`/s/${survey.id}`}
+                      href={`/s/${survey.public_slug || survey.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{ padding: "10px 16px", border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", color: "var(--gg-text, inherit)", borderRadius: 8, fontWeight: 600, textDecoration: "none", display: "block" }}
