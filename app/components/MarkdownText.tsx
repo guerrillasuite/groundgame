@@ -96,17 +96,29 @@ interface Props {
 }
 
 /**
- * Renders markdown-lite text:
+ * Renders rich content — either HTML (from the WYSIWYG editor) or markdown-lite text.
+ * Detects HTML automatically: if the trimmed value starts with `<`, renders as HTML.
+ *
+ * Markdown-lite syntax (plain text mode):
  * - Double newline → paragraph break
  * - Single newline → line break
  * - `- item` or `* item` → bullet list (indent with spaces/tab for sub-bullets)
  * - 4-space or tab indent → indented block
- * - `**bold**` → bold
- * - `*italic*` → italic
- * - `~~strikethrough~~` → strikethrough
- * - `__underline__` → underline
+ * - `**bold**` → bold, `*italic*` → italic
+ * - `~~strikethrough~~` → strikethrough, `__underline__` → underline
  */
 export default function MarkdownText({ text, style, pStyle }: Props) {
+  // HTML content from the rich-text editor — render directly
+  if (text.trimStart().startsWith("<")) {
+    return (
+      <span
+        style={style}
+        className="rich-text-content"
+        dangerouslySetInnerHTML={{ __html: text }}
+      />
+    );
+  }
+
   const paragraphs = text.split(/\n{2,}/);
   return (
     <span style={style}>

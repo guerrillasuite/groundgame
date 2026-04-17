@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   ChevronUp, ChevronDown, Trash2, Plus, Copy,
   GripVertical, ArrowLeft, ExternalLink, ChevronRight,
   Settings2, Users, Layout,
 } from "lucide-react";
+
+const RichTextEditor = dynamic(() => import("@/app/components/RichTextEditor"), { ssr: false });
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -129,6 +132,7 @@ export default function SurveyBuilder({
   const [footerText, setFooterText] = useState("");
   const [displayTitle, setDisplayTitle] = useState("");
   const [displayDescription, setDisplayDescription] = useState("");
+  const [richSurveyDesc, setRichSurveyDesc] = useState(false);
   const [postSubmitSurveyId, setPostSubmitSurveyId] = useState<string>("");
   const [postSubmitRequired, setPostSubmitRequired] = useState(false);
   const [postSubmitHeader, setPostSubmitHeader] = useState("");
@@ -175,6 +179,7 @@ export default function SurveyBuilder({
   // Questions
   const [questions, setQuestions] = useState<LocalQuestion[]>([]);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
+  const [richDescQIds, setRichDescQIds] = useState<Set<string>>(new Set());
 
   // View configs
   const [viewConfigs, setViewConfigs] = useState<Record<ViewType, ViewConfig>>({ ...DEFAULT_VIEW_CONFIGS });
@@ -214,7 +219,9 @@ export default function SurveyBuilder({
         setActiveChannels(new Set(channels));
         setPublicSlug(s.public_slug ?? s.id ?? "");
         setDisplayTitle(s.display_title ?? "");
-        setDisplayDescription(s.display_description ?? "");
+        const dd = s.display_description ?? "";
+        setDisplayDescription(dd);
+        if (dd.trimStart().startsWith("<")) setRichSurveyDesc(true);
         setPostSubmitSurveyId(s.post_submit_survey_id ?? "");
         setPostSubmitRequired(Boolean(s.post_submit_required));
         setPostSubmitHeader(s.post_submit_header ?? "");
@@ -250,6 +257,7 @@ export default function SurveyBuilder({
           id: q.id,
           question_text: q.question_text,
           description: q.description ?? "",
+
           question_type: q.question_type as QuestionType,
           options: q.options ?? [],
           display_format: q.display_format ?? null,
@@ -261,6 +269,7 @@ export default function SurveyBuilder({
           isNew: false,
         }));
         setQuestions(qs);
+        setRichDescQIds(new Set(qs.filter(q => q.description.trimStart().startsWith("<")).map(q => q.id)));
 
         // Load view configs
         const cfgs: Record<ViewType, ViewConfig> = { ...DEFAULT_VIEW_CONFIGS };
@@ -732,14 +741,40 @@ export default function SurveyBuilder({
             />
           </div>
           <div style={{ display: "grid", gap: 6 }}>
-            <label style={labelStyle}>Description <span style={{ fontWeight: 400, opacity: 0.5 }}>(shown below the header)</span></label>
-            <textarea
-              rows={2}
-              value={displayDescription}
-              onChange={(e) => setDisplayDescription(e.target.value)}
-              placeholder="Optional introductory text shown at the top of the survey"
-              style={{ ...inputStyle, resize: "vertical" }}
-            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <label style={labelStyle}>Description <span style={{ fontWeight: 400, opacity: 0.5 }}>(shown below the header)</span></label>
+              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, opacity: 0.6, cursor: "pointer", whiteSpace: "nowrap" }}>
+                <input
+                  type="checkbox"
+                  checked={richSurveyDesc}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setRichSurveyDesc(on);
+                    if (on && displayDescription && !displayDescription.trimStart().startsWith("<")) {
+                      setDisplayDescription(`<p>${displayDescription.replace(/\n/g, "<br>")}</p>`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
+                />
+                Enriched Text Formatting
+              </label>
+            </div>
+            {richSurveyDesc ? (
+              <RichTextEditor
+                value={displayDescription}
+                onChange={setDisplayDescription}
+                placeholder="Optional introductory text shown at the top of the survey…"
+                minHeight={72}
+              />
+            ) : (
+              <textarea
+                rows={2}
+                value={displayDescription}
+                onChange={(e) => setDisplayDescription(e.target.value)}
+                placeholder="Optional introductory text shown at the top of the survey"
+                style={{ ...inputStyle, resize: "vertical" }}
+              />
+            )}
           </div>
         </div>
 
@@ -1248,14 +1283,48 @@ export default function SurveyBuilder({
 
                   {/* Description / help text */}
                   <div style={{ display: "grid", gap: 6 }}>
-                    <label style={labelStyle}>Description <span style={{ opacity: 0.45, fontWeight: 400 }}>(optional — **bold**, *italic*, ~~strike~~, __underline__, - lists)</span></label>
-                    <textarea
-                      rows={3}
-                      value={q.description}
-                      onChange={(e) => updateQuestion(q.id, { description: e.target.value })}
-                      placeholder={"Add clarifying text, instructions, or context…\n\nSupports **bold**, *italic*, ~~strikethrough~~, __underline__, and:\n- bullet\n- lists"}
-                      style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5, fontSize: 12 }}
-                    />
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <label style={labelStyle}>Description <span style={{ opacity: 0.45, fontWeight: 400 }}>(optional)</span></label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, opacity: 0.6, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        <input
+                          type="checkbox"
+                          checked={richDescQIds.has(q.id)}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setRichDescQIds(prev => {
+                              const next = new Set(prev);
+                              if (on) {
+                                next.add(q.id);
+                                if (q.description && !q.description.trimStart().startsWith("<")) {
+                                  updateQuestion(q.id, { description: `<p>${q.description.replace(/\n/g, "<br>")}</p>` });
+                                }
+                              } else {
+                                next.delete(q.id);
+                              }
+                              return next;
+                            });
+                          }}
+                          style={{ cursor: "pointer" }}
+                        />
+                        Enriched Text Formatting
+                      </label>
+                    </div>
+                    {richDescQIds.has(q.id) ? (
+                      <RichTextEditor
+                        value={q.description}
+                        onChange={(html) => updateQuestion(q.id, { description: html })}
+                        placeholder="Add clarifying text, instructions, or context…"
+                        minHeight={80}
+                      />
+                    ) : (
+                      <textarea
+                        rows={3}
+                        value={q.description}
+                        onChange={(e) => updateQuestion(q.id, { description: e.target.value })}
+                        placeholder="Add clarifying text, instructions, or context…"
+                        style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5, fontSize: 12 }}
+                      />
+                    )}
                   </div>
 
                   {/* Type + Required + Display format row */}

@@ -963,3 +963,15 @@ table thead :is(th,[role="columnheader"]):has([aria-sort="none"])::after {
   background: rgba(255,255,255,.07);
   border-color: rgba(255,255,255,.14);
 }
+
+/* Rich text content rendered from the WYSIWYG editor */
+.rich-text-content p { margin: 0 0 0.4em; }
+.rich-text-content p:last-child { margin-bottom: 0; }
+.rich-text-content h1 { font-size: 1.4em; font-weight: 700; margin: 0.5em 0 0.25em; }
+.rich-text-content h2 { font-size: 1.15em; font-weight: 700; margin: 0.4em 0 0.2em; }
+.rich-text-content ul, .rich-text-content ol { padding-left: 1.4em; margin: 0.25em 0; }
+.rich-text-content li { margin: 0.15em 0; }
+.rich-text-content s { text-decoration: line-through; }
+.rich-text-content strong { font-weight: 700; }
+.rich-text-content em { font-style: italic; }
+.rich-text-content u { text-decoration: underline; }

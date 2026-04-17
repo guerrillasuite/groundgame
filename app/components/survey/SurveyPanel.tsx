@@ -542,7 +542,10 @@ export default function SurveyPanel({
         {logoUrl && <img src={logoUrl} alt="" style={{ height: 40, marginBottom: 20, objectFit: "contain", maxWidth: 160 }} />}
         <div style={{ ...card, maxWidth: hasTwoCol ? 840 : 520, width: "100%" }}>
           <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: displayDescription ? "0 0 6px" : "0 0 20px", textTransform: "uppercase" }}>{title}</p>
-          {displayDescription && <p style={{ color: mutedText, fontSize: 14, margin: "0 0 20px", lineHeight: 1.5 }}>{displayDescription}</p>}
+          {displayDescription && (displayDescription.trimStart().startsWith("<")
+            ? <div className="rich-text-content" style={{ color: mutedText, fontSize: 14, margin: "0 0 20px", lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: displayDescription }} />
+            : <p style={{ color: mutedText, fontSize: 14, margin: "0 0 20px", lineHeight: 1.5 }}>{displayDescription}</p>
+          )}
           <form onSubmit={async (e) => {
             e.preventDefault();
             setSubmitting(true);
@@ -692,7 +695,10 @@ export default function SurveyPanel({
           <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: 1.5, margin: "0 0 4px", textTransform: "uppercase" }}>
             {title}
           </p>
-          {displayDescription && <p style={{ color: mutedText, fontSize: 13, margin: "2px 0 8px", lineHeight: 1.5 }}>{displayDescription}</p>}
+          {displayDescription && (displayDescription.trimStart().startsWith("<")
+            ? <div className="rich-text-content" style={{ color: mutedText, fontSize: 13, margin: "2px 0 8px", lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: displayDescription }} />
+            : <p style={{ color: mutedText, fontSize: 13, margin: "2px 0 8px", lineHeight: 1.5 }}>{displayDescription}</p>
+          )}
           <div style={{ height: 4, background: borderColor, borderRadius: 2, margin: "8px 0 20px" }}>
             <div style={{ height: "100%", width: `${progress}%`, background: primaryColor, borderRadius: 2, transition: "width 0.3s" }} />
           </div>
