@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from "crypto";
 import { getTenant } from "@/lib/tenant";
 import { requireDirectorApi } from "@/lib/crm-auth";
 
@@ -38,12 +39,14 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = makeSb(tenant.id);
+  const token = randomBytes(24).toString("base64url");
 
   const { data, error } = await sb
     .from("sitrep_public_calendars")
     .insert({
       tenant_id:           tenant.id,
       name:                body.name.trim(),
+      token,
       include_type_slugs:  body.include_type_slugs ?? [],
       include_statuses:    body.include_statuses ?? ["open", "confirmed"],
       show_day:            body.show_day ?? true,
