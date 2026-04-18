@@ -305,8 +305,8 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {(item.item_type === "task" ? TASK_STATUSES : EVENT_STATUSES).map((s) => {
             const active = status === s.key;
-            const activeBgImg = `linear-gradient(${s.activeColor}, ${s.activeColor}), linear-gradient(135deg, ${s.grad[0]} 0%, ${s.grad[1]} 100%)`;
-            const idleBgImg   = `linear-gradient(rgba(255,255,255,.04), rgba(255,255,255,.04)), linear-gradient(135deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.03) 100%)`;
+            const activeShadow = `0 0 0 3px ${s.grad[0]}22, 0 0 18px ${s.textColor}30, 0 2px 8px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.07)`;
+            const idleShadow   = "0 1px 4px rgba(0,0,0,.22)";
             return (
               <button
                 key={s.key}
@@ -314,28 +314,22 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-                  border: "1px solid transparent",
-                  backgroundImage: active ? activeBgImg : idleBgImg,
-                  backgroundOrigin: "border-box",
-                  backgroundClip: "padding-box, border-box",
+                  border: active ? `1.5px solid ${s.grad[0]}cc` : `1px solid rgba(255,255,255,.1)`,
+                  background: active ? s.activeColor : "rgba(255,255,255,.04)",
                   color: active ? s.textColor : S.dim,
                   cursor: "pointer", transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
-                  boxShadow: active
-                    ? `0 0 16px ${s.textColor}28, 0 2px 8px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.07)`
-                    : "0 1px 4px rgba(0,0,0,.22)",
-                } as React.CSSProperties}
+                  boxShadow: active ? activeShadow : idleShadow,
+                }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = "translateY(-1.5px)";
                   e.currentTarget.style.boxShadow = active
-                    ? `0 6px 20px ${s.textColor}30, 0 0 22px ${s.textColor}28, inset 0 1px 0 rgba(255,255,255,.09)`
-                    : "0 4px 14px rgba(0,0,0,.35)";
-                  if (!active) e.currentTarget.style.filter = "brightness(1.18)";
+                    ? `0 0 0 4px ${s.grad[0]}18, 0 0 26px ${s.textColor}38, 0 5px 16px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.09)`
+                    : "0 4px 14px rgba(0,0,0,.38)";
+                  if (!active) e.currentTarget.style.filter = "brightness(1.2)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = "";
-                  e.currentTarget.style.boxShadow = active
-                    ? `0 0 16px ${s.textColor}28, 0 2px 8px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.07)`
-                    : "0 1px 4px rgba(0,0,0,.22)";
+                  e.currentTarget.style.boxShadow = active ? activeShadow : idleShadow;
                   e.currentTarget.style.filter = "";
                 }}
               >
@@ -355,36 +349,30 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {PRIORITIES.map((p) => {
               const active = priority === p.key;
-              const activeBgImg = `linear-gradient(${p.activeColor}, ${p.activeColor}), linear-gradient(135deg, ${p.grad[0]} 0%, ${p.grad[1]} 100%)`;
-              const idleBgImg   = `linear-gradient(rgba(255,255,255,.04), rgba(255,255,255,.04)), linear-gradient(135deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.03) 100%)`;
+              const activeShadow = `0 0 0 3px ${p.grad[0]}20, 0 0 16px ${p.textColor}28, 0 2px 8px rgba(0,0,0,.3)`;
+              const idleShadow   = "0 1px 4px rgba(0,0,0,.22)";
               return (
                 <button
                   key={p.key}
                   onClick={() => { setPriority(p.key); patchNow({ priority: p.key }); }}
                   style={{
                     padding: "7px 15px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                    border: "1px solid transparent",
-                    backgroundImage: active ? activeBgImg : idleBgImg,
-                    backgroundOrigin: "border-box",
-                    backgroundClip: "padding-box, border-box",
+                    border: active ? `1.5px solid ${p.grad[0]}cc` : `1px solid rgba(255,255,255,.1)`,
+                    background: active ? p.activeColor : "rgba(255,255,255,.04)",
                     color: active ? p.textColor : S.dim,
                     cursor: "pointer", transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
-                    boxShadow: active
-                      ? `0 0 14px ${p.textColor}25, 0 2px 8px rgba(0,0,0,.28)`
-                      : "0 1px 4px rgba(0,0,0,.22)",
-                  } as React.CSSProperties}
+                    boxShadow: active ? activeShadow : idleShadow,
+                  }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = "translateY(-1.5px)";
                     e.currentTarget.style.boxShadow = active
-                      ? `0 5px 18px ${p.textColor}28, 0 0 20px ${p.textColor}28`
-                      : "0 4px 14px rgba(0,0,0,.35)";
-                    if (!active) e.currentTarget.style.filter = "brightness(1.18)";
+                      ? `0 0 0 4px ${p.grad[0]}16, 0 0 22px ${p.textColor}35, 0 5px 16px rgba(0,0,0,.4)`
+                      : "0 4px 14px rgba(0,0,0,.38)";
+                    if (!active) e.currentTarget.style.filter = "brightness(1.2)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = "";
-                    e.currentTarget.style.boxShadow = active
-                      ? `0 0 14px ${p.textColor}25, 0 2px 8px rgba(0,0,0,.28)`
-                      : "0 1px 4px rgba(0,0,0,.22)";
+                    e.currentTarget.style.boxShadow = active ? activeShadow : idleShadow;
                     e.currentTarget.style.filter = "";
                   }}
                 >
