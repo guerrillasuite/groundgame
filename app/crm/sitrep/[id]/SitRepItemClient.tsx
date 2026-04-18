@@ -14,6 +14,8 @@ type FullItem = {
   item_type: "task" | "event" | "meeting";
   title: string;
   description: string | null;
+  location: string | null;
+  location_address: string | null;
   status: string | null;
   priority: string | null;
   due_date: string | null;
@@ -72,6 +74,13 @@ const TASK_STATUSES = [
   { key: "cancelled",   label: "Cancelled",   icon: "✕", color: "rgba(107,114,128,.15)", activeColor: "rgba(107,114,128,.3)", textColor: "rgb(134 150 168)" },
 ];
 
+const EVENT_STATUSES = [
+  { key: "open",       label: "Open",       icon: "○", color: "rgba(255,255,255,.15)", activeColor: "rgba(255,255,255,.12)", textColor: "rgb(238 242 246)" },
+  { key: "confirmed",  label: "Confirmed",  icon: "●", color: "rgba(16,185,129,.2)",   activeColor: "rgba(16,185,129,.35)",  textColor: "#6ee7b7" },
+  { key: "done",       label: "Done",       icon: "✓", color: "rgba(22,163,74,.2)",    activeColor: "rgba(22,163,74,.35)",   textColor: "#86efac" },
+  { key: "cancelled",  label: "Cancelled",  icon: "✕", color: "rgba(107,114,128,.15)", activeColor: "rgba(107,114,128,.3)",  textColor: "rgb(134 150 168)" },
+];
+
 const PRIORITIES = [
   { key: "low",    label: "Low",    color: "rgba(255,255,255,.1)", textColor: "rgb(134 150 168)" },
   { key: "normal", label: "Normal", color: "rgba(255,255,255,.1)", textColor: "rgb(238 242 246)" },
@@ -111,6 +120,8 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
   const [startAt,     setStartAt]     = useState(toDatetimeLocal(item.start_at));
   const [endAt,       setEndAt]       = useState(toDatetimeLocal(item.end_at));
   const [isAllDay,    setIsAllDay]    = useState(item.is_all_day ?? false);
+  const [location,    setLocation]    = useState(item.location ?? "");
+  const [locationAddr,setLocationAddr]= useState(item.location_address ?? "");
   const [agenda,      setAgenda]      = useState(item.agenda ?? "");
   const [meetingNotes,setMeetingNotes]= useState(item.meeting_notes ?? "");
   const [missionId,   setMissionId]   = useState(item.mission_id ?? "");
@@ -180,15 +191,35 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
   // ── Layout constants ──────────────────────────────────────────────────────────
 
   const S = {
-    surface: "rgb(18 23 33)",
-    card:    "rgb(28 36 48)",
-    border:  "rgb(43 53 67)",
-    text:    "rgb(238 242 246)",
-    dim:     "rgb(134 150 168)",
+    bg:      "rgb(10 13 20)",
+    surface: "rgb(14 18 28)",
+    card:    "rgb(20 25 38)",
+    border:  "rgba(255,255,255,.08)",
+    text:    "rgb(236 240 245)",
+    dim:     "rgb(100 116 139)",
+    dimBright: "rgb(148 163 184)",
   } as const;
 
   const typeColor  = TYPE_COLORS[item.item_type] ?? TYPE_COLORS.task;
   const isCreator  = item.created_by === currentUserId;
+
+  const focusField = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)";
+    e.currentTarget.style.boxShadow   = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)";
+  };
+  const blurField = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    e.currentTarget.style.borderColor = S.border;
+    e.currentTarget.style.boxShadow   = "none";
+  };
+
+  const fieldStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,.05)",
+    border: `1px solid ${S.border}`,
+    borderRadius: 8, padding: "6px 10px",
+    color: S.text, fontSize: 13,
+    outline: "none",
+    transition: "border-color .15s, box-shadow .15s",
+  };
 
   const assignedIds = new Set(assignments.map((a) => a.user_id));
   const userMap     = new Map(users.map((u) => [u.id, u]));
@@ -199,93 +230,108 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
   return (
     <div style={{ maxWidth: 700, margin: "0 auto" }} className="stack">
 
-      {/* ── Top nav ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <Link
-          href="/crm/sitrep"
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, color: S.dim, fontSize: 13, fontWeight: 500 }}
-        >
-          <span style={{ fontSize: 16 }}>←</span> SitRep
-        </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {saveState === "saving" && (
-            <span style={{ fontSize: 11, color: S.dim }}>Saving…</span>
-          )}
-          {saveState === "saved" && (
-            <span style={{ fontSize: 11, color: "rgb(22 163 74)", fontWeight: 600 }}>✓ Saved</span>
-          )}
-          {saveState === "error" && (
-            <span style={{ fontSize: 11, color: "rgb(220 38 38)", fontWeight: 600 }}>✕ Error</span>
-          )}
-        </div>
-      </div>
-
-      {/* ── Header: type badge + item type indicator ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{
-          fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
-          padding: "3px 8px", borderRadius: 5,
-          background: typeColor.bg, color: typeColor.color,
-        }}>
-          {TYPE_LABELS[item.item_type]}
-        </span>
-        {item.item_type === "task" && (
-          <span style={{
-            fontSize: 11, fontWeight: 600, color: S.dim,
-            display: "flex", alignItems: "center", gap: 4,
+      {/* ── Hero banner ── */}
+      <div style={{
+        padding: "22px 24px 20px",
+        background: `linear-gradient(150deg, ${typeColor.bg} 0%, rgba(14,18,28,0) 70%)`,
+        border: `1px solid ${typeColor.color}28`,
+        borderRadius: 16,
+        boxShadow: `0 4px 28px rgba(0,0,0,.35), 0 0 40px ${typeColor.color}0d`,
+        position: "relative",
+      }}>
+        {/* Top row: back + save */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <Link href="/crm/sitrep" style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            color: S.dimBright, fontSize: 12, fontWeight: 600,
+            background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.09)",
+            padding: "4px 10px", borderRadius: 8, textDecoration: "none",
+            transition: "all .12s",
           }}>
-            {fmtCreated(item.created_at)}
-          </span>
-        )}
-      </div>
-
-      {/* ── Editable title ── */}
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => { setTitle(e.target.value); patchDebounced({ title: e.target.value }); }}
-        placeholder="Untitled"
-        style={{
-          width: "100%", background: "transparent", border: "none",
-          outline: "none", color: S.text, fontSize: 26, fontWeight: 700,
-          letterSpacing: "-0.01em", padding: 0, lineHeight: 1.25,
-        }}
-      />
-
-      {/* ── Status row (tasks) ── */}
-      {item.item_type === "task" && (
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: S.dim, textTransform: "uppercase", marginBottom: 8 }}>
-            Status
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {TASK_STATUSES.map((s) => {
-              const active = status === s.key;
-              return (
-                <button
-                  key={s.key}
-                  onClick={() => { setStatus(s.key); patchNow({ status: s.key }); }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    padding: "7px 14px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-                    border: active ? `1px solid ${s.textColor}55` : `1px solid ${S.border}`,
-                    background: active ? s.activeColor : "rgba(255,255,255,.03)",
-                    color: active ? s.textColor : S.dim,
-                    cursor: "pointer", transition: "all .1s ease",
-                  }}
-                >
-                  <span style={{ fontSize: 11 }}>{s.icon}</span> {s.label}
-                </button>
-              );
-            })}
+            ← SitRep
+          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {saveState === "saving" && <span style={{ fontSize: 11, color: S.dim }}>Saving…</span>}
+            {saveState === "saved"  && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: "#4ade80",
+                background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)",
+                padding: "3px 9px", borderRadius: 20,
+              }}>✓ Saved</span>
+            )}
+            {saveState === "error"  && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: "#f87171",
+                background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.25)",
+                padding: "3px 9px", borderRadius: 20,
+              }}>✕ Error</span>
+            )}
           </div>
         </div>
-      )}
+
+        {/* Type badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{
+            fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
+            padding: "3px 9px", borderRadius: 6,
+            background: typeColor.bg, color: typeColor.color,
+            border: `1px solid ${typeColor.color}40`,
+            boxShadow: `0 0 10px ${typeColor.color}22`,
+          }}>
+            {TYPE_LABELS[item.item_type]}
+          </span>
+          <span style={{ fontSize: 11, color: S.dim }}>{fmtCreated(item.created_at)}</span>
+        </div>
+
+        {/* Editable title */}
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => { setTitle(e.target.value); patchDebounced({ title: e.target.value }); }}
+          placeholder="Untitled"
+          style={{
+            width: "100%", background: "transparent", border: "none",
+            outline: "none", color: S.text, fontSize: 26, fontWeight: 800,
+            letterSpacing: "-0.02em", padding: 0, lineHeight: 1.25,
+          }}
+        />
+      </div>
+
+      {/* ── Status row (all types) ── */}
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase", marginBottom: 10 }}>
+          Status
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {(item.item_type === "task" ? TASK_STATUSES : EVENT_STATUSES).map((s) => {
+            const active = status === s.key;
+            return (
+              <button
+                key={s.key}
+                onClick={() => { setStatus(s.key); patchNow({ status: s.key }); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
+                  border: active ? `1px solid ${s.textColor}55` : `1px solid ${S.border}`,
+                  background: active ? s.activeColor : "rgba(255,255,255,.04)",
+                  color: active ? s.textColor : S.dim,
+                  cursor: "pointer", transition: "all .12s ease",
+                  boxShadow: active ? `0 0 14px ${s.textColor}28, inset 0 1px 0 rgba(255,255,255,.06)` : "none",
+                }}
+                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,.07)"; }}
+                onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,.04)"; }}
+              >
+                <span style={{ fontSize: 12 }}>{s.icon}</span> {s.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* ── Priority row (tasks) ── */}
       {item.item_type === "task" && (
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: S.dim, textTransform: "uppercase", marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase", marginBottom: 10 }}>
             Priority
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -296,14 +342,17 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
                   key={p.key}
                   onClick={() => { setPriority(p.key); patchNow({ priority: p.key }); }}
                   style={{
-                    padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    padding: "7px 15px", borderRadius: 20, fontSize: 12, fontWeight: 600,
                     border: active ? `1px solid ${p.textColor}55` : `1px solid ${S.border}`,
-                    background: active ? p.color : "rgba(255,255,255,.03)",
+                    background: active ? p.color : "rgba(255,255,255,.04)",
                     color: active ? p.textColor : S.dim,
-                    cursor: "pointer", transition: "all .1s ease",
+                    cursor: "pointer", transition: "all .12s ease",
+                    boxShadow: active ? `0 0 12px ${p.textColor}22` : "none",
                   }}
+                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,.07)"; }}
+                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,.04)"; }}
                 >
-                  {active && <span style={{ marginRight: 4 }}>●</span>}{p.label}
+                  {active && <span style={{ marginRight: 5 }}>●</span>}{p.label}
                 </button>
               );
             })}
@@ -313,97 +362,143 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
 
       {/* ── Meta card ── */}
       <div style={{
-        background: S.card, border: `1px solid ${S.border}`,
-        borderRadius: 12, padding: "16px 18px",
-        display: "grid", gap: 14,
+        background: S.card,
+        border: `1px solid ${S.border}`,
+        borderRadius: 14,
+        boxShadow: "0 4px 20px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.05)",
+        overflow: "hidden",
       }}>
-
-        {/* Due date (tasks) */}
-        {item.item_type === "task" && (
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: S.dim }}>Due Date</span>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => { setDueDate(e.target.value); patchNow({ due_date: e.target.value || null }); }}
-              style={{
-                background: "rgba(255,255,255,.06)", border: `1px solid ${S.border}`,
-                borderRadius: 7, padding: "5px 10px", color: S.text, fontSize: 13,
-                width: "fit-content",
-              }}
-            />
-          </div>
-        )}
-
-        {/* Start / End (events & meetings) */}
-        {item.item_type !== "task" && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: S.dim }}>Start</span>
-              <input
-                type={isAllDay ? "date" : "datetime-local"}
+        {([
+          item.item_type === "task" && {
+            label: "Due Date",
+            content: (
+              <input type="date" value={dueDate}
+                onChange={(e) => { setDueDate(e.target.value); patchNow({ due_date: e.target.value || null }); }}
+                style={{ ...fieldStyle, width: "fit-content" }}
+                onFocus={focusField} onBlur={blurField}
+              />
+            ),
+          },
+          item.item_type !== "task" && {
+            label: "Start",
+            content: (
+              <input type={isAllDay ? "date" : "datetime-local"}
                 value={isAllDay ? startAt.split("T")[0] : startAt}
                 onChange={(e) => { setStartAt(e.target.value); patchNow({ start_at: e.target.value || null }); }}
-                style={{ background: "rgba(255,255,255,.06)", border: `1px solid ${S.border}`, borderRadius: 7, padding: "5px 10px", color: S.text, fontSize: 12, width: "fit-content" }}
+                style={{ ...fieldStyle, width: "fit-content" }}
+                onFocus={focusField} onBlur={blurField}
               />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: S.dim }}>End</span>
-              <input
-                type={isAllDay ? "date" : "datetime-local"}
+            ),
+          },
+          item.item_type !== "task" && {
+            label: "End",
+            content: (
+              <input type={isAllDay ? "date" : "datetime-local"}
                 value={isAllDay ? endAt.split("T")[0] : endAt}
                 onChange={(e) => { setEndAt(e.target.value); patchNow({ end_at: e.target.value || null }); }}
-                style={{ background: "rgba(255,255,255,.06)", border: `1px solid ${S.border}`, borderRadius: 7, padding: "5px 10px", color: S.text, fontSize: 12, width: "fit-content" }}
+                style={{ ...fieldStyle, width: "fit-content" }}
+                onFocus={focusField} onBlur={blurField}
               />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: S.dim }}>All Day</span>
-              <input
-                type="checkbox"
-                checked={isAllDay}
+            ),
+          },
+          item.item_type !== "task" && {
+            label: "All Day",
+            content: (
+              <input type="checkbox" checked={isAllDay}
                 onChange={(e) => { setIsAllDay(e.target.checked); patchNow({ is_all_day: e.target.checked }); }}
                 style={{ width: 16, height: 16, accentColor: "var(--gg-primary, #2563eb)", cursor: "pointer" }}
               />
-            </div>
-          </>
-        )}
-
-        {/* Mission */}
-        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: S.dim }}>Mission</span>
-          <select
-            value={missionId}
-            onChange={(e) => { setMissionId(e.target.value); patchNow({ mission_id: e.target.value || null }); }}
-            style={{ background: S.surface, border: `1px solid ${S.border}`, borderRadius: 7, padding: "5px 10px", color: S.text, fontSize: 13, width: "fit-content", maxWidth: "100%" }}
+            ),
+          },
+          item.item_type !== "task" && {
+            label: "Location Name",
+            content: (
+              <input type="text" value={location}
+                onChange={(e) => { setLocation(e.target.value); patchDebounced({ location: e.target.value || null }); }}
+                placeholder="e.g. City Hall, Zoom"
+                style={{ ...fieldStyle, width: "100%" }}
+                onFocus={focusField} onBlur={blurField}
+              />
+            ),
+          },
+          item.item_type !== "task" && {
+            label: "Address / Link",
+            content: (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+                <input type="text" value={locationAddr}
+                  onChange={(e) => { setLocationAddr(e.target.value); patchDebounced({ location_address: e.target.value || null }); }}
+                  placeholder="Street address or https://zoom.us/…"
+                  style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
+                  onFocus={focusField} onBlur={blurField}
+                />
+                {locationAddr.trim() && (
+                  <a
+                    href={/^https?:\/\//i.test(locationAddr.trim()) ? locationAddr.trim() : `https://maps.google.com/?q=${encodeURIComponent(locationAddr.trim())}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                      background: "rgba(255,255,255,.07)", border: `1px solid ${S.border}`,
+                      fontSize: 15, textDecoration: "none",
+                      transition: "all .12s",
+                    }}
+                  >{/^https?:\/\//i.test(locationAddr.trim()) ? "🔗" : "📍"}</a>
+                )}
+              </div>
+            ),
+          },
+          {
+            label: "Mission",
+            content: (
+              <select value={missionId}
+                onChange={(e) => { setMissionId(e.target.value); patchNow({ mission_id: e.target.value || null }); }}
+                style={{ ...fieldStyle, width: "fit-content", maxWidth: "100%" }}
+                onFocus={focusField} onBlur={blurField}
+              >
+                <option value="">— None —</option>
+                {missions.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
+              </select>
+            ),
+          },
+          {
+            label: "Visibility",
+            content: (
+              <select value={visibility}
+                onChange={(e) => { setVisibility(e.target.value); patchNow({ visibility: e.target.value }); }}
+                style={{ ...fieldStyle, width: "fit-content", maxWidth: "100%" }}
+                onFocus={focusField} onBlur={blurField}
+              >
+                {VISIBILITIES.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
+              </select>
+            ),
+          },
+          {
+            label: "Created",
+            content: <span style={{ fontSize: 12, color: S.dim }}>{fmtCreated(item.created_at)}</span>,
+          },
+        ] as any[]).filter(Boolean).map((row: any, i: number, arr: any[]) => (
+          <div key={row.label} style={{
+            display: "grid", gridTemplateColumns: "130px 1fr",
+            alignItems: "center", gap: 12,
+            padding: "12px 18px",
+            borderBottom: i < arr.length - 1 ? `1px solid ${S.border}` : "none",
+            transition: "background .12s",
+          }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,.02)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
           >
-            <option value="">— None —</option>
-            {missions.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
-          </select>
-        </div>
-
-        {/* Visibility */}
-        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: S.dim }}>Visibility</span>
-          <select
-            value={visibility}
-            onChange={(e) => { setVisibility(e.target.value); patchNow({ visibility: e.target.value }); }}
-            style={{ background: S.surface, border: `1px solid ${S.border}`, borderRadius: 7, padding: "5px 10px", color: S.text, fontSize: 13, width: "fit-content", maxWidth: "100%" }}
-          >
-            {VISIBILITIES.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
-          </select>
-        </div>
-
-        {/* Created */}
-        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: S.dim }}>Created</span>
-          <span style={{ fontSize: 12, color: S.dim }}>{fmtCreated(item.created_at)}</span>
-        </div>
+            <span style={{ fontSize: 12, fontWeight: 600, color: S.dim }}>{row.label}</span>
+            {row.content}
+          </div>
+        ))}
       </div>
 
       {/* ── Description ── */}
       <div>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: S.dim, textTransform: "uppercase", marginBottom: 8 }}>
-          Description
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase", marginBottom: 10 }}>
+          Description{item.item_type !== "task" && (
+            <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, opacity: 0.6 }}> — shown on public calendars</span>
+          )}
         </div>
         <textarea
           value={desc}
@@ -418,10 +513,31 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
         />
       </div>
 
+      {/* ── Notes (events — internal only) ── */}
+      {item.item_type === "event" && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase", marginBottom: 10 }}>
+            Notes <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, opacity: 0.6 }}>— internal only</span>
+          </div>
+          <textarea
+            value={meetingNotes}
+            onChange={(e) => { setMeetingNotes(e.target.value); patchDebounced({ meeting_notes: e.target.value || null }); }}
+            placeholder="Internal notes about this event…"
+            rows={4}
+            style={{
+              width: "100%", background: "rgba(255,255,255,.04)", border: `1px solid ${S.border}`,
+              borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13,
+              lineHeight: 1.6, resize: "vertical", outline: "none",
+              transition: "border-color .15s, box-shadow .15s",
+            }}
+          />
+        </div>
+      )}
+
       {/* ── Agenda (meetings) ── */}
       {item.item_type === "meeting" && (
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: S.dim, textTransform: "uppercase", marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase", marginBottom: 10 }}>
             Agenda
           </div>
           <textarea
@@ -430,9 +546,10 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
             placeholder="Meeting agenda…"
             rows={4}
             style={{
-              width: "100%", background: S.card, border: `1px solid ${S.border}`,
+              width: "100%", background: "rgba(255,255,255,.04)", border: `1px solid ${S.border}`,
               borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13,
-              lineHeight: 1.6, resize: "vertical",
+              lineHeight: 1.6, resize: "vertical", outline: "none",
+              transition: "border-color .15s, box-shadow .15s",
             }}
           />
         </div>
@@ -441,7 +558,7 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
       {/* ── Meeting notes (meetings) ── */}
       {item.item_type === "meeting" && (
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: S.dim, textTransform: "uppercase", marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase", marginBottom: 10 }}>
             Notes
           </div>
           <textarea
@@ -450,9 +567,10 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
             placeholder="Notes from the meeting…"
             rows={4}
             style={{
-              width: "100%", background: S.card, border: `1px solid ${S.border}`,
+              width: "100%", background: "rgba(255,255,255,.04)", border: `1px solid ${S.border}`,
               borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13,
-              lineHeight: 1.6, resize: "vertical",
+              lineHeight: 1.6, resize: "vertical", outline: "none",
+              transition: "border-color .15s, box-shadow .15s",
             }}
           />
         </div>
@@ -510,20 +628,24 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
                 onClick={() => setShowAddUser((v) => !v)}
                 style={{
                   display: "flex", alignItems: "center", gap: 5,
-                  padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                  border: `1px dashed rgba(255,255,255,.2)`,
-                  background: "rgba(255,255,255,.03)",
-                  color: S.dim, cursor: "pointer",
+                  padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                  border: "1px dashed rgba(255,255,255,.15)",
+                  background: "rgba(255,255,255,.04)",
+                  color: S.dimBright, cursor: "pointer",
+                  transition: "all .12s",
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.08)"; e.currentTarget.style.borderColor = "rgba(255,255,255,.25)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,.15)"; }}
               >
                 + Add
               </button>
               {showAddUser && (
                 <div style={{
-                  position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 50,
-                  background: S.card, border: `1px solid ${S.border}`,
-                  borderRadius: 10, padding: 4, minWidth: 200,
-                  boxShadow: "0 8px 28px rgba(0,0,0,.45)",
+                  position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 50,
+                  background: "rgba(16,20,32,.97)", backdropFilter: "blur(16px)",
+                  border: `1px solid rgba(255,255,255,.1)`,
+                  borderRadius: 12, padding: 4, minWidth: 200,
+                  boxShadow: "0 14px 40px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06)",
                   maxHeight: 220, overflowY: "auto",
                 }}>
                   {unassigned.map((u) => (
@@ -595,7 +717,7 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
       )}
 
       {/* ── Divider ── */}
-      <div style={{ height: 1, background: S.border, opacity: 0.5 }} />
+      <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
 
       {/* ── Danger zone ── */}
       {isCreator && (
@@ -605,18 +727,22 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
               onClick={() => setConfirmDel(true)}
               style={{
                 display: "flex", alignItems: "center", gap: 7,
-                background: "none", border: `1px solid rgba(220,38,38,.3)`,
-                color: "rgba(220,38,38,.7)", borderRadius: 8,
+                background: "rgba(239,68,68,.06)", border: `1px solid rgba(239,68,68,.22)`,
+                color: "rgba(239,68,68,.65)", borderRadius: 10,
                 padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-                transition: "all .12s",
+                transition: "all .15s",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(220,38,38,.1)";
-                e.currentTarget.style.color = "rgb(220 38 38)";
+                e.currentTarget.style.background = "rgba(239,68,68,.12)";
+                e.currentTarget.style.borderColor = "rgba(239,68,68,.4)";
+                e.currentTarget.style.color = "rgb(239 68 68)";
+                e.currentTarget.style.boxShadow = "0 0 14px rgba(239,68,68,.18)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "none";
-                e.currentTarget.style.color = "rgba(220,38,38,.7)";
+                e.currentTarget.style.background = "rgba(239,68,68,.06)";
+                e.currentTarget.style.borderColor = "rgba(239,68,68,.22)";
+                e.currentTarget.style.color = "rgba(239,68,68,.65)";
+                e.currentTarget.style.boxShadow = "none";
               }}
             >
               🗑 Delete this {item.item_type}

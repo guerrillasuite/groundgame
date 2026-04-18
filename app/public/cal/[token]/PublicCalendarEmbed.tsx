@@ -16,6 +16,7 @@ type PublicItem = {
   end_at: string | null;
   is_all_day: boolean | null;
   location: string | null;
+  location_address: string | null;
   description?: string | null;
 };
 
@@ -167,10 +168,28 @@ function PublicModal({ item, typeColors, onClose }: {
           )}
 
           {/* Location */}
-          {item.location && (
+          {(item.location || item.location_address) && (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <span style={{ fontSize: 16, opacity: 0.45, flexShrink: 0 }}>📍</span>
-              <div style={{ fontSize: 14, color: "#e2e8f0" }}>{item.location}</div>
+              <div>
+                {item.location && (
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0" }}>{item.location}</div>
+                )}
+                {item.location_address && (() => {
+                  const addr = item.location_address;
+                  const isUrl = /^https?:\/\//i.test(addr);
+                  return (
+                    <a
+                      href={isUrl ? addr : `https://maps.google.com/?q=${encodeURIComponent(addr)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: 13, color: "#60a5fa", textDecoration: "underline", wordBreak: "break-all" }}
+                    >
+                      {addr}
+                    </a>
+                  );
+                })()}
+              </div>
             </div>
           )}
 
@@ -186,7 +205,7 @@ function PublicModal({ item, typeColors, onClose }: {
             </div>
           )}
 
-          {!effectiveDate(item) && !item.location && !item.description && (
+          {!effectiveDate(item) && !item.location && !item.location_address && !item.description && (
             <div style={{ fontSize: 13, color: "#64748b", textAlign: "center", padding: "8px 0" }}>
               No additional details.
             </div>

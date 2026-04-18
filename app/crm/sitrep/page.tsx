@@ -29,7 +29,7 @@ export default async function SitRepPage() {
     sb
       .from("sitrep_items")
       .select(
-        "id, item_type, title, description, location, status, priority, due_date, start_at, end_at, is_all_day, mission_id, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
+        "id, item_type, title, description, location, location_address, status, priority, due_date, start_at, end_at, is_all_day, mission_id, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
       )
       .eq("tenant_id", tenant.id)
       .order("due_date", { ascending: true, nullsFirst: false })

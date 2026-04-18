@@ -18,7 +18,7 @@ function makeSb(tenantId: string) {
 const PATCHABLE = [
   "title", "description", "status", "priority", "due_date",
   "start_at", "end_at", "is_all_day", "agenda", "meeting_notes",
-  "mission_id", "visibility", "location",
+  "mission_id", "visibility", "location", "location_address",
 ] as const;
 
 // GET /api/crm/sitrep/items/[id]

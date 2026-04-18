@@ -98,15 +98,20 @@ function getItemFamily(item: SitRepItem, typeColors?: Record<string, string>): C
 function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick} style={{
-      padding: "5px 13px", borderRadius: 20,
+      padding: "5px 13px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
+      transition: "all .12s ease",
       border: active
-        ? "1px solid color-mix(in srgb, var(--primary, #2563eb) 55%, transparent)"
-        : "1px solid rgba(255,255,255,.1)",
+        ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
+        : "1px solid rgba(255,255,255,.07)",
       background: active
-        ? "color-mix(in srgb, var(--primary, #2563eb) 22%, transparent)"
-        : "rgba(255,255,255,.04)",
-      color: active ? "#93c5fd" : "rgb(160 174 192)",
-      fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .12s ease",
+        ? "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)"
+        : "rgba(255,255,255,.03)",
+      color: active
+        ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)"
+        : "rgb(100 116 139)",
+      boxShadow: active
+        ? "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent)"
+        : "none",
     }}>{children}</button>
   );
 }
@@ -123,18 +128,29 @@ function ItemPill({
   const time = item.item_type !== "task" && hasExplicitTime(item.start_at) && !item.is_all_day
     ? fmtTime(item.start_at!) + " " : "";
 
+  const accentCol = isDone ? family.shades[0] : family.shades[2];
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       title={item.title}
       style={{
         display: "block", width: "100%", textAlign: "left",
-        padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+        padding: "3px 7px", borderRadius: 5, fontSize: 11, fontWeight: 600,
         background: bg, color,
         border: "none", cursor: "pointer",
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         textDecoration: isDone ? "line-through" : "none",
-        opacity: isDone ? 0.8 : 1,
+        opacity: isDone ? 0.75 : 1,
+        boxShadow: `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2)`,
+        transition: "all .12s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 3px 10px rgba(0,0,0,.3), 0 0 10px ${accentCol}22`;
+        e.currentTarget.style.transform = "translateY(-1px)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2)`;
+        e.currentTarget.style.transform = "";
       }}
     >
       {time}{item.title}
@@ -300,10 +316,28 @@ function ItemDetailsModal({
           )}
 
           {/* Location */}
-          {item.location && (
+          {(item.location || item.location_address) && (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <span style={{ fontSize: 14, opacity: 0.5, flexShrink: 0, marginTop: 1 }}>📍</span>
-              <div style={{ fontSize: 13, color: S.text }}>{item.location}</div>
+              <div>
+                {item.location && (
+                  <div style={{ fontSize: 13, fontWeight: 600, color: S.text }}>{item.location}</div>
+                )}
+                {item.location_address && (() => {
+                  const addr = item.location_address;
+                  const isUrl = /^https?:\/\//i.test(addr);
+                  return (
+                    <a
+                      href={isUrl ? addr : `https://maps.google.com/?q=${encodeURIComponent(addr)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: 12, color: "#60a5fa", textDecoration: "underline", wordBreak: "break-all" }}
+                    >
+                      {addr}
+                    </a>
+                  );
+                })()}
+              </div>
             </div>
           )}
 
@@ -326,7 +360,11 @@ function ItemDetailsModal({
               textDecoration: "none", padding: "7px 14px",
               border: "1px solid rgba(255,255,255,.1)", borderRadius: 8,
               background: "rgba(255,255,255,.04)",
-            }}>
+              transition: "all .12s ease",
+            }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.08)"; (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-1px)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.04)"; (e.currentTarget as HTMLAnchorElement).style.transform = ""; }}
+            >
               Open full details →
             </Link>
             {!isCancelled && (
@@ -340,7 +378,11 @@ function ItemDetailsModal({
                   color: isDone ? S.dim : "#fff",
                   border: `1px solid ${isDone ? "rgba(255,255,255,.12)" : family.shades[0]}`,
                   opacity: togglePending ? 0.6 : 1,
+                  boxShadow: isDone ? "none" : `0 0 14px ${family.shades[0]}33`,
+                  transition: "all .12s ease",
                 }}
+                onMouseEnter={(e) => { if (!togglePending) { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.filter = "brightness(1.1)"; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.filter = ""; }}
               >
                 {isDone ? "↩ Mark open" : "✓ Mark done"}
               </button>
@@ -373,11 +415,13 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
   const missionMap = new Map(missions.map((m) => [m.id, m]));
 
   const S = {
-    surface: "rgb(18 23 33)",
-    card:    "rgb(28 36 48)",
-    border:  "rgb(43 53 67)",
-    text:    "rgb(238 242 246)",
-    dim:     "rgb(160 174 192)",
+    bg:       "rgb(10 13 20)",
+    surface:  "rgb(14 18 28)",
+    card:     "rgb(20 25 38)",
+    border:   "rgba(255,255,255,.07)",
+    text:     "rgb(236 240 245)",
+    dim:      "rgb(100 116 139)",
+    dimBright:"rgb(148 163 184)",
   } as const;
 
   // Sync view + date to URL params for persistence
@@ -453,21 +497,31 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
   // ── Common nav bar ──────────────────────────────────────────────────────────
 
   const NavBar = () => (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-      <button onClick={stepBack} style={{
-        padding: "6px 12px", borderRadius: 8, border: `1px solid ${S.border}`,
-        background: "rgba(255,255,255,.04)", color: S.text, cursor: "pointer", fontSize: 13,
-      }}>←</button>
-      <div style={{ flex: 1, textAlign: "center", fontWeight: 700, fontSize: 15, color: S.text }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+      {([["←", stepBack], ["→", stepForward]] as const).map(([label, fn]) => (
+        <button key={label} onClick={fn} style={{
+          padding: "7px 13px", borderRadius: 9,
+          border: "1px solid rgba(255,255,255,.09)",
+          background: "rgba(255,255,255,.05)", backdropFilter: "blur(8px)",
+          color: S.text, cursor: "pointer", fontSize: 14, fontWeight: 600,
+          boxShadow: "0 2px 8px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.06)",
+          transition: "all .12s",
+        }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.09)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.05)"; e.currentTarget.style.transform = ""; }}
+        >{label}</button>
+      ))}
+      <div style={{ flex: 1, textAlign: "center", fontWeight: 800, fontSize: 15, color: S.text, letterSpacing: "-0.01em" }}>
         {periodLabel}
       </div>
-      <button onClick={stepForward} style={{
-        padding: "6px 12px", borderRadius: 8, border: `1px solid ${S.border}`,
-        background: "rgba(255,255,255,.04)", color: S.text, cursor: "pointer", fontSize: 13,
-      }}>→</button>
       <button onClick={() => navigate(view, todayStr())} style={{
-        padding: "6px 12px", borderRadius: 8, border: `1px solid ${S.border}`,
-        background: "rgba(255,255,255,.04)", color: S.dim, cursor: "pointer", fontSize: 12,
+        padding: "6px 14px", borderRadius: 9,
+        border: "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent)",
+        background: "color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)",
+        color: "color-mix(in srgb, var(--gg-primary, #2563eb) 85%, #fff)",
+        cursor: "pointer", fontSize: 12, fontWeight: 700,
+        boxShadow: "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)",
+        transition: "all .12s",
       }}>Today</button>
     </div>
   );
@@ -509,23 +563,51 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
                 style={{
                   minHeight: 90, padding: "6px 5px",
                   background: isToday
-                    ? "rgba(37,99,235,.12)"
+                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)"
                     : inMonth ? S.surface : "rgba(255,255,255,.015)",
                   border: isToday
-                    ? "1px solid rgba(37,99,235,.4)"
+                    ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
                     : `1px solid ${S.border}`,
                   borderRadius: 8, cursor: "pointer",
-                  transition: "background .1s",
+                  boxShadow: isToday
+                    ? "0 0 18px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent), inset 0 0 18px color-mix(in srgb, var(--gg-primary, #2563eb) 5%, transparent)"
+                    : "none",
+                  transition: "all .12s ease",
                 }}
-                onMouseEnter={(e) => { if (!isToday) e.currentTarget.style.background = "rgba(255,255,255,.04)"; }}
-                onMouseLeave={(e) => { if (!isToday) e.currentTarget.style.background = inMonth ? S.surface : "rgba(255,255,255,.015)"; }}
+                onMouseEnter={(e) => {
+                  if (!isToday) {
+                    e.currentTarget.style.background = "rgba(255,255,255,.06)";
+                    e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,.28)";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isToday) {
+                    e.currentTarget.style.background = inMonth ? S.surface : "rgba(255,255,255,.015)";
+                    e.currentTarget.style.boxShadow = "none";
+                    e.currentTarget.style.transform = "";
+                  }
+                }}
               >
-                <div style={{
-                  fontSize: 12, fontWeight: isToday ? 800 : inMonth ? 500 : 400,
-                  color: isToday ? "#60a5fa" : inMonth ? S.text : S.dim,
-                  marginBottom: 4, textAlign: "right",
-                }}>
-                  {parseInt(ds.split("-")[2], 10)}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+                  {isToday ? (
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      width: 22, height: 22, borderRadius: "50%",
+                      background: "var(--gg-primary, #2563eb)",
+                      color: "#fff", fontSize: 11, fontWeight: 800,
+                      boxShadow: "0 0 8px color-mix(in srgb, var(--gg-primary, #2563eb) 45%, transparent)",
+                    }}>
+                      {parseInt(ds.split("-")[2], 10)}
+                    </span>
+                  ) : (
+                    <span style={{
+                      fontSize: 12, fontWeight: inMonth ? 500 : 400,
+                      color: inMonth ? S.text : S.dim,
+                    }}>
+                      {parseInt(ds.split("-")[2], 10)}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "grid", gap: 2 }}>
                   {visible.map((item) => (
@@ -572,25 +654,41 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
 
           return (
             <div key={ds} style={{
-              background: isToday ? "rgba(37,99,235,.08)" : S.surface,
-              border: isToday ? "1px solid rgba(37,99,235,.35)" : `1px solid ${S.border}`,
+              background: isToday
+                ? "color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent)"
+                : S.surface,
+              border: isToday
+                ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent)"
+                : `1px solid ${S.border}`,
               borderRadius: 10, padding: "10px 8px", minHeight: 200,
+              boxShadow: isToday
+                ? "0 0 16px color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)"
+                : "none",
             }}>
-              <div style={{
-                fontSize: 12, fontWeight: 700, marginBottom: 8,
-                color: isToday ? "#60a5fa" : S.dim,
-                textAlign: "center",
-              }}>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              <div style={{ marginBottom: 8, textAlign: "center" }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  color: isToday
+                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)"
+                    : S.dim,
+                  marginBottom: 4,
+                }}>
                   {d.toLocaleDateString("en-US", { weekday: "short" })}
                 </div>
-                <div style={{
-                  fontSize: isToday ? 18 : 16,
-                  color: isToday ? "#60a5fa" : S.text,
-                  fontWeight: isToday ? 800 : 600,
-                }}>
-                  {d.getDate()}
-                </div>
+                {isToday ? (
+                  <span style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    width: 26, height: 26, borderRadius: "50%",
+                    background: "var(--gg-primary, #2563eb)",
+                    color: "#fff", fontSize: 13, fontWeight: 800,
+                    boxShadow: "0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 45%, transparent)",
+                  }}>
+                    {d.getDate()}
+                  </span>
+                ) : (
+                  <div style={{ fontSize: 16, fontWeight: 600, color: S.text }}>{d.getDate()}</div>
+                )}
               </div>
               <div style={{ display: "grid", gap: 3 }}>
                 {visible.map((item) => (
@@ -643,6 +741,7 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
               const time = item.item_type !== "task" && hasExplicitTime(item.start_at) && !item.is_all_day
                 ? fmtTime(item.start_at!) : null;
 
+              const accentCol = isDone ? family.shades[0] : family.shades[2];
               return (
                 <div
                   key={item.id}
@@ -650,11 +749,19 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
                   style={{
                     display: "flex", alignItems: "center", gap: 12,
                     padding: "12px 16px", borderRadius: 10,
-                    background: cardBg, border: `1px solid ${family.shades[2]}55`,
-                    cursor: "pointer", transition: "filter .12s",
+                    background: cardBg,
+                    border: `1px solid ${family.shades[2]}44`,
+                    boxShadow: `inset 3px 0 0 0 ${accentCol}, 0 2px 8px rgba(0,0,0,.2)`,
+                    cursor: "pointer", transition: "all .12s ease",
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.filter = "brightness(1.05)"}
-                  onMouseLeave={(e) => e.currentTarget.style.filter = "none"}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = `inset 3px 0 0 0 ${accentCol}, 0 6px 20px rgba(0,0,0,.32), 0 0 18px ${accentCol}28`;
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = `inset 3px 0 0 0 ${accentCol}, 0 2px 8px rgba(0,0,0,.2)`;
+                    e.currentTarget.style.transform = "";
+                  }}
                 >
                   {time && (
                     <div style={{
@@ -728,16 +835,17 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
             padding: "8px 16px", fontSize: 13, fontWeight: 600,
             background: "transparent", color: S.dim,
             textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
-            transition: "background .12s",
+            transition: "all .12s",
           }}>
             ☰ List
           </Link>
           <Link href="/crm/sitrep/calendar" style={{
             padding: "8px 16px", fontSize: 13, fontWeight: 600,
-            background: "rgba(255,255,255,.1)", color: S.text,
+            background: "color-mix(in srgb, var(--gg-primary, #2563eb) 16%, transparent)",
+            color: "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)",
             textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
-            borderLeft: `1px solid ${S.border}`,
-            transition: "background .12s",
+            borderLeft: "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent)",
+            transition: "all .12s",
           }}>
             ◫ Calendar
           </Link>
@@ -768,11 +876,19 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
           {(["month","week","day"] as const).map((v) => (
             <button key={v} onClick={() => setViewKeepDate(v)} style={{
               padding: "5px 13px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              transition: "all .12s ease",
               border: view === v
-                ? "1px solid rgba(255,255,255,.25)"
-                : "1px solid rgba(255,255,255,.1)",
-              background: view === v ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
-              color: view === v ? S.text : S.dim,
+                ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
+                : "1px solid rgba(255,255,255,.07)",
+              background: view === v
+                ? "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)"
+                : "rgba(255,255,255,.03)",
+              color: view === v
+                ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)"
+                : S.dim,
+              boxShadow: view === v
+                ? "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent)"
+                : "none",
             }}>
               {v.charAt(0).toUpperCase() + v.slice(1)}
             </button>
