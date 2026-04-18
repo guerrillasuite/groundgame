@@ -105,9 +105,14 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/account/set-password");
 
   // Protect PWA API routes
+  // /api/survey/panel-submit and /api/survey/response are called by public hosted
+  // survey pages (/s/[surveyId]) where the respondent has no session.
+  const isPublicSurveySubmit =
+    pathname.startsWith("/api/survey/panel-submit") ||
+    pathname.startsWith("/api/survey/response");
   const isPwaApi =
     pathname.startsWith("/api/doors") ||
-    pathname.startsWith("/api/survey") ||
+    (pathname.startsWith("/api/survey") && !isPublicSurveySubmit) ||
     pathname.startsWith("/api/contacts");
 
   if (!user) {
