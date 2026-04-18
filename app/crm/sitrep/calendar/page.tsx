@@ -25,11 +25,11 @@ export default async function SitRepCalendarPage() {
 
   const sb = makeSb(tenant.id);
 
-  const [itemsRes, missionsRes, typesRes] = await Promise.all([
+  const [itemsRes, typesRes, missionsRes] = await Promise.all([
     sb
       .from("sitrep_items")
       .select(
-        "id, item_type, title, status, priority, due_date, start_at, end_at, is_all_day, mission_id, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
+        "id, item_type, title, description, location, status, priority, due_date, start_at, end_at, is_all_day, mission_id, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
       )
       .eq("tenant_id", tenant.id)
       .order("start_at", { ascending: true, nullsFirst: false })

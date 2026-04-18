@@ -299,15 +299,23 @@ function ItemDetailsModal({
             </div>
           )}
 
-          {/* Description / agenda */}
-          {(item as any).description && (
+          {/* Location */}
+          {item.location && (
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <span style={{ fontSize: 14, opacity: 0.5, flexShrink: 0, marginTop: 1 }}>📍</span>
+              <div style={{ fontSize: 13, color: S.text }}>{item.location}</div>
+            </div>
+          )}
+
+          {/* Description */}
+          {item.description && (
             <div style={{
               fontSize: 13, color: S.text, lineHeight: 1.6,
               background: "rgba(255,255,255,.04)", borderRadius: 8,
               padding: "10px 14px", border: "1px solid rgba(255,255,255,.06)",
               whiteSpace: "pre-wrap",
             }}>
-              {(item as any).description}
+              {item.description}
             </div>
           )}
 

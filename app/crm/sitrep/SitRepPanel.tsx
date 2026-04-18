@@ -13,6 +13,8 @@ export type SitRepItem = {
   id: string;
   item_type: string;
   title: string;
+  description: string | null;
+  location: string | null;
   status: string | null;
   priority: string | null;
   due_date: string | null;
@@ -479,100 +481,51 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
           </div>
         </div>
 
-        {/* List / Calendar toggle */}
-        <div style={{
-          display: "flex", borderRadius: 10, overflow: "hidden",
-          border: `1px solid ${S.border}`, flexShrink: 0,
-        }}>
-          <Link href="/crm/sitrep" style={{
-            padding: "8px 16px", fontSize: 13, fontWeight: 600,
-            background: !isCalendar ? "rgba(255,255,255,.1)" : "transparent",
-            color: !isCalendar ? S.text : S.dim,
-            textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
-            transition: "background .12s",
-          }}>
-            ☰ List
-          </Link>
-          <Link href="/crm/sitrep/calendar" style={{
-            padding: "8px 16px", fontSize: 13, fontWeight: 600,
-            background: isCalendar ? "rgba(255,255,255,.1)" : "transparent",
-            color: isCalendar ? S.text : S.dim,
-            textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
-            borderLeft: `1px solid ${S.border}`,
-            transition: "background .12s",
-          }}>
-            ◫ Calendar
-          </Link>
-        </div>
-      </div>
-
-      {/* ── Filter bar ── */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 4 }}>
-          <FilterPill active={scope === "mine"} onClick={() => setScope("mine")}>Mine</FilterPill>
-          <FilterPill active={scope === "all"}  onClick={() => setScope("all")}>All</FilterPill>
-        </div>
-        <div style={{ width: 1, height: 20, background: S.border, margin: "0 2px" }} />
-        <div style={{ display: "flex", gap: 4 }}>
-          {(["all","task","event","meeting"] as const).map((t) => (
-            <FilterPill key={t} active={typeFilter === t} onClick={() => setTypeFilter(t)}>
-              {t === "all" ? "All Types" : t === "task" ? "Tasks" : t === "event" ? "Events" : "Meetings"}
-            </FilterPill>
-          ))}
-        </div>
-        <div style={{ width: 1, height: 20, background: S.border, margin: "0 2px" }} />
-        <div style={{ display: "flex", gap: 4 }}>
-          <FilterPill active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>Active</FilterPill>
-          <FilterPill active={statusFilter === "done"}   onClick={() => setStatusFilter("done")}>Done</FilterPill>
-          <FilterPill active={statusFilter === "all"}    onClick={() => setStatusFilter("all")}>All</FilterPill>
-        </div>
-      </div>
-
-      {/* ── Missions + New row ── */}
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: -8 }}>
-        {hasMissions && (
-          <Link href="/crm/sitrep/missions" style={{
-            padding: "6px 13px", fontSize: 12, borderRadius: 8,
-            border: "1px solid rgba(99,102,241,.3)", background: "rgba(99,102,241,.08)",
-            color: "#a5b4fc", textDecoration: "none",
-            display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 500,
-          }}>
-            <span style={{ fontSize: 12 }}>⬡</span>Missions
-          </Link>
-        )}
-        <div style={{ position: "relative" }}>
-          <button
-            ref={newBtnRef}
-            className="btn"
-            onClick={() => setShowNewMenu((v) => !v)}
-            style={{ padding: "6px 13px", fontSize: 12, borderRadius: 8, gap: 5, display: "flex", alignItems: "center" }}
-          >
-            + New <span style={{ opacity: 0.6, fontSize: 10 }}>▾</span>
-          </button>
-          {showNewMenu && (
-            <div ref={newMenuRef} style={{
-              position: "absolute", top: "calc(100% + 4px)", right: 0,
-              background: S.card, border: `1px solid ${S.border}`,
-              borderRadius: 10, padding: 4, zIndex: 100,
-              minWidth: 150, boxShadow: "0 8px 28px rgba(0,0,0,.45)",
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {hasMissions && (
+            <Link href="/crm/sitrep/missions" style={{
+              padding: "7px 14px", fontSize: 13, borderRadius: 10,
+              border: "1px solid rgba(99,102,241,.3)", background: "rgba(99,102,241,.08)",
+              color: "#a5b4fc", textDecoration: "none",
+              display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 500,
             }}>
-              {([ { type: "task", icon: "○", label: "Task" }, { type: "event", icon: "◆", label: "Event" },
-                  { type: "meeting", icon: "◉", label: "Meeting" }, { type: "mission", icon: "⬡", label: "Mission" },
-              ] as const).map((opt) => (
-                <button key={opt.type} onClick={() => openCreate(opt.type)} style={{
-                  display: "flex", alignItems: "center", gap: 10, width: "100%",
-                  padding: "8px 12px", background: "none", border: "none",
-                  color: S.text, cursor: "pointer", borderRadius: 7, fontSize: 13, textAlign: "left",
-                }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,.06)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-                >
-                  <span style={{ opacity: 0.55, width: 14, textAlign: "center" }}>{opt.icon}</span>
-                  <span>{opt.label}</span>
-                </button>
-              ))}
-            </div>
+              <span style={{ fontSize: 13 }}>⬡</span>Missions
+            </Link>
           )}
+          <div style={{ position: "relative" }}>
+            <button
+              ref={newBtnRef}
+              className="btn"
+              onClick={() => setShowNewMenu((v) => !v)}
+              style={{ padding: "7px 14px", fontSize: 13, borderRadius: 10, gap: 6, display: "flex", alignItems: "center" }}
+            >
+              + New <span style={{ opacity: 0.6, fontSize: 10 }}>▾</span>
+            </button>
+            {showNewMenu && (
+              <div ref={newMenuRef} style={{
+                position: "absolute", top: "calc(100% + 4px)", right: 0,
+                background: S.card, border: `1px solid ${S.border}`,
+                borderRadius: 10, padding: 4, zIndex: 100,
+                minWidth: 150, boxShadow: "0 8px 28px rgba(0,0,0,.45)",
+              }}>
+                {([ { type: "task", icon: "○", label: "Task" }, { type: "event", icon: "◆", label: "Event" },
+                    { type: "meeting", icon: "◉", label: "Meeting" }, { type: "mission", icon: "⬡", label: "Mission" },
+                ] as const).map((opt) => (
+                  <button key={opt.type} onClick={() => openCreate(opt.type)} style={{
+                    display: "flex", alignItems: "center", gap: 10, width: "100%",
+                    padding: "8px 12px", background: "none", border: "none",
+                    color: S.text, cursor: "pointer", borderRadius: 7, fontSize: 13, textAlign: "left",
+                  }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,.06)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  >
+                    <span style={{ opacity: 0.55, width: 14, textAlign: "center" }}>{opt.icon}</span>
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -601,6 +554,52 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
           {addPending ? "…" : "Add"}
         </button>
       </form>
+
+      {/* ── Filter bar + List/Calendar toggle ── */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 4 }}>
+          <FilterPill active={scope === "mine"} onClick={() => setScope("mine")}>Mine</FilterPill>
+          <FilterPill active={scope === "all"}  onClick={() => setScope("all")}>All</FilterPill>
+        </div>
+        <div style={{ width: 1, height: 20, background: S.border, margin: "0 2px" }} />
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["all","task","event","meeting"] as const).map((t) => (
+            <FilterPill key={t} active={typeFilter === t} onClick={() => setTypeFilter(t)}>
+              {t === "all" ? "All Types" : t === "task" ? "Tasks" : t === "event" ? "Events" : "Meetings"}
+            </FilterPill>
+          ))}
+        </div>
+        <div style={{ width: 1, height: 20, background: S.border, margin: "0 2px" }} />
+        <div style={{ display: "flex", gap: 4 }}>
+          <FilterPill active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>Active</FilterPill>
+          <FilterPill active={statusFilter === "done"}   onClick={() => setStatusFilter("done")}>Done</FilterPill>
+          <FilterPill active={statusFilter === "all"}    onClick={() => setStatusFilter("all")}>All</FilterPill>
+        </div>
+        <div style={{ marginLeft: "auto" }}>
+          <div style={{
+            display: "flex", borderRadius: 8, overflow: "hidden",
+            border: `1px solid ${S.border}`,
+          }}>
+            <Link href="/crm/sitrep" style={{
+              padding: "5px 14px", fontSize: 12, fontWeight: 600,
+              background: !isCalendar ? "rgba(255,255,255,.1)" : "transparent",
+              color: !isCalendar ? S.text : S.dim,
+              textDecoration: "none", display: "flex", alignItems: "center", gap: 5,
+            }}>
+              ☰ List
+            </Link>
+            <Link href="/crm/sitrep/calendar" style={{
+              padding: "5px 14px", fontSize: 12, fontWeight: 600,
+              background: isCalendar ? "rgba(255,255,255,.1)" : "transparent",
+              color: isCalendar ? S.text : S.dim,
+              textDecoration: "none", display: "flex", alignItems: "center", gap: 5,
+              borderLeft: `1px solid ${S.border}`,
+            }}>
+              ◫ Cal
+            </Link>
+          </div>
+        </div>
+      </div>
 
       {/* ── Item list ── */}
       {groups.length === 0 ? (
