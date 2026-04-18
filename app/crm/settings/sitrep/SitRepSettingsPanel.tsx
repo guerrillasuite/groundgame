@@ -41,6 +41,7 @@ function MakePublicBtn() {
 export default function SitRepSettingsPanel() {
   const [types, setTypes] = useState<ItemType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savedId, setSavedId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("blue");
   const [adding, setAdding] = useState(false);
@@ -61,6 +62,8 @@ export default function SitRepSettingsPanel() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ color }),
     });
+    setSavedId(id);
+    setTimeout(() => setSavedId((cur) => (cur === id ? null : cur)), 2000);
   }
 
   async function handleDelete(id: string, name: string) {
@@ -115,6 +118,10 @@ export default function SitRepSettingsPanel() {
         }}>
           {t.is_system ? "SYSTEM" : "CUSTOM"}
         </span>
+
+        {savedId === t.id && (
+          <span style={{ fontSize: 11, color: "#4ade80", fontWeight: 600, flexShrink: 0 }}>Saved ✓</span>
+        )}
 
         <MakePublicBtn />
 

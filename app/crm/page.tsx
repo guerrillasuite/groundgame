@@ -5,6 +5,7 @@ import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
 import { createClient } from "@supabase/supabase-js";
 import { resolveDispoConfig, buildColorMap } from "@/lib/dispositionConfig";
+import { getFamilyByKey, SYSTEM_TYPE_FAMILIES } from "@/lib/sitrep-colors";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -147,6 +148,7 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     { data: surveys },
     { data: recentStopsRaw },
     { data: sitrepItemsRaw },
+    { data: sitrepTypesRaw },
   ] = await Promise.all([
     sb.from("tenant_people").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     sb.from("households").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
@@ -159,7 +161,19 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     sb.from("surveys").select("id, title").eq("tenant_id", tenantId).eq("active", true).limit(8),
     sb.from("stops").select("id, stop_at, result, person_id, channel, walklist_id").eq("tenant_id", tenantId).order("stop_at", { ascending: false }).limit(20),
     sb.from("sitrep_items").select("id, item_type, title, status, priority, due_date, start_at").eq("tenant_id", tenantId).in("status", ["open", "in_progress"]).neq("visibility", "private").order("due_date", { ascending: true, nullsFirst: false }).order("start_at", { ascending: true, nullsFirst: false }).limit(10),
+    sb.from("sitrep_item_types").select("slug, color").eq("tenant_id", tenantId),
   ]);
+
+  const sitrepFamilyMap: Record<string, string[]> = {};
+  for (const t of (sitrepTypesRaw ?? []) as any[]) {
+    const fam = getFamilyByKey(t.color) ?? getFamilyByKey(SYSTEM_TYPE_FAMILIES[t.slug] ?? "blue")!;
+    sitrepFamilyMap[t.slug] = fam.shades as unknown as string[];
+  }
+  function sitrepRowBg(item: any): string {
+    const shades = sitrepFamilyMap[item.item_type]
+      ?? getFamilyByKey(SYSTEM_TYPE_FAMILIES[item.item_type] ?? "blue")!.shades;
+    return shades[3] + "55";
+  }
 
   const listIds = (recentLists ?? []).map((l: any) => l.id);
   const surveyIds = (surveys ?? []).map((s: any) => s.id);
@@ -447,20 +461,17 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
           {(sitrepItemsRaw ?? []).length === 0
             ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
             : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {(sitrepItemsRaw as any[]).map((item, i) => {
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {(sitrepItemsRaw as any[]).map((item) => {
                   const overdue = isOverdue(sitrepEffectiveDate(item));
-                  const icon = sitrepIcon(item, overdue);
-                  const iconColor = sitrepIconColor(item, overdue);
                   return (
-                    <Link key={item.id} href={`/crm/sitrep`} className="db-reminder-row" style={{
+                    <Link key={item.id} href="/crm/sitrep" style={{
                       display: "flex", alignItems: "center", gap: 8,
-                      padding: "8px 10px", borderRadius: 6, textDecoration: "none", color: "inherit",
-                      borderTop: i > 0 ? "1px solid var(--gg-border, #f3f4f6)" : "none",
+                      padding: "7px 10px", borderRadius: 7, textDecoration: "none",
+                      color: "#0f172a", background: sitrepRowBg(item),
                     }}>
-                      <span style={{ fontSize: 13, color: iconColor, flexShrink: 0, width: 16 }}>{icon}</span>
                       <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#ef4444" : "var(--gg-text-dim, #6b7280)" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
                         {overdue ? "PAST DUE" : fmtSitrepDate(item)}
                       </span>
                     </Link>
@@ -493,7 +504,7 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
   const myListIds = (assignments ?? []).map((a: any) => a.walklist_id).filter(Boolean);
 
   // Parallel fetches
-  const [myListsRaw, myItemsRaw, myStopsRaw, mySitrepRaw, myRecentStopsRaw] = await Promise.all([
+  const [myListsRaw, myItemsRaw, myStopsRaw, mySitrepRaw, myRecentStopsRaw, myTypesRaw] = await Promise.all([
     myListIds.length
       ? sb.from("walklists").select("id, name, mode").in("id", myListIds)
       : Promise.resolve({ data: [] }),
@@ -507,7 +518,19 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
     myListIds.length
       ? sb.from("stops").select("id, stop_at, result, person_id, channel").eq("tenant_id", tenantId).in("walklist_id", myListIds).order("stop_at", { ascending: false }).limit(10)
       : Promise.resolve({ data: [] }),
+    sb.from("sitrep_item_types").select("slug, color").eq("tenant_id", tenantId),
   ]);
+
+  const myFamilyMap: Record<string, string[]> = {};
+  for (const t of (myTypesRaw.data ?? []) as any[]) {
+    const fam = getFamilyByKey(t.color) ?? getFamilyByKey(SYSTEM_TYPE_FAMILIES[t.slug] ?? "blue")!;
+    myFamilyMap[t.slug] = fam.shades as unknown as string[];
+  }
+  function mySitrepRowBg(item: any): string {
+    const shades = myFamilyMap[item.item_type]
+      ?? getFamilyByKey(SYSTEM_TYPE_FAMILIES[item.item_type] ?? "blue")!.shades;
+    return shades[3] + "55";
+  }
 
   // Aggregate list progress
   const itemCounts = new Map<string, number>();
@@ -634,24 +657,23 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
           </div>
           {myItems.length === 0
             ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
-            : myItems.slice(0, 8).map((item: any, i: number) => {
-                const overdue = isOverdue(sitrepEffectiveDate(item));
-                const icon = sitrepIcon(item, overdue);
-                const iconColor = sitrepIconColor(item, overdue);
-                return (
-                  <Link key={item.id} href="/crm/sitrep" className="db-reminder-row" style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "8px 10px", borderRadius: 6, textDecoration: "none", color: "inherit",
-                    borderTop: i > 0 ? "1px solid var(--gg-border, #f3f4f6)" : "none",
-                  }}>
-                    <span style={{ fontSize: 13, color: iconColor, flexShrink: 0, width: 16 }}>{icon}</span>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#ef4444" : "var(--gg-text-dim, #6b7280)" }}>
-                      {overdue ? "PAST DUE" : fmtSitrepDate(item)}
-                    </span>
-                  </Link>
-                );
-              })
+            : <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {myItems.slice(0, 8).map((item: any) => {
+                  const overdue = isOverdue(sitrepEffectiveDate(item));
+                  return (
+                    <Link key={item.id} href="/crm/sitrep" style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "7px 10px", borderRadius: 7, textDecoration: "none",
+                      color: "#0f172a", background: mySitrepRowBg(item),
+                    }}>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
+                        {overdue ? "PAST DUE" : fmtSitrepDate(item)}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
           }
         </div>
 

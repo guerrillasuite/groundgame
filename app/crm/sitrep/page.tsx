@@ -25,7 +25,7 @@ export default async function SitRepPage() {
 
   const sb = makeSb(tenant.id);
 
-  const [itemsRes, missionsRes] = await Promise.all([
+  const [itemsRes, missionsRes, typesRes] = await Promise.all([
     sb
       .from("sitrep_items")
       .select(
@@ -35,6 +35,10 @@ export default async function SitRepPage() {
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("start_at", { ascending: true, nullsFirst: false })
       .limit(500),
+    sb
+      .from("sitrep_item_types")
+      .select("slug, color")
+      .eq("tenant_id", tenant.id),
     sb
       .from("sitrep_missions")
       .select("id, title, status")
@@ -86,6 +90,11 @@ export default async function SitRepPage() {
 
   const missions = (missionsRes.data ?? []) as any[];
 
+  const typeColors: Record<string, string> = {};
+  for (const t of (typesRes.data ?? []) as any[]) {
+    if (t.slug && t.color) typeColors[t.slug] = t.color;
+  }
+
   return (
     <SitRepPanel
       initialItems={items}
@@ -93,6 +102,7 @@ export default async function SitRepPage() {
       users={users}
       currentUserId={crmUser.userId}
       hasMissions={hasFeature(tenant.features, "sitrep_missions")}
+      typeColors={typeColors}
     />
   );
 }
