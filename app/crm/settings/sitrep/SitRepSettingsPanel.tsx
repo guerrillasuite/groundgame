@@ -13,6 +13,18 @@ type ItemType = {
   is_public: boolean;
 };
 
+type PublicCalendar = {
+  id: string;
+  name: string;
+  token: string;
+  include_type_slugs: string[];
+  include_statuses: string[];
+  show_day: boolean;
+  show_week: boolean;
+  show_month: boolean;
+  default_view: "day" | "week" | "month";
+};
+
 const S = {
   surface: "rgb(18 23 33)",
   card:    "rgb(28 36 48)",
@@ -21,22 +33,323 @@ const S = {
   dim:     "rgb(160 174 192)",
 } as const;
 
-function MakePublicBtn() {
+const ALL_STATUSES = [
+  { key: "open",      label: "Open" },
+  { key: "confirmed", label: "Confirmed" },
+  { key: "done",      label: "Done" },
+];
+
+const ALL_VIEWS = [
+  { key: "show_day",   label: "Day" },
+  { key: "show_week",  label: "Week" },
+  { key: "show_month", label: "Month" },
+];
+
+function MakePublicBtn({ active, onToggle }: { active: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
-      disabled
-      title="Public sharing — coming soon"
+      onClick={onToggle}
       style={{
         padding: "4px 12px", fontSize: 12, borderRadius: 7, fontWeight: 500,
-        border: `1px solid ${S.border}`, background: "rgba(255,255,255,.03)",
-        color: S.dim, cursor: "not-allowed", opacity: 0.45, flexShrink: 0,
+        border: active ? "1px solid rgba(99,102,241,.5)" : `1px solid ${S.border}`,
+        background: active ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.03)",
+        color: active ? "#a5b4fc" : S.dim, cursor: "pointer", flexShrink: 0,
       }}
     >
-      Make Public
+      {active ? "Public ✓" : "Make Public"}
     </button>
   );
 }
+
+function TypeRow({ t, savedId, onColorChange, onDelete, onTogglePublic }: {
+  t: ItemType;
+  savedId: string | null;
+  onColorChange: (id: string, color: string) => void;
+  onDelete: (id: string, name: string) => void;
+  onTogglePublic: (id: string, val: boolean) => void;
+}) {
+  return (
+    <div style={{
+      background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12,
+      display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
+    }}>
+      <ColorFamilyPicker
+        value={t.color}
+        onChange={(key) => onColorChange(t.id, key)}
+        size={28}
+      />
+      <span style={{ fontSize: 14, fontWeight: 500, flex: 1, color: S.text }}>{t.name}</span>
+      <span style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
+        borderRadius: 4, padding: "2px 8px", flexShrink: 0,
+        background: t.is_system ? "rgba(255,255,255,.06)" : "rgba(99,102,241,.12)",
+        color: t.is_system ? S.dim : "#a5b4fc",
+      }}>
+        {t.is_system ? "SYSTEM" : "CUSTOM"}
+      </span>
+      {savedId === t.id && (
+        <span style={{ fontSize: 11, color: "#4ade80", fontWeight: 600, flexShrink: 0 }}>Saved ✓</span>
+      )}
+      <MakePublicBtn active={t.is_public} onToggle={() => onTogglePublic(t.id, !t.is_public)} />
+      {!t.is_system && (
+        <button
+          type="button"
+          onClick={() => onDelete(t.id, t.name)}
+          style={{
+            padding: "4px 10px", fontSize: 12, borderRadius: 7, fontWeight: 500,
+            border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)",
+            color: "#fca5a5", cursor: "pointer", flexShrink: 0,
+          }}
+        >
+          Delete
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Public Calendar Form ───────────────────────────────────────────────────────
+
+function CalendarForm({
+  publicTypes,
+  onCreated,
+}: { publicTypes: ItemType[]; onCreated: (cal: PublicCalendar) => void }) {
+  const [name, setName] = useState("");
+  const [typeSlugs, setTypeSlugs] = useState<string[]>([]);
+  const [statuses, setStatuses] = useState<string[]>(["open", "confirmed"]);
+  const [showDay, setShowDay]     = useState(true);
+  const [showWeek, setShowWeek]   = useState(true);
+  const [showMonth, setShowMonth] = useState(true);
+  const [defaultView, setDefaultView] = useState<"day"|"week"|"month">("month");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  function toggleSlug(slug: string) {
+    setTypeSlugs((prev) => prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]);
+  }
+  function toggleStatus(key: string) {
+    setStatuses((prev) => prev.includes(key) ? prev.filter((s) => s !== key) : [...prev, key]);
+  }
+
+  async function handleSave() {
+    if (!name.trim()) { setErr("Name is required."); return; }
+    setSaving(true); setErr("");
+    const res = await fetch("/api/crm/sitrep/public-calendars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name.trim(),
+        include_type_slugs: typeSlugs,
+        include_statuses:   statuses,
+        show_day:    showDay,
+        show_week:   showWeek,
+        show_month:  showMonth,
+        default_view: defaultView,
+      }),
+    });
+    if (res.ok) {
+      const created = await res.json();
+      onCreated(created);
+      setName(""); setTypeSlugs([]); setStatuses(["open","confirmed"]);
+      setShowDay(true); setShowWeek(true); setShowMonth(true); setDefaultView("month");
+    } else {
+      const e = await res.json().catch(() => ({}));
+      setErr(e.error ?? "Failed to create.");
+    }
+    setSaving(false);
+  }
+
+  const TAG: React.CSSProperties = {
+    padding: "4px 10px", borderRadius: 16, fontSize: 12, fontWeight: 500,
+    cursor: "pointer", border: `1px solid ${S.border}`, transition: "all .1s",
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div>
+        <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 4 }}>Calendar Name</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Public Events"
+          style={{
+            width: "100%", padding: "9px 12px", borderRadius: 8,
+            background: S.surface, border: `1px solid ${S.border}`,
+            color: S.text, fontSize: 14, boxSizing: "border-box",
+          }}
+        />
+      </div>
+
+      {publicTypes.length > 0 ? (
+        <div>
+          <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6 }}>Include Types</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {publicTypes.map((t) => {
+              const sel = typeSlugs.includes(t.slug);
+              return (
+                <button key={t.slug} type="button" onClick={() => toggleSlug(t.slug)} style={{
+                  ...TAG,
+                  background: sel ? "rgba(99,102,241,.18)" : "rgba(255,255,255,.04)",
+                  borderColor: sel ? "rgba(99,102,241,.5)" : S.border,
+                  color: sel ? "#a5b4fc" : S.dim,
+                }}>{t.name}</button>
+              );
+            })}
+          </div>
+          {typeSlugs.length === 0 && (
+            <p style={{ fontSize: 12, color: S.dim, margin: "4px 0 0" }}>All public types will be included if none selected.</p>
+          )}
+        </div>
+      ) : (
+        <p style={{ fontSize: 13, color: "rgb(251 191 36)", margin: 0 }}>
+          ⚠ No types are marked public yet. Use "Make Public" above on any type to enable it here.
+        </p>
+      )}
+
+      <div>
+        <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6 }}>Include Statuses</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          {ALL_STATUSES.map((s) => {
+            const sel = statuses.includes(s.key);
+            return (
+              <button key={s.key} type="button" onClick={() => toggleStatus(s.key)} style={{
+                ...TAG,
+                background: sel ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.03)",
+                borderColor: sel ? "rgba(255,255,255,.25)" : S.border,
+                color: sel ? S.text : S.dim,
+              }}>{s.label}</button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6 }}>Available Views</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          {ALL_VIEWS.map((v) => {
+            const key = v.key as "show_day"|"show_week"|"show_month";
+            const sel = key === "show_day" ? showDay : key === "show_week" ? showWeek : showMonth;
+            const toggle = key === "show_day"
+              ? () => setShowDay(!showDay)
+              : key === "show_week" ? () => setShowWeek(!showWeek) : () => setShowMonth(!showMonth);
+            return (
+              <button key={v.key} type="button" onClick={toggle} style={{
+                ...TAG,
+                background: sel ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.03)",
+                borderColor: sel ? "rgba(255,255,255,.25)" : S.border,
+                color: sel ? S.text : S.dim,
+              }}>{v.label}</button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 4 }}>Default View</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          {(["day","week","month"] as const).map((v) => (
+            <button key={v} type="button" onClick={() => setDefaultView(v)} style={{
+              ...TAG,
+              background: defaultView === v ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.03)",
+              borderColor: defaultView === v ? "rgba(255,255,255,.3)" : S.border,
+              color: defaultView === v ? S.text : S.dim,
+            }}>
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {err && <p style={{ margin: 0, fontSize: 12, color: "rgb(220 38 38)" }}>{err}</p>}
+      <div>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !name.trim()}
+          className="btn"
+          style={{ padding: "8px 20px", fontSize: 13, borderRadius: 8 }}
+        >
+          {saving ? "Creating…" : "Create Calendar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Embed code card ────────────────────────────────────────────────────────────
+
+function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const src = `${origin}/public/cal/${cal.token}`;
+  const embed = `<iframe src="${src}" width="100%" height="640" frameborder="0" style="border-radius:12px;min-width:300px" title="${cal.name}"></iframe>`;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(embed).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div style={{
+      background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12, padding: "14px 16px",
+      display: "grid", gap: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: S.text }}>{cal.name}</div>
+          <div style={{ fontSize: 11, color: S.dim, marginTop: 2 }}>
+            {cal.include_type_slugs.length === 0 ? "All types" : cal.include_type_slugs.join(", ")}
+            {" · "}
+            {cal.include_statuses.join(", ")}
+            {" · "}
+            {[cal.show_day && "Day", cal.show_week && "Week", cal.show_month && "Month"].filter(Boolean).join("/")}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (!confirm(`Delete "${cal.name}"?`)) return;
+            fetch(`/api/crm/sitrep/public-calendars/${cal.id}`, { method: "DELETE" })
+              .then((r) => { if (r.ok) onDelete(cal.id); });
+          }}
+          style={{
+            padding: "4px 10px", fontSize: 12, borderRadius: 7,
+            border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)",
+            color: "#fca5a5", cursor: "pointer", flexShrink: 0, fontWeight: 500,
+          }}
+        >Delete</button>
+      </div>
+
+      <div>
+        <div style={{ fontSize: 11, color: S.dim, marginBottom: 4 }}>Embed code</div>
+        <div style={{
+          background: "rgba(0,0,0,.3)", borderRadius: 8, padding: "8px 12px",
+          fontSize: 11, fontFamily: "monospace", color: "#94a3b8",
+          wordBreak: "break-all", border: `1px solid ${S.border}`,
+        }}>
+          {embed}
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          style={{
+            marginTop: 8, padding: "5px 14px", fontSize: 12, borderRadius: 7, fontWeight: 600,
+            border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)",
+            color: copied ? "#4ade80" : S.text, cursor: "pointer",
+          }}
+        >
+          {copied ? "Copied ✓" : "Copy embed code"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Panel ────────────────────────────────────────────────────────────────
 
 export default function SitRepSettingsPanel() {
   const [types, setTypes] = useState<ItemType[]>([]);
@@ -47,12 +360,21 @@ export default function SitRepSettingsPanel() {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
 
+  const [calendars, setCalendars] = useState<PublicCalendar[]>([]);
+  const [calsLoading, setCalsLoading] = useState(true);
+
   useEffect(() => {
     fetch("/api/crm/sitrep/types")
       .then((r) => r.json())
       .then((data) => setTypes(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    fetch("/api/crm/sitrep/public-calendars")
+      .then((r) => r.json())
+      .then((data) => setCalendars(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setCalsLoading(false));
   }, []);
 
   async function handleColorChange(id: string, color: string) {
@@ -66,6 +388,17 @@ export default function SitRepSettingsPanel() {
     setTimeout(() => setSavedId((cur) => (cur === id ? null : cur)), 2000);
   }
 
+  async function handleTogglePublic(id: string, val: boolean) {
+    setTypes((prev) => prev.map((t) => (t.id === id ? { ...t, is_public: val } : t)));
+    await fetch(`/api/crm/sitrep/types/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_public: val }),
+    });
+    setSavedId(id);
+    setTimeout(() => setSavedId((cur) => (cur === id ? null : cur)), 2000);
+  }
+
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
     const res = await fetch(`/api/crm/sitrep/types/${id}`, { method: "DELETE" });
@@ -74,8 +407,7 @@ export default function SitRepSettingsPanel() {
 
   async function handleAdd() {
     if (!newName.trim() || adding) return;
-    setAdding(true);
-    setAddError("");
+    setAdding(true); setAddError("");
     const res = await fetch("/api/crm/sitrep/types", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -84,8 +416,7 @@ export default function SitRepSettingsPanel() {
     if (res.ok) {
       const created = await res.json();
       setTypes((prev) => [...prev, created]);
-      setNewName("");
-      setNewColor("blue");
+      setNewName(""); setNewColor("blue");
     } else {
       const err = await res.json().catch(() => ({}));
       setAddError(err.error ?? "Failed to add type.");
@@ -93,54 +424,7 @@ export default function SitRepSettingsPanel() {
     setAdding(false);
   }
 
-  function TypeRow({ t }: { t: ItemType }) {
-    return (
-      <div style={{
-        background: S.surface,
-        border: `1px solid ${S.border}`,
-        borderRadius: 12,
-        display: "flex", alignItems: "center", gap: 12,
-        padding: "10px 14px",
-      }}>
-        <ColorFamilyPicker
-          value={t.color}
-          onChange={(key) => handleColorChange(t.id, key)}
-          size={28}
-        />
-
-        <span style={{ fontSize: 14, fontWeight: 500, flex: 1, color: S.text }}>{t.name}</span>
-
-        <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
-          borderRadius: 4, padding: "2px 8px", flexShrink: 0,
-          background: t.is_system ? "rgba(255,255,255,.06)" : "rgba(99,102,241,.12)",
-          color: t.is_system ? S.dim : "#a5b4fc",
-        }}>
-          {t.is_system ? "SYSTEM" : "CUSTOM"}
-        </span>
-
-        {savedId === t.id && (
-          <span style={{ fontSize: 11, color: "#4ade80", fontWeight: 600, flexShrink: 0 }}>Saved ✓</span>
-        )}
-
-        <MakePublicBtn />
-
-        {!t.is_system && (
-          <button
-            type="button"
-            onClick={() => handleDelete(t.id, t.name)}
-            style={{
-              padding: "4px 10px", fontSize: 12, borderRadius: 7, fontWeight: 500,
-              border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)",
-              color: "#fca5a5", cursor: "pointer", flexShrink: 0,
-            }}
-          >
-            Delete
-          </button>
-        )}
-      </div>
-    );
-  }
+  const publicTypes = types.filter((t) => t.is_public);
 
   return (
     <div className="stack" style={{ maxWidth: 680 }}>
@@ -162,7 +446,7 @@ export default function SitRepSettingsPanel() {
         <div>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Item Types</h2>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
-            Click the color circle on any type to pick a new color family. Light half = active items; dark half = completed.
+            Click the color circle to pick a color family. "Make Public" enables the type for embedded calendars.
           </p>
         </div>
 
@@ -170,7 +454,16 @@ export default function SitRepSettingsPanel() {
           <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
         ) : (
           <div style={{ display: "grid", gap: 6 }}>
-            {types.map((t) => <TypeRow key={t.id} t={t} />)}
+            {types.map((t) => (
+              <TypeRow
+                key={t.id}
+                t={t}
+                savedId={savedId}
+                onColorChange={handleColorChange}
+                onDelete={handleDelete}
+                onTogglePublic={handleTogglePublic}
+              />
+            ))}
           </div>
         )}
 
@@ -211,6 +504,48 @@ export default function SitRepSettingsPanel() {
           {addError && (
             <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgb(220 38 38)" }}>{addError}</p>
           )}
+        </div>
+      </div>
+
+      {/* Public Calendars card */}
+      <div style={{
+        background: S.card, border: `1px solid ${S.border}`,
+        borderRadius: 16, padding: 24, display: "grid", gap: 24,
+      }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Public Calendars</h2>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+            Create shareable, embeddable calendars. Only items visible to "Team" and types marked Public are shown.
+          </p>
+        </div>
+
+        {/* Existing calendars */}
+        {calsLoading ? (
+          <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
+        ) : calendars.length > 0 ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {calendars.map((cal) => (
+              <CalendarCard
+                key={cal.id}
+                cal={cal}
+                onDelete={(id) => setCalendars((prev) => prev.filter((c) => c.id !== id))}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {/* Create form */}
+        <div>
+          <div style={{
+            fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
+            color: S.dim, textTransform: "uppercase", marginBottom: 14,
+          }}>
+            New Public Calendar
+          </div>
+          <CalendarForm
+            publicTypes={publicTypes}
+            onCreated={(cal) => setCalendars((prev) => [...prev, cal])}
+          />
         </div>
       </div>
     </div>
