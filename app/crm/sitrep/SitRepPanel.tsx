@@ -654,7 +654,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                   const cardBorder  = isDone ? `1px solid ${family.shades[0]}` : `1px solid ${family.shades[2]}66`;
                   const textColor   = isDone ? "#fff" : "#0f172a";
                   const dimColor    = isDone ? "rgba(255,255,255,.62)" : "#475569";
-                  const dateColor   = urgent && !isDone ? "#991b1b" : isDone ? "rgba(255,255,255,.55)" : "#64748b";
+                  const dateColor   = urgent && !isDone ? "#991b1b" : isDone ? "rgba(255,255,255,.7)" : "#0f172a";
 
                   return (
                     <div
@@ -699,7 +699,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                           <Link
                             href={`/crm/sitrep/${item.id}`}
                             style={{
-                              fontSize: 13, fontWeight: 500, color: textColor,
+                              fontSize: 15, fontWeight: 500, color: textColor,
                               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                               textDecoration: isDone ? "line-through" : "none",
                               opacity: isDone ? 0.75 : 1,
@@ -726,7 +726,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                         {dateLabel && (
                           <span suppressHydrationWarning style={{
-                            fontSize: 11, fontWeight: urgent && !isDone ? 700 : 400,
+                            fontSize: 13, fontWeight: urgent && !isDone ? 700 : 500,
                             color: dateColor, whiteSpace: "nowrap",
                           }}>
                             {dateLabel}
