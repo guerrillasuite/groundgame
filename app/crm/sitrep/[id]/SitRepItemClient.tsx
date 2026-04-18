@@ -68,24 +68,24 @@ function userHue(name: string) {
 // ── Status config ──────────────────────────────────────────────────────────────
 
 const TASK_STATUSES = [
-  { key: "open",        label: "Open",        icon: "○", color: "rgba(255,255,255,.15)", activeColor: "rgba(255,255,255,.12)", textColor: "rgb(238 242 246)" },
-  { key: "in_progress", label: "In Progress", icon: "▶", color: "rgba(59,130,246,.2)",   activeColor: "rgba(59,130,246,.35)", textColor: "#93c5fd" },
-  { key: "done",        label: "Done",        icon: "✓", color: "rgba(22,163,74,.2)",    activeColor: "rgba(22,163,74,.35)",  textColor: "#86efac" },
-  { key: "cancelled",   label: "Cancelled",   icon: "✕", color: "rgba(107,114,128,.15)", activeColor: "rgba(107,114,128,.3)", textColor: "rgb(134 150 168)" },
+  { key: "open",        label: "Open",        icon: "○", activeColor: "rgba(255,255,255,.08)", textColor: "rgb(238 242 246)", grad: ["rgba(255,255,255,.4)",   "rgba(255,255,255,.12)"] },
+  { key: "in_progress", label: "In Progress", icon: "▶", activeColor: "rgba(59,130,246,.2)",   textColor: "#93c5fd",          grad: ["#3b82f6",               "#818cf8"] },
+  { key: "done",        label: "Done",        icon: "✓", activeColor: "rgba(22,163,74,.2)",    textColor: "#86efac",          grad: ["#22c55e",               "#10b981"] },
+  { key: "cancelled",   label: "Cancelled",   icon: "✕", activeColor: "rgba(107,114,128,.15)", textColor: "rgb(134 150 168)", grad: ["rgba(148,163,184,.35)", "rgba(100,116,139,.12)"] },
 ];
 
 const EVENT_STATUSES = [
-  { key: "open",       label: "Open",       icon: "○", color: "rgba(255,255,255,.15)", activeColor: "rgba(255,255,255,.12)", textColor: "rgb(238 242 246)" },
-  { key: "confirmed",  label: "Confirmed",  icon: "●", color: "rgba(16,185,129,.2)",   activeColor: "rgba(16,185,129,.35)",  textColor: "#6ee7b7" },
-  { key: "done",       label: "Done",       icon: "✓", color: "rgba(22,163,74,.2)",    activeColor: "rgba(22,163,74,.35)",   textColor: "#86efac" },
-  { key: "cancelled",  label: "Cancelled",  icon: "✕", color: "rgba(107,114,128,.15)", activeColor: "rgba(107,114,128,.3)",  textColor: "rgb(134 150 168)" },
+  { key: "open",       label: "Open",       icon: "○", activeColor: "rgba(255,255,255,.08)", textColor: "rgb(238 242 246)", grad: ["rgba(255,255,255,.4)",   "rgba(255,255,255,.12)"] },
+  { key: "confirmed",  label: "Confirmed",  icon: "●", activeColor: "rgba(16,185,129,.2)",   textColor: "#6ee7b7",          grad: ["#10b981",               "#06b6d4"] },
+  { key: "done",       label: "Done",       icon: "✓", activeColor: "rgba(22,163,74,.2)",    textColor: "#86efac",          grad: ["#22c55e",               "#10b981"] },
+  { key: "cancelled",  label: "Cancelled",  icon: "✕", activeColor: "rgba(107,114,128,.15)", textColor: "rgb(134 150 168)", grad: ["rgba(148,163,184,.35)", "rgba(100,116,139,.12)"] },
 ];
 
 const PRIORITIES = [
-  { key: "low",    label: "Low",    color: "rgba(255,255,255,.1)", textColor: "rgb(134 150 168)" },
-  { key: "normal", label: "Normal", color: "rgba(255,255,255,.1)", textColor: "rgb(238 242 246)" },
-  { key: "high",   label: "High",   color: "rgba(245,158,11,.18)", textColor: "#fcd34d" },
-  { key: "urgent", label: "Urgent", color: "rgba(220,38,38,.18)",  textColor: "#fca5a5" },
+  { key: "low",    label: "Low",    activeColor: "rgba(148,163,184,.1)",  textColor: "rgb(134 150 168)", grad: ["rgba(148,163,184,.3)",  "rgba(100,116,139,.1)"] },
+  { key: "normal", activeColor: "rgba(255,255,255,.08)", label: "Normal", textColor: "rgb(238 242 246)", grad: ["rgba(255,255,255,.38)", "rgba(255,255,255,.1)"] },
+  { key: "high",   label: "High",   activeColor: "rgba(245,158,11,.18)",  textColor: "#fcd34d",          grad: ["#f59e0b",               "#d97706"] },
+  { key: "urgent", label: "Urgent", activeColor: "rgba(220,38,38,.18)",   textColor: "#fca5a5",          grad: ["#ef4444",               "#dc2626"] },
 ];
 
 const VISIBILITIES = [
@@ -305,6 +305,8 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {(item.item_type === "task" ? TASK_STATUSES : EVENT_STATUSES).map((s) => {
             const active = status === s.key;
+            const activeBgImg = `linear-gradient(${s.activeColor}, ${s.activeColor}), linear-gradient(135deg, ${s.grad[0]} 0%, ${s.grad[1]} 100%)`;
+            const idleBgImg   = `linear-gradient(rgba(255,255,255,.04), rgba(255,255,255,.04)), linear-gradient(135deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.03) 100%)`;
             return (
               <button
                 key={s.key}
@@ -312,14 +314,30 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-                  border: active ? `1px solid ${s.textColor}55` : `1px solid ${S.border}`,
-                  background: active ? s.activeColor : "rgba(255,255,255,.04)",
+                  border: "1px solid transparent",
+                  backgroundImage: active ? activeBgImg : idleBgImg,
+                  backgroundOrigin: "border-box",
+                  backgroundClip: "padding-box, border-box",
                   color: active ? s.textColor : S.dim,
-                  cursor: "pointer", transition: "all .12s ease",
-                  boxShadow: active ? `0 0 14px ${s.textColor}28, inset 0 1px 0 rgba(255,255,255,.06)` : "none",
+                  cursor: "pointer", transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
+                  boxShadow: active
+                    ? `0 0 16px ${s.textColor}28, 0 2px 8px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.07)`
+                    : "0 1px 4px rgba(0,0,0,.22)",
+                } as React.CSSProperties}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-1.5px)";
+                  e.currentTarget.style.boxShadow = active
+                    ? `0 6px 20px ${s.textColor}30, 0 0 22px ${s.textColor}28, inset 0 1px 0 rgba(255,255,255,.09)`
+                    : "0 4px 14px rgba(0,0,0,.35)";
+                  if (!active) e.currentTarget.style.filter = "brightness(1.18)";
                 }}
-                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,.07)"; }}
-                onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,.04)"; }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "";
+                  e.currentTarget.style.boxShadow = active
+                    ? `0 0 16px ${s.textColor}28, 0 2px 8px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.07)`
+                    : "0 1px 4px rgba(0,0,0,.22)";
+                  e.currentTarget.style.filter = "";
+                }}
               >
                 <span style={{ fontSize: 12 }}>{s.icon}</span> {s.label}
               </button>
@@ -337,20 +355,38 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {PRIORITIES.map((p) => {
               const active = priority === p.key;
+              const activeBgImg = `linear-gradient(${p.activeColor}, ${p.activeColor}), linear-gradient(135deg, ${p.grad[0]} 0%, ${p.grad[1]} 100%)`;
+              const idleBgImg   = `linear-gradient(rgba(255,255,255,.04), rgba(255,255,255,.04)), linear-gradient(135deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.03) 100%)`;
               return (
                 <button
                   key={p.key}
                   onClick={() => { setPriority(p.key); patchNow({ priority: p.key }); }}
                   style={{
                     padding: "7px 15px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                    border: active ? `1px solid ${p.textColor}55` : `1px solid ${S.border}`,
-                    background: active ? p.color : "rgba(255,255,255,.04)",
+                    border: "1px solid transparent",
+                    backgroundImage: active ? activeBgImg : idleBgImg,
+                    backgroundOrigin: "border-box",
+                    backgroundClip: "padding-box, border-box",
                     color: active ? p.textColor : S.dim,
-                    cursor: "pointer", transition: "all .12s ease",
-                    boxShadow: active ? `0 0 12px ${p.textColor}22` : "none",
+                    cursor: "pointer", transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
+                    boxShadow: active
+                      ? `0 0 14px ${p.textColor}25, 0 2px 8px rgba(0,0,0,.28)`
+                      : "0 1px 4px rgba(0,0,0,.22)",
+                  } as React.CSSProperties}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-1.5px)";
+                    e.currentTarget.style.boxShadow = active
+                      ? `0 5px 18px ${p.textColor}28, 0 0 20px ${p.textColor}28`
+                      : "0 4px 14px rgba(0,0,0,.35)";
+                    if (!active) e.currentTarget.style.filter = "brightness(1.18)";
                   }}
-                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,.07)"; }}
-                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,.04)"; }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "";
+                    e.currentTarget.style.boxShadow = active
+                      ? `0 0 14px ${p.textColor}25, 0 2px 8px rgba(0,0,0,.28)`
+                      : "0 1px 4px rgba(0,0,0,.22)";
+                    e.currentTarget.style.filter = "";
+                  }}
                 >
                   {active && <span style={{ marginRight: 5 }}>●</span>}{p.label}
                 </button>

@@ -97,22 +97,39 @@ function getItemFamily(item: SitRepItem, typeColors?: Record<string, string>): C
 
 function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{
-      padding: "5px 13px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
-      transition: "all .12s ease",
-      border: active
-        ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
-        : "1px solid rgba(255,255,255,.07)",
-      background: active
-        ? "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)"
-        : "rgba(255,255,255,.03)",
-      color: active
-        ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)"
-        : "rgb(100 116 139)",
-      boxShadow: active
-        ? "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent)"
-        : "none",
-    }}>{children}</button>
+    <button
+      onClick={onClick}
+      style={{
+        padding: "5px 13px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
+        transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
+        border: active
+          ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
+          : "1px solid rgba(255,255,255,.07)",
+        background: active
+          ? "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)"
+          : "rgba(255,255,255,.03)",
+        color: active
+          ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)"
+          : "rgb(100 116 139)",
+        boxShadow: active
+          ? "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent), 0 2px 6px rgba(0,0,0,.22)"
+          : "0 1px 4px rgba(0,0,0,.18)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-1.5px)";
+        e.currentTarget.style.boxShadow = active
+          ? "0 0 18px color-mix(in srgb, var(--gg-primary, #2563eb) 32%, transparent), 0 4px 14px rgba(0,0,0,.3)"
+          : "0 4px 12px rgba(0,0,0,.32)";
+        if (!active) e.currentTarget.style.filter = "brightness(1.3)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "";
+        e.currentTarget.style.boxShadow = active
+          ? "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent), 0 2px 6px rgba(0,0,0,.22)"
+          : "0 1px 4px rgba(0,0,0,.18)";
+        e.currentTarget.style.filter = "";
+      }}
+    >{children}</button>
   );
 }
 
