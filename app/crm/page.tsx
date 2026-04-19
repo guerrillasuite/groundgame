@@ -169,11 +169,12 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     const fam = getFamilyByKey(t.color) ?? getFamilyByKey(SYSTEM_TYPE_FAMILIES[t.slug] ?? "blue")!;
     sitrepFamilyMap[t.slug] = fam.shades as unknown as string[];
   }
-  function sitrepRowBg(item: any): string {
-    const shades = sitrepFamilyMap[item.item_type]
-      ?? getFamilyByKey(SYSTEM_TYPE_FAMILIES[item.item_type] ?? "blue")!.shades;
-    return shades[3] + "55";
+  function sitrepShades(item: any): string[] {
+    return sitrepFamilyMap[item.item_type]
+      ?? (getFamilyByKey(SYSTEM_TYPE_FAMILIES[item.item_type] ?? "blue")!.shades as unknown as string[]);
   }
+  function sitrepRowBg(item: any): string { return sitrepShades(item)[3] + "55"; }
+  function sitrepAccent(item: any): string { return sitrepShades(item)[2]; }
 
   const listIds = (recentLists ?? []).map((l: any) => l.id);
   const surveyIds = (surveys ?? []).map((s: any) => s.id);
@@ -250,6 +251,8 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
         .db-stop-row:hover { background: var(--gg-bg, #f9fafb) !important; }
         .db-reminder-row:hover { background: var(--gg-bg, #f9fafb) !important; }
         .db-kpi { transition: background 0.15s, transform 0.15s; }
+        .db-sitrep-row { transition: transform .12s ease, box-shadow .12s ease; }
+        .db-sitrep-row:hover { transform: translateY(-1.5px) !important; box-shadow: inset 3px 0 0 0 var(--accent), 0 4px 14px rgba(0,0,0,.12) !important; }
       `}</style>
 
       {/* Header */}
@@ -464,12 +467,15 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 {(sitrepItemsRaw as any[]).map((item) => {
                   const overdue = isOverdue(sitrepEffectiveDate(item));
+                  const accent = sitrepAccent(item);
                   return (
-                    <Link key={item.id} href="/crm/sitrep" style={{
+                    <Link key={item.id} href={`/crm/sitrep/${item.id}`} className="db-sitrep-row" style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "7px 10px", borderRadius: 7, textDecoration: "none",
                       color: "#0f172a", background: sitrepRowBg(item),
-                    }}>
+                      boxShadow: `inset 3px 0 0 0 ${accent}, 0 1px 3px rgba(0,0,0,.08)`,
+                      "--accent": accent,
+                    } as React.CSSProperties}>
                       <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
                         {overdue ? "PAST DUE" : fmtSitrepDate(item)}
@@ -526,11 +532,12 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
     const fam = getFamilyByKey(t.color) ?? getFamilyByKey(SYSTEM_TYPE_FAMILIES[t.slug] ?? "blue")!;
     myFamilyMap[t.slug] = fam.shades as unknown as string[];
   }
-  function mySitrepRowBg(item: any): string {
-    const shades = myFamilyMap[item.item_type]
-      ?? getFamilyByKey(SYSTEM_TYPE_FAMILIES[item.item_type] ?? "blue")!.shades;
-    return shades[3] + "55";
+  function myShades(item: any): string[] {
+    return myFamilyMap[item.item_type]
+      ?? (getFamilyByKey(SYSTEM_TYPE_FAMILIES[item.item_type] ?? "blue")!.shades as unknown as string[]);
   }
+  function mySitrepRowBg(item: any): string { return myShades(item)[3] + "55"; }
+  function mySitrepAccent(item: any): string { return myShades(item)[2]; }
 
   // Aggregate list progress
   const itemCounts = new Map<string, number>();
@@ -575,6 +582,8 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
         .db-stop-row:hover { background: var(--gg-bg, #f9fafb) !important; }
         .db-reminder-row:hover { background: var(--gg-bg, #f9fafb) !important; }
         .db-kpi { transition: background 0.15s, transform 0.15s; }
+        .db-sitrep-row { transition: transform .12s ease, box-shadow .12s ease; }
+        .db-sitrep-row:hover { transform: translateY(-1.5px) !important; box-shadow: inset 3px 0 0 0 var(--accent), 0 4px 14px rgba(0,0,0,.12) !important; }
       `}</style>
 
       {/* Header */}
@@ -660,12 +669,15 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
             : <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 {myItems.slice(0, 8).map((item: any) => {
                   const overdue = isOverdue(sitrepEffectiveDate(item));
+                  const accent = mySitrepAccent(item);
                   return (
-                    <Link key={item.id} href="/crm/sitrep" style={{
+                    <Link key={item.id} href={`/crm/sitrep/${item.id}`} className="db-sitrep-row" style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "7px 10px", borderRadius: 7, textDecoration: "none",
                       color: "#0f172a", background: mySitrepRowBg(item),
-                    }}>
+                      boxShadow: `inset 3px 0 0 0 ${accent}, 0 1px 3px rgba(0,0,0,.08)`,
+                      "--accent": accent,
+                    } as React.CSSProperties}>
                       <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
                         {overdue ? "PAST DUE" : fmtSitrepDate(item)}
