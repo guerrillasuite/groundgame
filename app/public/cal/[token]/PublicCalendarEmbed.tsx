@@ -121,8 +121,10 @@ function PublicModal({ item, typeColors, onClose }: {
     >
       <div style={{
         width: "min(480px, 100%)",
-        background: "#1c2430", borderRadius: 16, overflow: "hidden",
-        boxShadow: "0 24px 64px rgba(0,0,0,.6)",
+        background: "rgba(20,25,38,.97)", backdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,.1)",
+        borderRadius: 16, overflow: "hidden",
+        boxShadow: "0 24px 64px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06)",
         maxHeight: "90vh", display: "flex", flexDirection: "column",
       }}>
         {/* Color header */}
@@ -368,22 +370,39 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
 
         {/* Controls */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-          <button onClick={stepBack} style={navBtnStyle(S_border, S_text)}>←</button>
+          <button onClick={stepBack} style={navBtnStyle(S_border, S_text)}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.09)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.05)"; e.currentTarget.style.transform = ""; }}>←</button>
           <div style={{ flex: 1, fontWeight: 700, fontSize: 15, color: S_text, textAlign: "center", minWidth: 160 }}>
             {periodLabel}
           </div>
-          <button onClick={stepForward} style={navBtnStyle(S_border, S_text)}>→</button>
-          <button onClick={() => navigate(view, today)} style={{ ...navBtnStyle(S_border, S_dim), fontSize: 12 }}>
+          <button onClick={stepForward} style={navBtnStyle(S_border, S_text)}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.09)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.05)"; e.currentTarget.style.transform = ""; }}>→</button>
+          <button onClick={() => navigate(view, today)} style={{
+            padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+            border: "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent)",
+            background: "color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)",
+            color: "color-mix(in srgb, var(--gg-primary, #2563eb) 85%, #fff)",
+            backdropFilter: "blur(8px)", transition: "transform .12s ease, box-shadow .12s ease",
+          }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,.3)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
             Today
           </button>
           {availableViews.length > 1 && (
-            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${S_border}` }}>
+            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${S_border}`, backdropFilter: "blur(8px)" }}>
               {availableViews.map((v) => (
                 <button key={v} onClick={() => navigate(v, curDate)} style={{
                   padding: "6px 13px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-                  background: view === v ? "rgba(255,255,255,.12)" : "transparent",
-                  color: view === v ? S_text : S_dim,
+                  background: view === v
+                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 16%, transparent)"
+                    : "rgba(255,255,255,.03)",
+                  color: view === v
+                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)"
+                    : S_dim,
                   border: "none", borderLeft: v !== availableViews[0] ? `1px solid ${S_border}` : "none",
+                  transition: "background .15s ease, color .15s ease",
                 }}>
                   {v.charAt(0).toUpperCase() + v.slice(1)}
                 </button>
@@ -422,23 +441,46 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
                     return (
                       <div key={ds} style={{
                         minHeight: 80, padding: "5px 4px",
-                        background: isToday ? "rgba(37,99,235,.12)" : inMonth ? S_surface : "rgba(255,255,255,.01)",
-                        border: isToday ? "1px solid rgba(37,99,235,.4)" : `1px solid ${S_border}`,
+                        background: isToday
+                          ? "color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)"
+                          : inMonth ? S_surface : "rgba(255,255,255,.01)",
+                        border: isToday
+                          ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 30%, transparent)"
+                          : `1px solid ${S_border}`,
+                        boxShadow: isToday ? "inset 0 0 18px color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent)" : "none",
                         borderRadius: 7,
+                        transition: "transform .12s ease, box-shadow .12s ease",
                       }}>
-                        <div style={{
-                          fontSize: 11, fontWeight: isToday ? 800 : inMonth ? 500 : 400,
-                          color: isToday ? "#60a5fa" : inMonth ? S_text : S_dim,
-                          textAlign: "right", marginBottom: 3,
-                        }}>
-                          {parseInt(ds.split("-")[2], 10)}
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 3 }}>
+                          {isToday ? (
+                            <div style={{
+                              width: 22, height: 22, borderRadius: "50%",
+                              background: "var(--gg-primary, #2563eb)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 11, fontWeight: 800, color: "#fff",
+                              boxShadow: "0 0 8px color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)",
+                            }}>
+                              {parseInt(ds.split("-")[2], 10)}
+                            </div>
+                          ) : (
+                            <span style={{
+                              fontSize: 11, fontWeight: inMonth ? 500 : 400,
+                              color: inMonth ? S_text : S_dim,
+                            }}>
+                              {parseInt(ds.split("-")[2], 10)}
+                            </span>
+                          )}
                         </div>
                         <div style={{ display: "grid", gap: 2 }}>
                           {visible.map((item) => (
                             <Pill key={item.id} item={item} typeColors={typeColors} onClick={() => setModal(item)} />
                           ))}
                           {overflow > 0 && (
-                            <div style={{ fontSize: 10, color: S_dim, padding: "1px 4px" }}>+{overflow} more</div>
+                            <button onClick={() => navigate("day", ds)} style={{
+                              fontSize: 10, fontWeight: 600, color: S_dim,
+                              background: "none", border: "none", cursor: "pointer",
+                              padding: "1px 4px", textAlign: "left",
+                            }}>+{overflow} more</button>
                           )}
                         </div>
                       </div>
@@ -461,17 +503,33 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
                   const d        = new Date(ds + "T00:00:00");
                   return (
                     <div key={ds} style={{
-                      background: isToday ? "rgba(37,99,235,.08)" : S_surface,
-                      border: isToday ? "1px solid rgba(37,99,235,.35)" : `1px solid ${S_border}`,
+                      background: isToday
+                        ? "color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent)"
+                        : S_surface,
+                      border: isToday
+                        ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 35%, transparent)"
+                        : `1px solid ${S_border}`,
                       borderRadius: 9, padding: "8px 6px", minHeight: 160,
                     }}>
                       <div style={{ textAlign: "center", marginBottom: 8 }}>
-                        <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", color: S_dim }}>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", color: S_dim, marginBottom: 4 }}>
                           {d.toLocaleDateString("en-US", { weekday: "short" })}
                         </div>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: isToday ? "#60a5fa" : S_text }}>
-                          {d.getDate()}
-                        </div>
+                        {isToday ? (
+                          <div style={{
+                            width: 26, height: 26, borderRadius: "50%",
+                            background: "var(--gg-primary, #2563eb)",
+                            display: "inline-flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 13, fontWeight: 800, color: "#fff",
+                            boxShadow: "0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)",
+                          }}>
+                            {d.getDate()}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 15, fontWeight: 700, color: S_text }}>
+                            {d.getDate()}
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: "grid", gap: 3 }}>
                         {dayItems.map((item) => (
@@ -498,33 +556,38 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
                 {dayItems.map((item) => {
                   const family = getItemFamily(item, typeColors);
                   const isDone = item.status === "done";
+                  const accentCol = family.shades[2] ?? family.shades[1] ?? "#2563eb";
                   const time   = hasExplicitTime(item.start_at) && !item.is_all_day ? fmtTime(item.start_at!) : null;
+                  const idleShadow = `inset 3px 0 0 0 ${accentCol}, 0 2px 8px rgba(0,0,0,.2)`;
+                  const hoverShadow = `inset 3px 0 0 0 ${accentCol}, 0 6px 20px rgba(0,0,0,.35), 0 0 0 1px ${accentCol}22`;
                   return (
                     <div key={item.id} onClick={() => setModal(item)} style={{
                       display: "flex", alignItems: "center", gap: 12,
                       padding: "11px 14px", borderRadius: 10, cursor: "pointer",
-                      background: isDone ? family.shades[1] : family.shades[3],
-                      border: `1px solid ${family.shades[2]}55`,
-                      transition: "filter .12s",
+                      background: "rgba(255,255,255,.04)",
+                      border: "1px solid rgba(255,255,255,.07)",
+                      boxShadow: idleShadow,
+                      opacity: isDone ? 0.6 : 1,
+                      transition: "transform .12s ease, box-shadow .12s ease",
                     }}
-                      onMouseEnter={(e) => e.currentTarget.style.filter = "brightness(1.05)"}
-                      onMouseLeave={(e) => e.currentTarget.style.filter = "none"}
+                      onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = hoverShadow; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = idleShadow; }}
                     >
                       {time && (
-                        <span style={{ fontSize: 11, fontWeight: 600, color: isDone ? "rgba(255,255,255,.55)" : "#475569", minWidth: 52, textAlign: "right", flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: S_dim, minWidth: 52, textAlign: "right", flexShrink: 0 }}>
                           {time}
                         </span>
                       )}
                       <span style={{
                         flex: 1, fontSize: 14, fontWeight: 500,
-                        color: isDone ? "#fff" : "#0f172a",
+                        color: S_text,
                         textDecoration: isDone ? "line-through" : "none",
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}>
                         {item.title}
                       </span>
                       {item.location && (
-                        <span style={{ fontSize: 11, color: isDone ? "rgba(255,255,255,.55)" : "#475569", flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, color: S_dim, flexShrink: 0 }}>
                           📍 {item.location}
                         </span>
                       )}
@@ -546,7 +609,11 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
 
 function navBtnStyle(border: string, color: string): React.CSSProperties {
   return {
-    padding: "6px 12px", borderRadius: 8, border: `1px solid ${border}`,
-    background: "rgba(255,255,255,.04)", color, cursor: "pointer", fontSize: 13,
+    padding: "6px 12px", borderRadius: 8,
+    border: "1px solid rgba(255,255,255,.09)",
+    background: "rgba(255,255,255,.05)", backdropFilter: "blur(8px)",
+    boxShadow: "0 2px 8px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.06)",
+    color, cursor: "pointer", fontSize: 13,
+    transition: "transform .12s ease, box-shadow .12s ease, background .12s ease",
   };
 }

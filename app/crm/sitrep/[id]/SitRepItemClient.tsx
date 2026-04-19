@@ -131,6 +131,8 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
   const [showAddUser, setShowAddUser] = useState(false);
   const [deleting,    setDeleting]    = useState(false);
   const [confirmDel,  setConfirmDel]  = useState(false);
+  const [statusExpanded,   setStatusExpanded]   = useState(true);
+  const [priorityExpanded, setPriorityExpanded] = useState(true);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addUserRef = useRef<HTMLDivElement>(null);
@@ -298,91 +300,138 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
       </div>
 
       {/* ── Status row (all types) ── */}
-      <div>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase", marginBottom: 10 }}>
-          Status
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {(item.item_type === "task" ? TASK_STATUSES : EVENT_STATUSES).map((s) => {
-            const active = status === s.key;
-            const activeShadow = `0 0 0 3px ${s.grad[0]}22, 0 0 18px ${s.textColor}30, 0 2px 8px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.07)`;
-            const idleShadow   = "0 1px 4px rgba(0,0,0,.22)";
-            return (
-              <button
-                key={s.key}
-                onClick={() => { setStatus(s.key); patchNow({ status: s.key }); }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-                  border: active ? `1.5px solid ${s.grad[0]}cc` : `1px solid rgba(255,255,255,.1)`,
-                  background: active ? s.activeColor : "rgba(255,255,255,.04)",
-                  color: active ? s.textColor : S.dim,
-                  cursor: "pointer", transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
-                  boxShadow: active ? activeShadow : idleShadow,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-1.5px)";
-                  e.currentTarget.style.boxShadow = active
-                    ? `0 0 0 4px ${s.grad[0]}18, 0 0 26px ${s.textColor}38, 0 5px 16px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.09)`
-                    : "0 4px 14px rgba(0,0,0,.38)";
-                  if (!active) e.currentTarget.style.filter = "brightness(1.2)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "";
-                  e.currentTarget.style.boxShadow = active ? activeShadow : idleShadow;
-                  e.currentTarget.style.filter = "";
-                }}
-              >
-                <span style={{ fontSize: 12 }}>{s.icon}</span> {s.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {(() => {
+        const statuses = item.item_type === "task" ? TASK_STATUSES : EVENT_STATUSES;
+        const currentS = statuses.find((s) => s.key === status);
+        return (
+          <div style={{
+            background: "rgba(20,25,38,.75)", backdropFilter: "blur(4px)",
+            border: `1px solid ${S.border}`, borderRadius: 12, overflow: "hidden",
+            boxShadow: statusExpanded
+              ? "inset 3px 0 0 0 var(--gg-primary, #2563eb), 0 4px 20px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.05)"
+              : "0 2px 8px rgba(0,0,0,.25)",
+            transition: "box-shadow .2s ease",
+          }}>
+            <div onClick={() => setStatusExpanded(!statusExpanded)} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "12px 18px", cursor: "pointer",
+              borderBottom: statusExpanded ? `1px solid ${S.border}` : "none",
+            }}>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase" }}>Status</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {!statusExpanded && currentS && (
+                  <span style={{ fontSize: 12, color: currentS.textColor, fontWeight: 600 }}>{currentS.icon} {currentS.label}</span>
+                )}
+                <span style={{ fontSize: 14, color: S.dim, transform: statusExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .2s ease", display: "inline-block" }}>›</span>
+              </div>
+            </div>
+            <div style={{ maxHeight: statusExpanded ? "200px" : "0px", overflow: "hidden", transition: "max-height .2s ease" }}>
+              <div style={{ padding: "14px 18px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {statuses.map((s) => {
+                  const active = status === s.key;
+                  const activeShadow = `0 0 0 3px ${s.grad[0]}22, 0 0 18px ${s.textColor}30, 0 2px 8px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.07)`;
+                  const idleShadow   = "0 1px 4px rgba(0,0,0,.22)";
+                  return (
+                    <button
+                      key={s.key}
+                      onClick={() => { setStatus(s.key); patchNow({ status: s.key }); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
+                        border: active ? `1.5px solid ${s.grad[0]}cc` : `1px solid rgba(255,255,255,.1)`,
+                        background: active ? s.activeColor : "rgba(255,255,255,.04)",
+                        color: active ? s.textColor : S.dim,
+                        cursor: "pointer", transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
+                        boxShadow: active ? activeShadow : idleShadow,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = "translateY(-1.5px)";
+                        e.currentTarget.style.boxShadow = active
+                          ? `0 0 0 4px ${s.grad[0]}18, 0 0 26px ${s.textColor}38, 0 5px 16px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.09)`
+                          : "0 4px 14px rgba(0,0,0,.38)";
+                        if (!active) e.currentTarget.style.filter = "brightness(1.2)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = "";
+                        e.currentTarget.style.boxShadow = active ? activeShadow : idleShadow;
+                        e.currentTarget.style.filter = "";
+                      }}
+                    >
+                      <span style={{ fontSize: 12 }}>{s.icon}</span> {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Priority row (tasks) ── */}
-      {item.item_type === "task" && (
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase", marginBottom: 10 }}>
-            Priority
+      {item.item_type === "task" && (() => {
+        const currentP = PRIORITIES.find((p) => p.key === priority);
+        return (
+          <div style={{
+            background: "rgba(20,25,38,.75)", backdropFilter: "blur(4px)",
+            border: `1px solid ${S.border}`, borderRadius: 12, overflow: "hidden",
+            boxShadow: priorityExpanded
+              ? "inset 3px 0 0 0 var(--gg-primary, #2563eb), 0 4px 20px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.05)"
+              : "0 2px 8px rgba(0,0,0,.25)",
+            transition: "box-shadow .2s ease",
+          }}>
+            <div onClick={() => setPriorityExpanded(!priorityExpanded)} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "12px 18px", cursor: "pointer",
+              borderBottom: priorityExpanded ? `1px solid ${S.border}` : "none",
+            }}>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase" }}>Priority</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {!priorityExpanded && currentP && (
+                  <span style={{ fontSize: 12, color: currentP.textColor, fontWeight: 600 }}>● {currentP.label}</span>
+                )}
+                <span style={{ fontSize: 14, color: S.dim, transform: priorityExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .2s ease", display: "inline-block" }}>›</span>
+              </div>
+            </div>
+            <div style={{ maxHeight: priorityExpanded ? "160px" : "0px", overflow: "hidden", transition: "max-height .2s ease" }}>
+              <div style={{ padding: "14px 18px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {PRIORITIES.map((p) => {
+                  const active = priority === p.key;
+                  const activeShadow = `0 0 0 3px ${p.grad[0]}20, 0 0 16px ${p.textColor}28, 0 2px 8px rgba(0,0,0,.3)`;
+                  const idleShadow   = "0 1px 4px rgba(0,0,0,.22)";
+                  return (
+                    <button
+                      key={p.key}
+                      onClick={() => { setPriority(p.key); patchNow({ priority: p.key }); }}
+                      style={{
+                        padding: "7px 15px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                        border: active ? `1.5px solid ${p.grad[0]}cc` : `1px solid rgba(255,255,255,.1)`,
+                        background: active ? p.activeColor : "rgba(255,255,255,.04)",
+                        color: active ? p.textColor : S.dim,
+                        cursor: "pointer", transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
+                        boxShadow: active ? activeShadow : idleShadow,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = "translateY(-1.5px)";
+                        e.currentTarget.style.boxShadow = active
+                          ? `0 0 0 4px ${p.grad[0]}16, 0 0 22px ${p.textColor}35, 0 5px 16px rgba(0,0,0,.4)`
+                          : "0 4px 14px rgba(0,0,0,.38)";
+                        if (!active) e.currentTarget.style.filter = "brightness(1.2)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = "";
+                        e.currentTarget.style.boxShadow = active ? activeShadow : idleShadow;
+                        e.currentTarget.style.filter = "";
+                      }}
+                    >
+                      {active && <span style={{ marginRight: 5 }}>●</span>}{p.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {PRIORITIES.map((p) => {
-              const active = priority === p.key;
-              const activeShadow = `0 0 0 3px ${p.grad[0]}20, 0 0 16px ${p.textColor}28, 0 2px 8px rgba(0,0,0,.3)`;
-              const idleShadow   = "0 1px 4px rgba(0,0,0,.22)";
-              return (
-                <button
-                  key={p.key}
-                  onClick={() => { setPriority(p.key); patchNow({ priority: p.key }); }}
-                  style={{
-                    padding: "7px 15px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                    border: active ? `1.5px solid ${p.grad[0]}cc` : `1px solid rgba(255,255,255,.1)`,
-                    background: active ? p.activeColor : "rgba(255,255,255,.04)",
-                    color: active ? p.textColor : S.dim,
-                    cursor: "pointer", transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
-                    boxShadow: active ? activeShadow : idleShadow,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-1.5px)";
-                    e.currentTarget.style.boxShadow = active
-                      ? `0 0 0 4px ${p.grad[0]}16, 0 0 22px ${p.textColor}35, 0 5px 16px rgba(0,0,0,.4)`
-                      : "0 4px 14px rgba(0,0,0,.38)";
-                    if (!active) e.currentTarget.style.filter = "brightness(1.2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "";
-                    e.currentTarget.style.boxShadow = active ? activeShadow : idleShadow;
-                    e.currentTarget.style.filter = "";
-                  }}
-                >
-                  {active && <span style={{ marginRight: 5 }}>●</span>}{p.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Meta card ── */}
       <div style={{
@@ -428,10 +477,26 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
           item.item_type !== "task" && {
             label: "All Day",
             content: (
-              <input type="checkbox" checked={isAllDay}
-                onChange={(e) => { setIsAllDay(e.target.checked); patchNow({ is_all_day: e.target.checked }); }}
-                style={{ width: 16, height: 16, accentColor: "var(--gg-primary, #2563eb)", cursor: "pointer" }}
-              />
+              <div
+                onClick={() => { setIsAllDay(!isAllDay); patchNow({ is_all_day: !isAllDay }); }}
+                style={{
+                  width: 38, height: 21, borderRadius: 11, cursor: "pointer", position: "relative", flexShrink: 0,
+                  background: isAllDay ? "var(--gg-primary, #2563eb)" : "rgba(255,255,255,.12)",
+                  boxShadow: isAllDay
+                    ? "0 0 8px color-mix(in srgb, var(--gg-primary, #2563eb) 45%, transparent)"
+                    : "inset 0 1px 3px rgba(0,0,0,.4)",
+                  transition: "background .2s ease, box-shadow .2s ease",
+                }}
+              >
+                <div style={{
+                  position: "absolute", top: 2,
+                  left: isAllDay ? 19 : 2,
+                  width: 17, height: 17, borderRadius: "50%",
+                  background: "#fff",
+                  boxShadow: "0 1px 4px rgba(0,0,0,.35)",
+                  transition: "left .2s ease",
+                }} />
+              </div>
             ),
           },
           item.item_type !== "task" && {
@@ -532,7 +597,16 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
           style={{
             width: "100%", background: S.card, border: `1px solid ${S.border}`,
             borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13,
-            lineHeight: 1.6, resize: "vertical",
+            lineHeight: 1.6, resize: "vertical", outline: "none",
+            transition: "border-color .15s, box-shadow .15s",
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)";
+            e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)";
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = S.border;
+            e.currentTarget.style.boxShadow = "none";
           }}
         />
       </div>
@@ -553,6 +627,14 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
               borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13,
               lineHeight: 1.6, resize: "vertical", outline: "none",
               transition: "border-color .15s, box-shadow .15s",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = S.border;
+              e.currentTarget.style.boxShadow = "none";
             }}
           />
         </div>
@@ -575,6 +657,14 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
               lineHeight: 1.6, resize: "vertical", outline: "none",
               transition: "border-color .15s, box-shadow .15s",
             }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = S.border;
+              e.currentTarget.style.boxShadow = "none";
+            }}
           />
         </div>
       )}
@@ -595,6 +685,14 @@ export default function SitRepItemClient({ item, missions, users, currentUserId 
               borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13,
               lineHeight: 1.6, resize: "vertical", outline: "none",
               transition: "border-color .15s, box-shadow .15s",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = S.border;
+              e.currentTarget.style.boxShadow = "none";
             }}
           />
         </div>

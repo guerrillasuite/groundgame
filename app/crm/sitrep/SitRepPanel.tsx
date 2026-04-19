@@ -485,6 +485,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "9px 12px", borderRadius: 9,
     background: "rgba(255,255,255,.05)",
+    backdropFilter: "blur(8px)",
     border: "1px solid rgba(255,255,255,.1)",
     color: S.text, fontSize: 13, outline: "none",
     transition: "border-color .15s, box-shadow .15s",
@@ -950,11 +951,26 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                         <input type="datetime-local" value={createEndAt} onChange={(e) => setCreateEndAt(e.target.value)} style={inputStyle} onFocus={focusInput} onBlur={blurInput} />
                       </div>
                     </div>
-                    <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, cursor: "pointer", color: S.dimBright }}>
-                      <input type="checkbox" checked={createIsAllDay} onChange={(e) => setCreateIsAllDay(e.target.checked)}
-                        style={{ width: 16, height: 16, accentColor: "var(--gg-primary, #2563eb)", cursor: "pointer" }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, cursor: "pointer", color: S.dimBright }}
+                      onClick={() => setCreateIsAllDay(!createIsAllDay)}>
+                      <div style={{
+                        width: 38, height: 21, borderRadius: 11, position: "relative", flexShrink: 0,
+                        background: createIsAllDay ? "var(--gg-primary, #2563eb)" : "rgba(255,255,255,.12)",
+                        boxShadow: createIsAllDay
+                          ? "0 0 8px color-mix(in srgb, var(--gg-primary, #2563eb) 45%, transparent)"
+                          : "inset 0 1px 3px rgba(0,0,0,.4)",
+                        transition: "background .2s ease, box-shadow .2s ease",
+                      }}>
+                        <div style={{
+                          position: "absolute", top: 2,
+                          left: createIsAllDay ? 19 : 2,
+                          width: 17, height: 17, borderRadius: "50%",
+                          background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.35)",
+                          transition: "left .2s ease",
+                        }} />
+                      </div>
                       All day
-                    </label>
+                    </div>
                     {createType === "meeting" && (
                       <div>
                         <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Agenda</label>
