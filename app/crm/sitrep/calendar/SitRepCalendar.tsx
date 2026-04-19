@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
@@ -428,6 +428,15 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
   const [modalItem, setModalItem] = useState<SitRepItem | null>(null);
   const [togglePending, setTogglePending] = useState<Record<string, boolean>>({});
 
+  const [showCreate,      setShowCreate]      = useState(false);
+  const [createType,      setCreateType]      = useState<"task"|"event"|"meeting">("task");
+  const [createTitle,     setCreateTitle]     = useState("");
+  const [createDate,      setCreateDate]      = useState("");
+  const [createAllDay,    setCreateAllDay]    = useState(false);
+  const [createMissionId, setCreateMissionId] = useState("");
+  const [creating,        setCreating]        = useState(false);
+  const [createError,     setCreateError]     = useState("");
+
   const userMap    = new Map(users.map((u) => [u.id, u]));
   const missionMap = new Map(missions.map((m) => [m.id, m]));
 
@@ -501,6 +510,57 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
       body: JSON.stringify({ status: newStatus }),
     });
     setTogglePending((p) => ({ ...p, [item.id]: false }));
+  }
+
+  function openCalCreate() {
+    setCreateType("task"); setCreateTitle(""); setCreateDate("");
+    setCreateAllDay(false); setCreateMissionId(""); setCreateError("");
+    setShowCreate(true);
+  }
+
+  async function handleCalCreate(e: FormEvent) {
+    e.preventDefault();
+    if (!createTitle.trim()) { setCreateError("Title is required."); return; }
+    setCreating(true); setCreateError("");
+    const body: Record<string, any> = {
+      item_type: createType, title: createTitle.trim(),
+      visibility: createType === "task" ? "assignee_only" : "team",
+      mission_id: createMissionId || null,
+    };
+    if (createType === "task") {
+      body.status   = "open";
+      body.due_date = createDate || null;
+    } else {
+      body.start_at   = createDate || null;
+      body.is_all_day = createAllDay;
+    }
+    const res = await fetch("/api/crm/sitrep/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const newItem: SitRepItem = {
+        id: data.id, item_type: createType, title: createTitle.trim(),
+        status: createType === "task" ? "open" : null,
+        priority: createType === "task" ? "normal" : null,
+        description: null, location: null, location_address: null,
+        due_date:  createType === "task" ? (createDate || null) : null,
+        start_at:  createType !== "task" ? (createDate || null) : null,
+        end_at: null, is_all_day: createAllDay,
+        mission_id: createMissionId || null,
+        visibility: createType === "task" ? "assignee_only" : "team",
+        created_by: currentUserId, created_at: new Date().toISOString(),
+        sitrep_assignments: [],
+      };
+      setItems((prev) => [newItem, ...prev]);
+      setShowCreate(false);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      setCreateError(err.error ?? "Failed to create. Please try again.");
+    }
+    setCreating(false);
   }
 
   // ── Period label ────────────────────────────────────────────────────────────
@@ -843,6 +903,19 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
           </div>
         </div>
 
+        {/* + New button */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={openCalCreate} style={{
+            padding: "8px 18px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+            background: "linear-gradient(135deg, var(--gg-primary, #2563eb), color-mix(in srgb, var(--gg-primary, #2563eb) 68%, #7c3aed))",
+            border: "none", color: "#fff", cursor: "pointer",
+            boxShadow: "0 2px 14px color-mix(in srgb, var(--gg-primary, #2563eb) 42%, transparent)",
+            transition: "transform .12s ease, box-shadow .15s ease",
+          }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1.5px)"; e.currentTarget.style.boxShadow = "0 6px 20px color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 14px color-mix(in srgb, var(--gg-primary, #2563eb) 42%, transparent)"; }}
+          >+ New</button>
+
         {/* List / Calendar toggle */}
         <div style={{
           display: "flex", borderRadius: 10, overflow: "hidden",
@@ -866,6 +939,7 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
           }}>
             ◫ Calendar
           </Link>
+        </div>
         </div>
       </div>
 
@@ -922,6 +996,40 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
         {view === "month" ? <MonthView /> : view === "week" ? <WeekView /> : <DayView />}
       </div>
 
+      {/* Color key */}
+      {(() => {
+        const entries = Object.keys(typeColors ?? {}).length > 0
+          ? Object.entries(typeColors ?? {})
+          : [...new Set(items.map((i) => i.item_type))].map((slug) => [slug, SYSTEM_TYPE_FAMILIES[slug] ?? "blue"] as [string, string]);
+        if (entries.length === 0) return null;
+        return (
+          <div style={{
+            display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center",
+            padding: "10px 16px", borderRadius: 10,
+            background: "rgba(255,255,255,.02)", border: `1px solid ${S.border}`,
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S.dim, textTransform: "uppercase" }}>
+              Types
+            </span>
+            {entries.map(([slug, colorKey]) => {
+              const family = getFamilyByKey(colorKey) ?? COLOR_FAMILIES[0];
+              const label = slug === "task" ? "Tasks" : slug === "event" ? "Events" : slug === "meeting" ? "Meetings"
+                : slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+              return (
+                <div key={slug} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{
+                    width: 32, height: 14, borderRadius: 4,
+                    background: family.shades[3],
+                    boxShadow: `inset 3px 0 0 0 ${family.shades[2]}`,
+                  }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: S.dimBright }}>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Details modal */}
       {modalItem && (
         <ItemDetailsModal
@@ -933,6 +1041,132 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
           onToggle={handleToggle}
           togglePending={!!togglePending[modalItem.id]}
         />
+      )}
+
+      {/* Create modal */}
+      {showCreate && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 300,
+          background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+        }} onClick={(e) => { if (e.target === e.currentTarget) setShowCreate(false); }}>
+          <form onSubmit={handleCalCreate} style={{
+            width: "min(440px, 100%)",
+            background: "rgba(20,25,38,.97)", backdropFilter: "blur(20px)",
+            border: "1px solid rgba(255,255,255,.1)", borderRadius: 16, overflow: "hidden",
+            boxShadow: "0 24px 64px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06)",
+          }}>
+            <div style={{ padding: "18px 20px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: S.text }}>New Item</span>
+              <button type="button" onClick={() => setShowCreate(false)} style={{ background: "none", border: "none", color: S.dim, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
+            </div>
+
+            {/* Type selector */}
+            <div style={{ padding: "14px 20px 0", display: "flex", gap: 6 }}>
+              {(["task","event","meeting"] as const).map((t) => (
+                <button type="button" key={t} onClick={() => setCreateType(t)} style={{
+                  flex: 1, padding: "8px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  background: createType === t
+                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)"
+                    : "rgba(255,255,255,.04)",
+                  border: createType === t
+                    ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
+                    : "1px solid rgba(255,255,255,.1)",
+                  color: createType === t
+                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)"
+                    : S.dim,
+                  transition: "all .12s ease",
+                }}>
+                  {t === "task" ? "Task" : t === "event" ? "Event" : "Meeting"}
+                </button>
+              ))}
+            </div>
+
+            {/* Fields */}
+            <div style={{ padding: "14px 20px 20px", display: "grid", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 5, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Title *</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  placeholder={createType === "task" ? "Task title…" : createType === "event" ? "Event name…" : "Meeting title…"}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(255,255,255,.05)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,.1)", color: S.text, fontSize: 13, outline: "none", transition: "border-color .15s, box-shadow .15s", boxSizing: "border-box" }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)"; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; e.currentTarget.style.boxShadow = "none"; }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 5, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                  {createType === "task" ? "Due Date" : "Start"}
+                </label>
+                <input
+                  type={createType !== "task" && !createAllDay ? "datetime-local" : "date"}
+                  value={createDate}
+                  onChange={(e) => setCreateDate(e.target.value)}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(255,255,255,.05)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,.1)", color: S.text, fontSize: 13, outline: "none", transition: "border-color .15s, box-shadow .15s", boxSizing: "border-box" }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)"; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; e.currentTarget.style.boxShadow = "none"; }}
+                />
+              </div>
+
+              {createType !== "task" && (
+                <div onClick={() => setCreateAllDay(!createAllDay)} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, cursor: "pointer", color: S.dimBright }}>
+                  <div style={{
+                    width: 38, height: 21, borderRadius: 11, position: "relative", flexShrink: 0,
+                    background: createAllDay ? "var(--gg-primary, #2563eb)" : "rgba(255,255,255,.12)",
+                    boxShadow: createAllDay ? "0 0 8px color-mix(in srgb, var(--gg-primary, #2563eb) 45%, transparent)" : "inset 0 1px 3px rgba(0,0,0,.4)",
+                    transition: "background .2s ease, box-shadow .2s ease",
+                  }}>
+                    <div style={{ position: "absolute", top: 2, left: createAllDay ? 19 : 2, width: 17, height: 17, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.35)", transition: "left .2s ease" }} />
+                  </div>
+                  All day
+                </div>
+              )}
+
+              {hasMissions && missions.length > 0 && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 5, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Mission</label>
+                  <select value={createMissionId} onChange={(e) => setCreateMissionId(e.target.value)}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(255,255,255,.05)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,.1)", color: S.text, fontSize: 13, outline: "none", boxSizing: "border-box" }}>
+                    <option value="">— None —</option>
+                    {missions.filter((m) => m.status !== "done").map((m) => (
+                      <option key={m.id} value={m.id}>{m.title}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {createError && (
+                <div style={{ fontSize: 12, color: "#fca5a5", padding: "8px 12px", background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 8 }}>
+                  {createError}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 2 }}>
+                <button type="button" onClick={() => setShowCreate(false)} style={{
+                  padding: "8px 18px", borderRadius: 9, fontSize: 13, fontWeight: 600,
+                  background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)",
+                  color: S.dim, cursor: "pointer", transition: "all .12s",
+                }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.08)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,.04)"; }}
+                >Cancel</button>
+                <button type="submit" disabled={creating} style={{
+                  padding: "8px 22px", borderRadius: 9, fontSize: 13, fontWeight: 600,
+                  background: "linear-gradient(135deg, var(--gg-primary, #2563eb), color-mix(in srgb, var(--gg-primary, #2563eb) 68%, #7c3aed))",
+                  border: "none", color: "#fff", cursor: "pointer",
+                  boxShadow: "0 2px 14px color-mix(in srgb, var(--gg-primary, #2563eb) 42%, transparent)",
+                  opacity: creating ? 0.7 : 1, transition: "all .12s",
+                }}>
+                  {creating ? "Creating…" : "Create"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

@@ -600,6 +600,40 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
         </div>
       </div>
 
+      {/* Color key */}
+      {(() => {
+        const entries = Object.keys(typeColors).length > 0
+          ? Object.entries(typeColors)
+          : [...new Set(items.map((i) => i.item_type))].map((slug) => [slug, "blue"] as [string, string]);
+        if (entries.length === 0) return null;
+        return (
+          <div style={{
+            display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center",
+            padding: "10px 16px", borderRadius: 10, marginTop: 4,
+            background: "rgba(255,255,255,.02)", border: `1px solid ${S_border}`,
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", color: S_dim, textTransform: "uppercase" }}>
+              Types
+            </span>
+            {entries.map(([slug, colorKey]) => {
+              const family = getFamilyByKey(colorKey) ?? COLOR_FAMILIES[0];
+              const label = slug === "task" ? "Tasks" : slug === "event" ? "Events" : slug === "meeting" ? "Meetings"
+                : slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+              return (
+                <div key={slug} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{
+                    width: 32, height: 14, borderRadius: 4,
+                    background: family.shades[3],
+                    boxShadow: `inset 3px 0 0 0 ${family.shades[2]}`,
+                  }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: S_dim }}>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {modal && (
         <PublicModal item={modal} typeColors={typeColors} onClose={() => setModal(null)} />
       )}
