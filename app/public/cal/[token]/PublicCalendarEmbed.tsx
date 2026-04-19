@@ -226,17 +226,31 @@ function Pill({ item, typeColors, onClick }: {
   const family = getItemFamily(item, typeColors);
   const isDone = item.status === "done";
   const time   = hasExplicitTime(item.start_at) && !item.is_all_day ? fmtTime(item.start_at!) + " " : "";
+  const accentCol = isDone ? family.shades[0] : family.shades[2];
+  const idleShadow  = `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2)`;
+  const hoverShadow = `inset 2px 0 0 0 ${accentCol}, 0 3px 10px rgba(0,0,0,.3), 0 0 10px ${accentCol}22`;
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       title={item.title}
       style={{
         display: "block", width: "100%", textAlign: "left",
-        padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+        padding: "3px 7px", borderRadius: 5, fontSize: 11, fontWeight: 600,
         background: isDone ? family.shades[1] : family.shades[3],
         color: isDone ? "#fff" : "#0f172a", border: "none", cursor: "pointer",
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         textDecoration: isDone ? "line-through" : "none",
+        opacity: isDone ? 0.75 : 1,
+        boxShadow: idleShadow,
+        transition: "all .12s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow = hoverShadow;
+        e.currentTarget.style.transform = "translateY(-1px)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = idleShadow;
+        e.currentTarget.style.transform = "";
       }}
     >
       {time}{item.title}
@@ -357,9 +371,9 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
     <div style={{
       minHeight: "100vh", background: "rgb(12 16 24)",
       fontFamily: "system-ui, -apple-system, sans-serif", color: S_text,
-      padding: "20px 16px", boxSizing: "border-box",
+      padding: "20px 20px", boxSizing: "border-box",
     }}>
-      <div style={{ maxWidth: 960, margin: "0 auto" }}>
+      <div>
 
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
