@@ -294,6 +294,19 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
       .finally(() => setLoading(false));
   }, [token]);
 
+  // Report height to parent iframe so it can auto-resize
+  useEffect(() => {
+    if (typeof window === "undefined" || window.parent === window) return;
+    const send = () => window.parent.postMessage(
+      { type: "gg-cal-height", height: document.documentElement.scrollHeight },
+      "*"
+    );
+    send();
+    const ro = new ResizeObserver(send);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [items, view, curDate]);
+
   function navigate(newView: View, newDate: string) {
     setView(newView); setCurDate(newDate);
     const p = new URLSearchParams({ view: newView, date: newDate });
@@ -368,12 +381,14 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
   const MAX_PILLS = 3;
 
   return (
+    <>
+    <style>{`html,body{height:auto!important;overflow:auto!important;}`}</style>
     <div style={{
       minHeight: "100vh", background: "rgb(12 16 24)",
       fontFamily: "system-ui, -apple-system, sans-serif", color: S_text,
       padding: "20px 20px", boxSizing: "border-box",
     }}>
-      <div>
+      <div style={{ maxWidth: 960, margin: "0 auto" }}>
 
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
@@ -653,6 +668,7 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
         <PublicModal item={modal} typeColors={typeColors} onClose={() => setModal(null)} />
       )}
     </div>
+    </>
   );
 }
 
