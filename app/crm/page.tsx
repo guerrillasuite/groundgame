@@ -99,6 +99,32 @@ function stageColor(key: string, idx: number, total: number): string {
   return STAGE_COLORS[Math.floor((idx / Math.max(total - 1, 1)) * (STAGE_COLORS.length - 1))];
 }
 
+function groupItems(items: any[], groupBy: string): { label: string; items: any[] }[] | null {
+  if (groupBy === "none") return null;
+  const PRIO_ORDER = ["high", "medium", "low", "__none__"];
+  const STATUS_ORDER = ["open", "in_progress", "done"];
+  const map = new Map<string, any[]>();
+  for (const item of items) {
+    const key = groupBy === "type"     ? (item.item_type ?? "other")
+              : groupBy === "status"   ? (item.status ?? "other")
+              : groupBy === "priority" ? (item.priority ?? "__none__")
+              : "—";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(item);
+  }
+  const order = groupBy === "priority" ? PRIO_ORDER : groupBy === "status" ? STATUS_ORDER : null;
+  const entries = [...map.entries()];
+  if (order) entries.sort(([a], [b]) => {
+    const ai = order.indexOf(a); const bi = order.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+  return entries.map(([key, grpItems]) => ({
+    label: key === "__none__" ? "No Priority"
+         : key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " "),
+    items: grpItems,
+  }));
+}
+
 // ── Sub-components ───────────────────────────────────────────────────────────
 
 function ProgressBar({ pct, color = "var(--gg-primary, #2563eb)" }: { pct: number; color?: string }) {
@@ -135,6 +161,24 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
   const colorMap = buildColorMap(resolveDispoConfig(settings ?? {}));
   const now = new Date().toISOString();
 
+  const wCfg = {
+    show_types: (settings?.sitrep_widget?.show_types ?? []) as string[],
+    sort_by:    (settings?.sitrep_widget?.sort_by    ?? "due_date") as string,
+    sort_dir:   (settings?.sitrep_widget?.sort_dir   ?? "asc")      as string,
+    group_by:   (settings?.sitrep_widget?.group_by   ?? "none")     as string,
+    max_items:  (settings?.sitrep_widget?.max_items  ?? 10)         as number,
+  };
+  const wDbSort = wCfg.sort_by === "priority" ? "created_at" : wCfg.sort_by;
+  const wAsc    = wCfg.sort_dir === "asc";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let adminSitrepQ: any = sb.from("sitrep_items")
+    .select("id, item_type, title, status, priority, due_date, start_at")
+    .eq("tenant_id", tenantId)
+    .in("status", ["open", "in_progress"])
+    .neq("visibility", "private");
+  if (wCfg.show_types.length > 0) adminSitrepQ = adminSitrepQ.in("item_type", wCfg.show_types);
+  adminSitrepQ = adminSitrepQ.order(wDbSort, { ascending: wAsc, nullsFirst: false }).limit(wCfg.max_items);
+
   // Parallel fetches
   const [
     { count: peopleCount },
@@ -160,7 +204,7 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     sb.from("walklists").select("id, name, mode").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(10),
     sb.from("surveys").select("id, title").eq("tenant_id", tenantId).eq("active", true).limit(8),
     sb.from("stops").select("id, stop_at, result, person_id, channel, walklist_id").eq("tenant_id", tenantId).order("stop_at", { ascending: false }).limit(20),
-    sb.from("sitrep_items").select("id, item_type, title, status, priority, due_date, start_at").eq("tenant_id", tenantId).in("status", ["open", "in_progress"]).neq("visibility", "private").order("due_date", { ascending: true, nullsFirst: false }).order("start_at", { ascending: true, nullsFirst: false }).limit(10),
+    adminSitrepQ,
     sb.from("sitrep_item_types").select("slug, color").eq("tenant_id", tenantId),
   ]);
 
@@ -175,6 +219,36 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
   }
   function sitrepRowBg(item: any): string { return sitrepShades(item)[3] + "55"; }
   function sitrepAccent(item: any): string { return sitrepShades(item)[2]; }
+
+  let sitrepItems: any[] = [...(sitrepItemsRaw ?? [])];
+  if (wCfg.sort_by === "priority") {
+    const PRIO: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    sitrepItems.sort((a, b) => {
+      const pa = PRIO[a.priority] ?? 3;
+      const pb = PRIO[b.priority] ?? 3;
+      return wCfg.sort_dir === "asc" ? pa - pb : pb - pa;
+    });
+  }
+  const sitrepGroups = groupItems(sitrepItems, wCfg.group_by);
+
+  function renderSitrepRow(item: any) {
+    const overdue = isOverdue(sitrepEffectiveDate(item));
+    const accent  = sitrepAccent(item);
+    return (
+      <Link key={item.id} href={`/crm/sitrep/${item.id}`} className="db-sitrep-row" style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "7px 10px", borderRadius: 7, textDecoration: "none",
+        color: "#0f172a", background: sitrepRowBg(item),
+        boxShadow: `inset 3px 0 0 0 ${accent}, 0 1px 3px rgba(0,0,0,.08)`,
+        "--accent": accent,
+      } as React.CSSProperties}>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
+          {overdue ? "PAST DUE" : fmtSitrepDate(item)}
+        </span>
+      </Link>
+    );
+  }
 
   const listIds = (recentLists ?? []).map((l: any) => l.id);
   const surveyIds = (surveys ?? []).map((s: any) => s.id);
@@ -461,30 +535,26 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
             <p style={{ ...sectionLabel, margin: 0 }}>📋 SitRep</p>
             <Link href="/crm/sitrep" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>Full SitRep →</Link>
           </div>
-          {(sitrepItemsRaw ?? []).length === 0
+          {sitrepItems.length === 0
             ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
-            : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                {(sitrepItemsRaw as any[]).map((item) => {
-                  const overdue = isOverdue(sitrepEffectiveDate(item));
-                  const accent = sitrepAccent(item);
-                  return (
-                    <Link key={item.id} href={`/crm/sitrep/${item.id}`} className="db-sitrep-row" style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      padding: "7px 10px", borderRadius: 7, textDecoration: "none",
-                      color: "#0f172a", background: sitrepRowBg(item),
-                      boxShadow: `inset 3px 0 0 0 ${accent}, 0 1px 3px rgba(0,0,0,.08)`,
-                      "--accent": accent,
-                    } as React.CSSProperties}>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
-                        {overdue ? "PAST DUE" : fmtSitrepDate(item)}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )
+            : sitrepGroups
+              ? sitrepGroups.map(({ label, items: grpItems }) => (
+                  <div key={label} style={{ marginBottom: 8 }}>
+                    <div style={{
+                      fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+                      textTransform: "uppercase", color: "var(--gg-text-dim, #9ca3af)",
+                      marginBottom: 4, paddingLeft: 2,
+                    }}>{label}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      {grpItems.map(renderSitrepRow)}
+                    </div>
+                  </div>
+                ))
+              : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  {sitrepItems.map(renderSitrepRow)}
+                </div>
+              )
           }
         </div>
       </div>
@@ -509,6 +579,23 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
 
   const myListIds = (assignments ?? []).map((a: any) => a.walklist_id).filter(Boolean);
 
+  const wCfg = {
+    show_types: (settings?.sitrep_widget?.show_types ?? []) as string[],
+    sort_by:    (settings?.sitrep_widget?.sort_by    ?? "due_date") as string,
+    sort_dir:   (settings?.sitrep_widget?.sort_dir   ?? "asc")      as string,
+    group_by:   (settings?.sitrep_widget?.group_by   ?? "none")     as string,
+    max_items:  (settings?.sitrep_widget?.max_items  ?? 10)         as number,
+  };
+  const wDbSort = wCfg.sort_by === "priority" ? "created_at" : wCfg.sort_by;
+  const wAsc    = wCfg.sort_dir === "asc";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let fieldSitrepQ: any = sb.from("sitrep_items")
+    .select("id, item_type, title, status, priority, due_date, start_at, created_by, sitrep_assignments(user_id)")
+    .eq("tenant_id", tenantId)
+    .in("status", ["open", "in_progress"]);
+  if (wCfg.show_types.length > 0) fieldSitrepQ = fieldSitrepQ.in("item_type", wCfg.show_types);
+  fieldSitrepQ = fieldSitrepQ.order(wDbSort, { ascending: wAsc, nullsFirst: false }).limit(Math.min(wCfg.max_items * 5, 60));
+
   // Parallel fetches
   const [myListsRaw, myItemsRaw, myStopsRaw, mySitrepRaw, myRecentStopsRaw, myTypesRaw] = await Promise.all([
     myListIds.length
@@ -520,7 +607,7 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
     myListIds.length
       ? sb.from("stops").select("walklist_id, stop_at").eq("tenant_id", tenantId).in("walklist_id", myListIds).gte("stop_at", yesterday)
       : Promise.resolve({ data: [] }),
-    sb.from("sitrep_items").select("id, item_type, title, status, priority, due_date, start_at, created_by, sitrep_assignments(user_id)").eq("tenant_id", tenantId).in("status", ["open", "in_progress"]).order("due_date", { ascending: true, nullsFirst: false }).order("start_at", { ascending: true, nullsFirst: false }).limit(30),
+    fieldSitrepQ,
     myListIds.length
       ? sb.from("stops").select("id, stop_at, result, person_id, channel").eq("tenant_id", tenantId).in("walklist_id", myListIds).order("stop_at", { ascending: false }).limit(10)
       : Promise.resolve({ data: [] }),
@@ -538,6 +625,40 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
   }
   function mySitrepRowBg(item: any): string { return myShades(item)[3] + "55"; }
   function mySitrepAccent(item: any): string { return myShades(item)[2]; }
+
+  // JS post-processing for widget settings (applied after user filter below)
+  function applySitrepWidgetCfg(rawItems: any[]): { items: any[]; groups: ReturnType<typeof groupItems> } {
+    let items = [...rawItems];
+    if (wCfg.sort_by === "priority") {
+      const PRIO: Record<string, number> = { high: 0, medium: 1, low: 2 };
+      items.sort((a, b) => {
+        const pa = PRIO[a.priority] ?? 3;
+        const pb = PRIO[b.priority] ?? 3;
+        return wCfg.sort_dir === "asc" ? pa - pb : pb - pa;
+      });
+    }
+    items = items.slice(0, wCfg.max_items);
+    return { items, groups: groupItems(items, wCfg.group_by) };
+  }
+
+  function renderMySitrepRow(item: any) {
+    const overdue = isOverdue(sitrepEffectiveDate(item));
+    const accent  = mySitrepAccent(item);
+    return (
+      <Link key={item.id} href={`/crm/sitrep/${item.id}`} className="db-sitrep-row" style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "7px 10px", borderRadius: 7, textDecoration: "none",
+        color: "#0f172a", background: mySitrepRowBg(item),
+        boxShadow: `inset 3px 0 0 0 ${accent}, 0 1px 3px rgba(0,0,0,.08)`,
+        "--accent": accent,
+      } as React.CSSProperties}>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
+          {overdue ? "PAST DUE" : fmtSitrepDate(item)}
+        </span>
+      </Link>
+    );
+  }
 
   // Aggregate list progress
   const itemCounts = new Map<string, number>();
@@ -557,10 +678,11 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
 
   // Quick stats
   const myListCount = myListIds.length;
-  const myItems = ((mySitrepRaw as any)?.data ?? mySitrepRaw ?? []).filter((item: any) =>
+  const myItemsAll = ((mySitrepRaw as any)?.data ?? mySitrepRaw ?? []).filter((item: any) =>
     item.created_by === userId || (item.sitrep_assignments ?? []).some((a: any) => a.user_id === userId)
   );
-  const overdueCount = myItems.filter((item: any) => isOverdue(sitrepEffectiveDate(item))).length;
+  const { items: myItems, groups: myGroups } = applySitrepWidgetCfg(myItemsAll);
+  const overdueCount = myItemsAll.filter((item: any) => isOverdue(sitrepEffectiveDate(item))).length;
 
   // Count all stops today (reuse myStopsRaw which is last 24h)
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
@@ -666,26 +788,24 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
           </div>
           {myItems.length === 0
             ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
-            : <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                {myItems.slice(0, 8).map((item: any) => {
-                  const overdue = isOverdue(sitrepEffectiveDate(item));
-                  const accent = mySitrepAccent(item);
-                  return (
-                    <Link key={item.id} href={`/crm/sitrep/${item.id}`} className="db-sitrep-row" style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      padding: "7px 10px", borderRadius: 7, textDecoration: "none",
-                      color: "#0f172a", background: mySitrepRowBg(item),
-                      boxShadow: `inset 3px 0 0 0 ${accent}, 0 1px 3px rgba(0,0,0,.08)`,
-                      "--accent": accent,
-                    } as React.CSSProperties}>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
-                        {overdue ? "PAST DUE" : fmtSitrepDate(item)}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
+            : myGroups
+              ? myGroups.map(({ label, items: grpItems }) => (
+                  <div key={label} style={{ marginBottom: 8 }}>
+                    <div style={{
+                      fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+                      textTransform: "uppercase", color: "var(--gg-text-dim, #9ca3af)",
+                      marginBottom: 4, paddingLeft: 2,
+                    }}>{label}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      {grpItems.map(renderMySitrepRow)}
+                    </div>
+                  </div>
+                ))
+              : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  {myItems.map(renderMySitrepRow)}
+                </div>
+              )
           }
         </div>
 

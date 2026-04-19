@@ -13,6 +13,22 @@ type ItemType = {
   is_public: boolean;
 };
 
+type WidgetSettings = {
+  show_types: string[];
+  sort_by:    "due_date" | "start_at" | "priority" | "created_at";
+  sort_dir:   "asc" | "desc";
+  group_by:   "none" | "type" | "status" | "priority";
+  max_items:  number;
+};
+
+const DEFAULT_WIDGET: WidgetSettings = {
+  show_types: [],
+  sort_by:    "due_date",
+  sort_dir:   "asc",
+  group_by:   "none",
+  max_items:  10,
+};
+
 type PublicCalendar = {
   id: string;
   name: string;
@@ -363,6 +379,11 @@ export default function SitRepSettingsPanel() {
   const [calendars, setCalendars] = useState<PublicCalendar[]>([]);
   const [calsLoading, setCalsLoading] = useState(true);
 
+  const [widget, setWidget] = useState<WidgetSettings>(DEFAULT_WIDGET);
+  const [widgetLoading, setWidgetLoading] = useState(true);
+  const [widgetSaving, setWidgetSaving] = useState(false);
+  const [widgetSaved, setWidgetSaved] = useState(false);
+
   useEffect(() => {
     fetch("/api/crm/sitrep/types")
       .then((r) => r.json())
@@ -375,7 +396,25 @@ export default function SitRepSettingsPanel() {
       .then((data) => setCalendars(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setCalsLoading(false));
+
+    fetch("/api/crm/sitrep/widget-settings")
+      .then((r) => r.json())
+      .then((data) => setWidget({ ...DEFAULT_WIDGET, ...data }))
+      .catch(() => {})
+      .finally(() => setWidgetLoading(false));
   }, []);
+
+  async function saveWidget() {
+    setWidgetSaving(true);
+    await fetch("/api/crm/sitrep/widget-settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(widget),
+    });
+    setWidgetSaving(false);
+    setWidgetSaved(true);
+    setTimeout(() => setWidgetSaved(false), 2000);
+  }
 
   async function handleColorChange(id: string, color: string) {
     setTypes((prev) => prev.map((t) => (t.id === id ? { ...t, color } : t)));
@@ -548,6 +587,156 @@ export default function SitRepSettingsPanel() {
           />
         </div>
       </div>
+
+      {/* Dashboard Widget card */}
+      <div style={{
+        background: S.card, border: `1px solid ${S.border}`,
+        borderRadius: 16, padding: 24, display: "grid", gap: 24,
+      }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Dashboard Widget</h2>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+            Configure which items appear on the CRM dashboard and how they're sorted.
+          </p>
+        </div>
+
+        {widgetLoading ? (
+          <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
+        ) : (
+          <div style={{ display: "grid", gap: 20 }}>
+
+            {/* Type filter */}
+            <div>
+              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>
+                Show Types
+              </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {types.map((t) => {
+                  const sel = widget.show_types.includes(t.slug);
+                  return (
+                    <button
+                      key={t.slug}
+                      type="button"
+                      onClick={() => setWidget((w) => ({
+                        ...w,
+                        show_types: sel
+                          ? w.show_types.filter((s) => s !== t.slug)
+                          : [...w.show_types, t.slug],
+                      }))}
+                      style={{
+                        padding: "4px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500,
+                        cursor: "pointer", transition: "all .1s",
+                        border: sel ? "1px solid rgba(99,102,241,.5)" : `1px solid ${S.border}`,
+                        background: sel ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.04)",
+                        color: sel ? "#a5b4fc" : S.dim,
+                      }}
+                    >{t.name}</button>
+                  );
+                })}
+              </div>
+              {widget.show_types.length === 0 && (
+                <p style={{ fontSize: 12, color: S.dim, margin: "4px 0 0" }}>All types shown when none selected.</p>
+              )}
+            </div>
+
+            {/* Sort by */}
+            <div>
+              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Sort By</label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {([
+                  { key: "due_date",   label: "Due Date" },
+                  { key: "start_at",   label: "Start At" },
+                  { key: "priority",   label: "Priority" },
+                  { key: "created_at", label: "Created" },
+                ] as const).map(({ key, label }) => {
+                  const sel = widget.sort_by === key;
+                  return (
+                    <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, sort_by: key }))} style={{
+                      padding: "4px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500,
+                      cursor: "pointer", transition: "all .1s",
+                      border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
+                      background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                      color: sel ? S.text : S.dim,
+                    }}>{label}</button>
+                  );
+                })}
+                <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
+                  {(["asc", "desc"] as const).map((dir) => {
+                    const sel = widget.sort_dir === dir;
+                    return (
+                      <button key={dir} type="button" onClick={() => setWidget((w) => ({ ...w, sort_dir: dir }))} style={{
+                        padding: "4px 10px", borderRadius: 16, fontSize: 12, fontWeight: 500,
+                        cursor: "pointer", transition: "all .1s",
+                        border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
+                        background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                        color: sel ? S.text : S.dim,
+                      }}>{dir === "asc" ? "↑ Asc" : "↓ Desc"}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Group by */}
+            <div>
+              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Group By</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {([
+                  { key: "none",     label: "None" },
+                  { key: "type",     label: "Type" },
+                  { key: "status",   label: "Status" },
+                  { key: "priority", label: "Priority" },
+                ] as const).map(({ key, label }) => {
+                  const sel = widget.group_by === key;
+                  return (
+                    <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, group_by: key }))} style={{
+                      padding: "4px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500,
+                      cursor: "pointer", transition: "all .1s",
+                      border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
+                      background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                      color: sel ? S.text : S.dim,
+                    }}>{label}</button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Max items */}
+            <div>
+              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Max Items</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[5, 8, 10, 15, 20].map((n) => {
+                  const sel = widget.max_items === n;
+                  return (
+                    <button key={n} type="button" onClick={() => setWidget((w) => ({ ...w, max_items: n }))} style={{
+                      padding: "4px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500,
+                      cursor: "pointer", transition: "all .1s",
+                      border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
+                      background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                      color: sel ? S.text : S.dim,
+                    }}>{n}</button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Save */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button
+                type="button"
+                onClick={saveWidget}
+                disabled={widgetSaving}
+                className="btn"
+                style={{ padding: "8px 20px", fontSize: 13, borderRadius: 8 }}
+              >
+                {widgetSaving ? "Saving…" : "Save Widget Settings"}
+              </button>
+              {widgetSaved && <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>Saved ✓</span>}
+            </div>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
