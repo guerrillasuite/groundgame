@@ -158,15 +158,15 @@ function ItemPill({
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         textDecoration: isDone ? "line-through" : "none",
         opacity: isDone ? 0.75 : 1,
-        boxShadow: `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2), 0 0 0 1px color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)`,
+        boxShadow: `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2), 0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 30%, transparent)`,
         transition: "all .12s ease",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 3px 10px rgba(0,0,0,.3), 0 0 10px ${accentCol}22, 0 0 0 1px color-mix(in srgb, var(--gg-primary, #2563eb) 36%, transparent), 0 0 8px color-mix(in srgb, var(--gg-primary, #2563eb) 16%, transparent)`;
+        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 3px 10px rgba(0,0,0,.3), 0 0 10px ${accentCol}22, 0 0 0 2px color-mix(in srgb, var(--gg-primary, #2563eb) 60%, transparent), 0 0 14px color-mix(in srgb, var(--gg-primary, #2563eb) 38%, transparent)`;
         e.currentTarget.style.transform = "translateY(-1px)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2), 0 0 0 1px color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)`;
+        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2), 0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 30%, transparent)`;
         e.currentTarget.style.transform = "";
       }}
     >
@@ -827,16 +827,16 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
                     display: "flex", alignItems: "center", gap: 12,
                     padding: "12px 16px", borderRadius: 10,
                     background: cardBg,
-                    border: `1px solid ${family.shades[2]}44`,
-                    boxShadow: `inset 3px 0 0 0 ${accentCol}, 0 2px 8px rgba(0,0,0,.2), 0 0 0 1px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent), 0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)`,
+                    border: `1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 45%, ${family.shades[2]})`,
+                    boxShadow: `inset 3px 0 0 0 ${accentCol}, 0 2px 8px rgba(0,0,0,.2), 0 0 14px color-mix(in srgb, var(--gg-primary, #2563eb) 28%, transparent)`,
                     cursor: "pointer", transition: "all .12s ease",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = `inset 3px 0 0 0 ${accentCol}, 0 6px 20px rgba(0,0,0,.32), 0 0 18px ${accentCol}28, 0 0 0 1px color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent), 0 0 16px color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)`;
+                    e.currentTarget.style.boxShadow = `inset 3px 0 0 0 ${accentCol}, 0 6px 20px rgba(0,0,0,.32), 0 0 18px ${accentCol}28, 0 0 0 2px color-mix(in srgb, var(--gg-primary, #2563eb) 60%, transparent), 0 0 22px color-mix(in srgb, var(--gg-primary, #2563eb) 38%, transparent)`;
                     e.currentTarget.style.transform = "translateY(-2px)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = `inset 3px 0 0 0 ${accentCol}, 0 2px 8px rgba(0,0,0,.2), 0 0 0 1px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent), 0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)`;
+                    e.currentTarget.style.boxShadow = `inset 3px 0 0 0 ${accentCol}, 0 2px 8px rgba(0,0,0,.2), 0 0 14px color-mix(in srgb, var(--gg-primary, #2563eb) 28%, transparent)`;
                     e.currentTarget.style.transform = "";
                   }}
                 >

@@ -755,12 +755,12 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                     .filter(Boolean) as User[];
 
                   const cardBg     = isDone ? family.shades[1] : family.shades[3];
-                  const cardBorder = isDone ? `1px solid ${family.shades[0]}` : `1px solid ${family.shades[2]}55`;
+                  const cardBorder = isDone ? `1px solid ${family.shades[0]}` : `1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 45%, ${family.shades[2]})`;
                   const textColor  = isDone ? "#fff" : "#0f172a";
                   const dateColor  = urgent && !isDone ? "#991b1b" : isDone ? "rgba(255,255,255,.72)" : "#1e293b";
                   const accentCol  = isDone ? family.shades[0] : family.shades[2];
-                  const restShadow = `inset 3px 0 0 0 ${accentCol}, 0 2px 6px rgba(0,0,0,.22), 0 0 0 1px ${accentCol}18, 0 0 0 1px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent), 0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)`;
-                  const hoverShadow= `inset 3px 0 0 0 ${accentCol}, 0 8px 24px rgba(0,0,0,.32), 0 0 0 1px ${accentCol}44, 0 0 22px ${accentCol}1c, 0 0 0 1px color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent), 0 0 16px color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)`;
+                  const restShadow = `inset 3px 0 0 0 ${accentCol}, 0 2px 6px rgba(0,0,0,.22), 0 0 14px color-mix(in srgb, var(--gg-primary, #2563eb) 28%, transparent)`;
+                  const hoverShadow= `inset 3px 0 0 0 ${accentCol}, 0 8px 24px rgba(0,0,0,.32), 0 0 0 1px ${accentCol}44, 0 0 22px ${accentCol}1c, 0 0 0 2px color-mix(in srgb, var(--gg-primary, #2563eb) 60%, transparent), 0 0 22px color-mix(in srgb, var(--gg-primary, #2563eb) 38%, transparent)`;
 
                   return (
                     <div
