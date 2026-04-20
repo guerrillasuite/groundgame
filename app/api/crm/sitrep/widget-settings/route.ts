@@ -14,11 +14,13 @@ function makeSb(tenantId: string) {
 }
 
 export const DEFAULT_WIDGET = {
-  show_types:  [] as string[],
-  sort_by:     "due_date" as "due_date" | "start_at" | "priority" | "created_at",
-  sort_dir:    "asc"      as "asc" | "desc",
-  group_by:    "none"     as "none" | "type" | "status" | "priority",
-  max_items:   10         as number,
+  show_types:            [] as string[],
+  sort_by:               "due_date" as "due_date" | "start_at" | "priority" | "created_at",
+  sort_dir:              "asc"      as "asc" | "desc",
+  group_by:              "none"     as "none" | "type" | "status" | "priority",
+  max_items:             10         as number,
+  widget_view:           "list"     as "list" | "calendar",
+  calendar_default_view: "week"     as "day" | "week" | "month",
 };
 
 export async function GET() {
@@ -71,6 +73,10 @@ export async function PATCH(req: NextRequest) {
     merged.group_by = body.group_by as typeof merged.group_by;
   if (typeof body.max_items === "number" && [5, 8, 10, 15, 20].includes(body.max_items))
     merged.max_items = body.max_items;
+  if (["list", "calendar"].includes(body.widget_view as string))
+    merged.widget_view = body.widget_view as typeof merged.widget_view;
+  if (["day", "week", "month"].includes(body.calendar_default_view as string))
+    merged.calendar_default_view = body.calendar_default_view as typeof merged.calendar_default_view;
 
   const { error } = await sb
     .from("tenants")

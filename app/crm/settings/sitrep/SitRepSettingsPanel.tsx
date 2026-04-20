@@ -14,19 +14,23 @@ type ItemType = {
 };
 
 type WidgetSettings = {
-  show_types: string[];
-  sort_by:    "due_date" | "start_at" | "priority" | "created_at";
-  sort_dir:   "asc" | "desc";
-  group_by:   "none" | "type" | "status" | "priority";
-  max_items:  number;
+  show_types:            string[];
+  sort_by:               "due_date" | "start_at" | "priority" | "created_at";
+  sort_dir:              "asc" | "desc";
+  group_by:              "none" | "type" | "status" | "priority";
+  max_items:             number;
+  widget_view:           "list" | "calendar";
+  calendar_default_view: "day" | "week" | "month";
 };
 
 const DEFAULT_WIDGET: WidgetSettings = {
-  show_types: [],
-  sort_by:    "due_date",
-  sort_dir:   "asc",
-  group_by:   "none",
-  max_items:  10,
+  show_types:            [],
+  sort_by:               "due_date",
+  sort_dir:              "asc",
+  group_by:              "none",
+  max_items:             10,
+  widget_view:           "list",
+  calendar_default_view: "week",
 };
 
 type PublicCalendar = {
@@ -604,6 +608,52 @@ export default function SitRepSettingsPanel() {
           <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
         ) : (
           <div style={{ display: "grid", gap: 20 }}>
+
+            {/* View mode */}
+            <div>
+              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>View Mode</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {([
+                  { key: "list",     label: "📋 List" },
+                  { key: "calendar", label: "📅 Calendar" },
+                ] as const).map(({ key, label }) => {
+                  const sel = widget.widget_view === key;
+                  return (
+                    <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, widget_view: key }))} style={{
+                      padding: "6px 16px", borderRadius: 16, fontSize: 12, fontWeight: 600,
+                      cursor: "pointer", transition: "all .1s",
+                      border: sel ? "1px solid rgba(99,102,241,.5)" : `1px solid ${S.border}`,
+                      background: sel ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.04)",
+                      color: sel ? "#a5b4fc" : S.dim,
+                    }}>{label}</button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Calendar default view — only shown when Calendar is selected */}
+            {widget.widget_view === "calendar" && (
+              <div>
+                <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Calendar Default View</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {(["day", "week", "month"] as const).map((v) => {
+                    const sel = widget.calendar_default_view === v;
+                    return (
+                      <button key={v} type="button" onClick={() => setWidget((w) => ({ ...w, calendar_default_view: v }))} style={{
+                        padding: "4px 14px", borderRadius: 16, fontSize: 12, fontWeight: 500,
+                        cursor: "pointer", transition: "all .1s",
+                        border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
+                        background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                        color: sel ? S.text : S.dim,
+                      }}>{v.charAt(0).toUpperCase() + v.slice(1)}</button>
+                    );
+                  })}
+                </div>
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: S.dim }}>
+                  Users can still switch between Day / Week / Month on the dashboard.
+                </p>
+              </div>
+            )}
 
             {/* Type filter */}
             <div>

@@ -6,6 +6,7 @@ import { getCrmUser } from "@/lib/crm-auth";
 import { createClient } from "@supabase/supabase-js";
 import { resolveDispoConfig, buildColorMap } from "@/lib/dispositionConfig";
 import { getFamilyByKey, SYSTEM_TYPE_FAMILIES } from "@/lib/sitrep-colors";
+import SitRepWidgetCalendar from "@/app/crm/components/SitRepWidgetCalendar";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -162,14 +163,18 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
   const now = new Date().toISOString();
 
   const wCfg = {
-    show_types: (settings?.sitrep_widget?.show_types ?? []) as string[],
-    sort_by:    (settings?.sitrep_widget?.sort_by    ?? "due_date") as string,
-    sort_dir:   (settings?.sitrep_widget?.sort_dir   ?? "asc")      as string,
-    group_by:   (settings?.sitrep_widget?.group_by   ?? "none")     as string,
-    max_items:  (settings?.sitrep_widget?.max_items  ?? 10)         as number,
+    show_types:           (settings?.sitrep_widget?.show_types            ?? [])       as string[],
+    sort_by:              (settings?.sitrep_widget?.sort_by               ?? "due_date") as string,
+    sort_dir:             (settings?.sitrep_widget?.sort_dir              ?? "asc")      as string,
+    group_by:             (settings?.sitrep_widget?.group_by              ?? "none")     as string,
+    max_items:            (settings?.sitrep_widget?.max_items             ?? 10)         as number,
+    widget_view:          (settings?.sitrep_widget?.widget_view           ?? "list")     as string,
+    calendar_default_view:(settings?.sitrep_widget?.calendar_default_view ?? "week")    as string,
   };
-  const wDbSort = wCfg.sort_by === "priority" ? "created_at" : wCfg.sort_by;
-  const wAsc    = wCfg.sort_dir === "asc";
+  const wIsCalendar = wCfg.widget_view === "calendar";
+  const wDbSort = wIsCalendar || wCfg.sort_by === "priority" ? "created_at" : wCfg.sort_by;
+  const wAsc    = wIsCalendar ? false : wCfg.sort_dir === "asc";
+  const wLimit  = wIsCalendar ? 100 : wCfg.max_items;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let adminSitrepQ: any = sb.from("sitrep_items")
     .select("id, item_type, title, status, priority, due_date, start_at")
@@ -177,7 +182,7 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     .in("status", ["open", "in_progress"])
     .neq("visibility", "private");
   if (wCfg.show_types.length > 0) adminSitrepQ = adminSitrepQ.in("item_type", wCfg.show_types);
-  adminSitrepQ = adminSitrepQ.order(wDbSort, { ascending: wAsc, nullsFirst: false }).limit(wCfg.max_items);
+  adminSitrepQ = adminSitrepQ.order(wDbSort, { ascending: wAsc, nullsFirst: false }).limit(wLimit);
 
   // Parallel fetches
   const [
@@ -219,6 +224,10 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
   }
   function sitrepRowBg(item: any): string { return sitrepShades(item)[3] + "55"; }
   function sitrepAccent(item: any): string { return sitrepShades(item)[2]; }
+  const sitrepTypeAccents: Record<string, string> = {};
+  for (const slug of [...Object.keys(sitrepFamilyMap), "task", "event", "meeting"]) {
+    sitrepTypeAccents[slug] = sitrepShades({ item_type: slug })[2];
+  }
 
   let sitrepItems: any[] = [...(sitrepItemsRaw ?? [])];
   if (wCfg.sort_by === "priority") {
@@ -535,26 +544,28 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
             <p style={{ ...sectionLabel, margin: 0 }}>📋 SitRep</p>
             <Link href="/crm/sitrep" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>Full SitRep →</Link>
           </div>
-          {sitrepItems.length === 0
-            ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
-            : sitrepGroups
-              ? sitrepGroups.map(({ label, items: grpItems }) => (
-                  <div key={label} style={{ marginBottom: 8 }}>
-                    <div style={{
-                      fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
-                      textTransform: "uppercase", color: "var(--gg-text-dim, #9ca3af)",
-                      marginBottom: 4, paddingLeft: 2,
-                    }}>{label}</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      {grpItems.map(renderSitrepRow)}
+          {wIsCalendar
+            ? <SitRepWidgetCalendar items={sitrepItems} typeAccents={sitrepTypeAccents} defaultView={wCfg.calendar_default_view as any} />
+            : sitrepItems.length === 0
+              ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
+              : sitrepGroups
+                ? sitrepGroups.map(({ label, items: grpItems }) => (
+                    <div key={label} style={{ marginBottom: 8 }}>
+                      <div style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+                        textTransform: "uppercase", color: "var(--gg-text-dim, #9ca3af)",
+                        marginBottom: 4, paddingLeft: 2,
+                      }}>{label}</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        {grpItems.map(renderSitrepRow)}
+                      </div>
                     </div>
+                  ))
+                : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    {sitrepItems.map(renderSitrepRow)}
                   </div>
-                ))
-              : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  {sitrepItems.map(renderSitrepRow)}
-                </div>
-              )
+                )
           }
         </div>
       </div>
@@ -580,21 +591,24 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
   const myListIds = (assignments ?? []).map((a: any) => a.walklist_id).filter(Boolean);
 
   const wCfg = {
-    show_types: (settings?.sitrep_widget?.show_types ?? []) as string[],
-    sort_by:    (settings?.sitrep_widget?.sort_by    ?? "due_date") as string,
-    sort_dir:   (settings?.sitrep_widget?.sort_dir   ?? "asc")      as string,
-    group_by:   (settings?.sitrep_widget?.group_by   ?? "none")     as string,
-    max_items:  (settings?.sitrep_widget?.max_items  ?? 10)         as number,
+    show_types:            (settings?.sitrep_widget?.show_types            ?? [])        as string[],
+    sort_by:               (settings?.sitrep_widget?.sort_by               ?? "due_date") as string,
+    sort_dir:              (settings?.sitrep_widget?.sort_dir              ?? "asc")      as string,
+    group_by:              (settings?.sitrep_widget?.group_by              ?? "none")     as string,
+    max_items:             (settings?.sitrep_widget?.max_items             ?? 10)         as number,
+    widget_view:           (settings?.sitrep_widget?.widget_view           ?? "list")     as string,
+    calendar_default_view: (settings?.sitrep_widget?.calendar_default_view ?? "week")    as string,
   };
-  const wDbSort = wCfg.sort_by === "priority" ? "created_at" : wCfg.sort_by;
-  const wAsc    = wCfg.sort_dir === "asc";
+  const wIsCalendar = wCfg.widget_view === "calendar";
+  const wDbSort = wIsCalendar || wCfg.sort_by === "priority" ? "created_at" : wCfg.sort_by;
+  const wAsc    = wIsCalendar ? false : wCfg.sort_dir === "asc";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let fieldSitrepQ: any = sb.from("sitrep_items")
     .select("id, item_type, title, status, priority, due_date, start_at, created_by, sitrep_assignments(user_id)")
     .eq("tenant_id", tenantId)
     .in("status", ["open", "in_progress"]);
   if (wCfg.show_types.length > 0) fieldSitrepQ = fieldSitrepQ.in("item_type", wCfg.show_types);
-  fieldSitrepQ = fieldSitrepQ.order(wDbSort, { ascending: wAsc, nullsFirst: false }).limit(Math.min(wCfg.max_items * 5, 60));
+  fieldSitrepQ = fieldSitrepQ.order(wDbSort, { ascending: wAsc, nullsFirst: false }).limit(wIsCalendar ? 200 : Math.min(wCfg.max_items * 5, 60));
 
   // Parallel fetches
   const [myListsRaw, myItemsRaw, myStopsRaw, mySitrepRaw, myRecentStopsRaw, myTypesRaw] = await Promise.all([
@@ -625,11 +639,15 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
   }
   function mySitrepRowBg(item: any): string { return myShades(item)[3] + "55"; }
   function mySitrepAccent(item: any): string { return myShades(item)[2]; }
+  const myTypeAccents: Record<string, string> = {};
+  for (const slug of [...Object.keys(myFamilyMap), "task", "event", "meeting"]) {
+    myTypeAccents[slug] = myShades({ item_type: slug })[2];
+  }
 
   // JS post-processing for widget settings (applied after user filter below)
   function applySitrepWidgetCfg(rawItems: any[]): { items: any[]; groups: ReturnType<typeof groupItems> } {
     let items = [...rawItems];
-    if (wCfg.sort_by === "priority") {
+    if (!wIsCalendar && wCfg.sort_by === "priority") {
       const PRIO: Record<string, number> = { high: 0, medium: 1, low: 2 };
       items.sort((a, b) => {
         const pa = PRIO[a.priority] ?? 3;
@@ -637,8 +655,8 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
         return wCfg.sort_dir === "asc" ? pa - pb : pb - pa;
       });
     }
-    items = items.slice(0, wCfg.max_items);
-    return { items, groups: groupItems(items, wCfg.group_by) };
+    if (!wIsCalendar) items = items.slice(0, wCfg.max_items);
+    return { items, groups: wIsCalendar ? null : groupItems(items, wCfg.group_by) };
   }
 
   function renderMySitrepRow(item: any) {
@@ -786,10 +804,12 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
             <p style={{ ...sectionLabel, margin: 0 }}>📋 SitRep</p>
             <Link href="/crm/sitrep" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>Full SitRep →</Link>
           </div>
-          {myItems.length === 0
-            ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
-            : myGroups
-              ? myGroups.map(({ label, items: grpItems }) => (
+          {wIsCalendar
+            ? <SitRepWidgetCalendar items={myItems} typeAccents={myTypeAccents} defaultView={wCfg.calendar_default_view as any} />
+            : myItems.length === 0
+              ? <p style={{ fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>All clear. Nothing on the board.</p>
+              : myGroups
+                ? myGroups.map(({ label, items: grpItems }) => (
                   <div key={label} style={{ marginBottom: 8 }}>
                     <div style={{
                       fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
