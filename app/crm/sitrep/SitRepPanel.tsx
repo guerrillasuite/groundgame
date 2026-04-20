@@ -31,7 +31,7 @@ export type SitRepItem = {
 
 type Mission = { id: string; title: string; status: string };
 type User   = { id: string; name: string; email: string };
-type CreateType = "task" | "event" | "meeting" | "mission";
+type CreateType = string;
 
 export type Props = {
   initialItems: SitRepItem[];
@@ -40,6 +40,7 @@ export type Props = {
   currentUserId: string;
   hasMissions?: boolean;
   typeColors?: Record<string, string>;
+  typeNames?:  Record<string, string>;
 };
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
@@ -291,7 +292,7 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function SitRepPanel({ initialItems, missions, users, currentUserId, hasMissions, typeColors }: Props) {
+export default function SitRepPanel({ initialItems, missions, users, currentUserId, hasMissions, typeColors, typeNames }: Props) {
   const pathname   = usePathname();
   const isCalendar = !!pathname?.includes("/calendar");
 
@@ -335,6 +336,9 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showNewMenu]);
+
+  const SYSTEM_SLUGS = new Set(["task", "event", "meeting", "mission"]);
+  const customTypeSlugs = Object.keys(typeColors ?? {}).filter((s) => !SYSTEM_SLUGS.has(s));
 
   const openItems    = items.filter((i) => i.status !== "done" && i.status !== "cancelled");
   const overdueItems = items.filter((i) => isOverdue(i));
@@ -575,7 +579,12 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                   { type: "event",   icon: "◆", label: "Event",   hoverBg: "rgba(139,92,246,.14)"  },
                   { type: "meeting", icon: "◉", label: "Meeting", hoverBg: "rgba(16,185,129,.14)"  },
                   { type: "mission", icon: "⬡", label: "Mission", hoverBg: "rgba(99,102,241,.14)"  },
-                ] as const).map((opt) => (
+                  ...customTypeSlugs.map((slug) => ({
+                    type: slug, icon: "◈",
+                    label: typeNames?.[slug] ?? slug,
+                    hoverBg: "rgba(99,102,241,.14)",
+                  })),
+                ]).map((opt) => (
                   <button key={opt.type} onClick={() => openCreate(opt.type)} style={{
                     display: "flex", alignItems: "center", gap: 10, width: "100%",
                     padding: "9px 13px", background: "none", border: "none",
@@ -877,7 +886,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
             }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em" }}>
-                  {createType === "task" ? "New Task" : createType === "event" ? "New Event" : createType === "meeting" ? "New Meeting" : "New Mission"}
+                  {createType === "task" ? "New Task" : createType === "event" ? "New Event" : createType === "meeting" ? "New Meeting" : createType === "mission" ? "New Mission" : `New ${typeNames?.[createType] ?? createType}`}
                 </h2>
                 <button onClick={() => setShowCreate(false)} style={{
                   background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.1)",
@@ -890,10 +899,11 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
               </div>
 
               {createType !== "mission" && (
-                <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.04)", borderRadius: 11, padding: 3 }}>
-                  {(["task","event","meeting"] as const).map((t) => {
-                    const fam    = getItemFamily({ item_type: t } as any, typeColors);
+                <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.04)", borderRadius: 11, padding: 3, flexWrap: "wrap" }}>
+                  {(["task", "event", "meeting", ...customTypeSlugs]).map((t) => {
+                    const fam    = getItemFamily({ item_type: t } as any, typeColors ?? {});
                     const active = createType === t;
+                    const label  = t === "task" ? "Task" : t === "event" ? "Event" : t === "meeting" ? "Meeting" : (typeNames?.[t] ?? t);
                     return (
                       <button key={t} onClick={() => setCreateType(t)} style={{
                         flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 700,
@@ -903,7 +913,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                         cursor: "pointer", transition: "all .12s",
                         boxShadow: active ? `0 2px 10px ${fam.shades[2]}30` : "none",
                       }}>
-                        {t === "task" ? "Task" : t === "event" ? "Event" : "Meeting"}
+                        {label}
                       </button>
                     );
                   })}
@@ -919,7 +929,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                     Title <span style={{ color: "rgb(239 68 68)" }}>*</span>
                   </label>
                   <input type="text" value={createTitle} onChange={(e) => setCreateTitle(e.target.value)}
-                    placeholder={createType === "task" ? "What needs to be done?" : createType === "event" ? "Event name…" : createType === "meeting" ? "Meeting subject…" : "Mission title…"}
+                    placeholder={createType === "task" ? "What needs to be done?" : createType === "event" ? "Event name…" : createType === "meeting" ? "Meeting subject…" : createType === "mission" ? "Mission title…" : `${typeNames?.[createType] ?? createType} title…`}
                     autoFocus style={inputStyle} onFocus={focusInput} onBlur={blurInput} />
                 </div>
 
@@ -939,7 +949,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                   </div>
                 )}
 
-                {(createType === "event" || createType === "meeting") && (
+                {(createType === "event" || createType === "meeting" || customTypeSlugs.includes(createType)) && (
                   <>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                       <div>

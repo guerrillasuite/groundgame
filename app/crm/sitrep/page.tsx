@@ -37,7 +37,7 @@ export default async function SitRepPage() {
       .limit(500),
     sb
       .from("sitrep_item_types")
-      .select("slug, color")
+      .select("slug, color, name")
       .eq("tenant_id", tenant.id),
     sb
       .from("sitrep_missions")
@@ -91,8 +91,10 @@ export default async function SitRepPage() {
   const missions = (missionsRes.data ?? []) as any[];
 
   const typeColors: Record<string, string> = {};
+  const typeNames:  Record<string, string> = {};
   for (const t of (typesRes.data ?? []) as any[]) {
     if (t.slug && t.color) typeColors[t.slug] = t.color;
+    if (t.slug && t.name)  typeNames[t.slug]  = t.name;
   }
 
   return (
@@ -103,6 +105,7 @@ export default async function SitRepPage() {
       currentUserId={crmUser.userId}
       hasMissions={hasFeature(tenant.features, "sitrep_missions")}
       typeColors={typeColors}
+      typeNames={typeNames}
     />
   );
 }

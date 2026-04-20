@@ -304,7 +304,8 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
   const [copied, setCopied] = useState(false);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const src = `${origin}/public/cal/${cal.token}`;
-  const embed = `<iframe src="${src}" width="100%" height="640" frameborder="0" style="border-radius:12px;min-width:300px" title="${cal.name}"></iframe>`;
+  const iframeId = `ggcal-${cal.token.slice(0, 8)}`;
+  const embed = `<iframe id="${iframeId}" src="${src}" width="100%" height="700" frameborder="0" style="border-radius:12px;min-width:300px;display:block" title="${cal.name}"></iframe>\n<script>window.addEventListener('message',function(e){if(e.data&&e.data.type==='gg-cal-height'){var f=document.getElementById('${iframeId}');if(f)f.style.height=e.data.height+'px';}});<\/script>`;
 
   function handleCopy() {
     navigator.clipboard.writeText(embed).then(() => {

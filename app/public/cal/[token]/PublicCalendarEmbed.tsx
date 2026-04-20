@@ -384,7 +384,7 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
     <>
     <style>{`html,body{height:auto!important;overflow:auto!important;}`}</style>
     <div style={{
-      minHeight: "100vh", background: "rgb(12 16 24)",
+      background: "rgb(12 16 24)",
       fontFamily: "system-ui, -apple-system, sans-serif", color: S_text,
       padding: "20px 20px", boxSizing: "border-box",
     }}>
