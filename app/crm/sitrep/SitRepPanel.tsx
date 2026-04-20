@@ -1085,7 +1085,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                     opacity: creating || !createTitle.trim() ? 0.55 : 1,
                     transition: "all .15s",
                   }}>
-                    {creating ? "Creating…" : `Create ${createType === "task" ? "Task" : createType === "event" ? "Event" : createType === "meeting" ? "Meeting" : "Mission"}`}
+                    {creating ? "Creating…" : `Create ${createType === "task" ? "Task" : createType === "event" ? "Event" : createType === "meeting" ? "Meeting" : createType === "mission" ? "Mission" : (typeNames?.[createType] ?? createType)}`}
                   </button>
                 </div>
               </form>

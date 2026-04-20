@@ -96,12 +96,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "title and item_type are required" }, { status: 400 });
   }
 
-  const VALID_TYPES = ["task", "event", "meeting"] as const;
-  if (!VALID_TYPES.includes(body.item_type)) {
-    return NextResponse.json({ error: "Invalid item_type" }, { status: 400 });
-  }
-
   const sb = makeSb(tenant.id);
+
+  const SYSTEM_TYPES = ["task", "event", "meeting"];
+  if (!SYSTEM_TYPES.includes(body.item_type)) {
+    const { data: customTypes } = await sb
+      .from("sitrep_item_types")
+      .select("slug")
+      .eq("tenant_id", tenant.id)
+      .eq("slug", body.item_type)
+      .limit(1);
+    if (!customTypes?.length) {
+      return NextResponse.json({ error: "Invalid item_type" }, { status: 400 });
+    }
+  }
 
   const { data: item, error } = await sb
     .from("sitrep_items")
