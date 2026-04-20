@@ -179,7 +179,7 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
   let adminSitrepQ: any = sb.from("sitrep_items")
     .select("id, item_type, title, status, priority, due_date, start_at")
     .eq("tenant_id", tenantId)
-    .in("status", ["open", "in_progress"])
+    .in("status", ["open", "in_progress", "confirmed"])
     .neq("visibility", "private");
   if (wCfg.show_types.length > 0) adminSitrepQ = adminSitrepQ.in("item_type", wCfg.show_types);
   adminSitrepQ = adminSitrepQ.order(wDbSort, { ascending: wAsc, nullsFirst: false }).limit(wLimit);
@@ -203,7 +203,7 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     sb.from("households").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     sb.from("opportunities").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).not("stage", "in", "(won,lost)"),
     sb.from("walklists").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
-    sb.from("sitrep_items").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).in("status", ["open", "in_progress"]),
+    sb.from("sitrep_items").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).in("status", ["open", "in_progress", "confirmed"]),
     sb.from("opportunity_stages").select("key, label, order_index").eq("tenant_id", tenantId).order("order_index"),
     sb.from("opportunities").select("stage, amount_cents").eq("tenant_id", tenantId),
     sb.from("walklists").select("id, name, mode").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(10),
@@ -606,7 +606,7 @@ async function FieldDashboard({ tenantId, userId, userName, settings }: { tenant
   let fieldSitrepQ: any = sb.from("sitrep_items")
     .select("id, item_type, title, status, priority, due_date, start_at, created_by, sitrep_assignments(user_id)")
     .eq("tenant_id", tenantId)
-    .in("status", ["open", "in_progress"]);
+    .in("status", ["open", "in_progress", "confirmed"]);
   if (wCfg.show_types.length > 0) fieldSitrepQ = fieldSitrepQ.in("item_type", wCfg.show_types);
   fieldSitrepQ = fieldSitrepQ.order(wDbSort, { ascending: wAsc, nullsFirst: false }).limit(wIsCalendar ? 200 : Math.min(wCfg.max_items * 5, 60));
 
