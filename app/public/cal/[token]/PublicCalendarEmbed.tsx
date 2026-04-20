@@ -385,7 +385,7 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
 
   return (
     <>
-    <style>{`html,body{height:auto!important;overflow:auto!important;}`}</style>
+    <style>{`html,body{height:auto!important;overflow:auto!important;${transparent ? "background:transparent!important;" : ""}}`}</style>
     <div style={{
       background: transparent ? "transparent" : "rgb(12 16 24)",
       fontFamily: "system-ui, -apple-system, sans-serif", color: S_text,

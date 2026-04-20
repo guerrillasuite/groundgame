@@ -313,7 +313,8 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
   const src      = `${origin}/public/cal/${cal.token}${paramStr}`;
   const iframeId = `ggcal-${cal.token.slice(0, 8)}`;
   const iframeStyle = `border-radius:12px;min-width:300px;display:block${transparent ? ";background:transparent" : ""}`;
-  const embed = `<iframe id="${iframeId}" src="${src}" width="100%" height="700" frameborder="0" style="${iframeStyle}" title="${cal.name}"${transparent ? ' allowtransparency="true"' : ""}></iframe>\n<script>window.addEventListener('message',function(e){if(e.data&&e.data.type==='gg-cal-height'){var f=document.getElementById('${iframeId}');if(f)f.style.height=e.data.height+'px';}});<\/script>`;
+  const iframeCode = `<iframe id="${iframeId}" src="${src}" width="100%" height="700" frameborder="0"${transparent ? ' allowtransparency="true"' : ""} style="${iframeStyle}" title="${cal.name}"></iframe>`;
+  const resizeScript = `<script>window.addEventListener('message',function(e){if(e.data&&e.data.type==='gg-cal-height'){var f=document.getElementById('${iframeId}');if(f)f.style.height=e.data.height+'px';}});<\/script>`;
 
   const OPT_BTN = (active: boolean): React.CSSProperties => ({
     padding: "3px 10px", fontSize: 11, borderRadius: 6, fontWeight: 600,
@@ -323,10 +324,18 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
     color: active ? "#a5b4fc" : S.dim,
   });
 
+  const [copiedScript, setCopiedScript] = useState(false);
+
   function handleCopy() {
-    navigator.clipboard.writeText(embed).then(() => {
+    navigator.clipboard.writeText(iframeCode).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  function handleCopyScript() {
+    navigator.clipboard.writeText(resizeScript).then(() => {
+      setCopiedScript(true);
+      setTimeout(() => setCopiedScript(false), 2000);
     });
   }
 
@@ -372,13 +381,9 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
             {transparent ? "✓ " : ""}Transparent background
           </button>
         </div>
-        {transparent && (
-          <p style={{ fontSize: 11, color: S.dim, margin: "5px 0 0" }}>
-            Your page's background will show through. The host site must also set <code style={{ background: "rgba(255,255,255,.07)", padding: "1px 4px", borderRadius: 3 }}>allowtransparency="true"</code> on the iframe.
-          </p>
-        )}
       </div>
 
+      {/* Iframe embed code */}
       <div>
         <div style={{ fontSize: 11, color: S.dim, marginBottom: 4 }}>Embed code</div>
         <div style={{
@@ -386,18 +391,39 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
           fontSize: 11, fontFamily: "monospace", color: "#94a3b8",
           wordBreak: "break-all", border: `1px solid ${S.border}`,
         }}>
-          {embed}
+          {iframeCode}
         </div>
-        <button
-          type="button"
-          onClick={handleCopy}
-          style={{
-            marginTop: 8, padding: "5px 14px", fontSize: 12, borderRadius: 7, fontWeight: 600,
-            border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)",
-            color: copied ? "#4ade80" : S.text, cursor: "pointer",
-          }}
-        >
-          {copied ? "Copied ✓" : "Copy embed code"}
+        <button type="button" onClick={handleCopy} style={{
+          marginTop: 8, padding: "5px 14px", fontSize: 12, borderRadius: 7, fontWeight: 600,
+          border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)",
+          color: copied ? "#4ade80" : S.text, cursor: "pointer",
+        }}>
+          {copied ? "Copied ✓" : "Copy iframe code"}
+        </button>
+      </div>
+
+      {/* Auto-resize script (separate so WordPress/page builders don't choke) */}
+      <div>
+        <div style={{ fontSize: 11, color: S.dim, marginBottom: 4 }}>
+          Auto-resize script{" "}
+          <span style={{ opacity: 0.6 }}>(paste once per page, after the iframe)</span>
+        </div>
+        <div style={{
+          background: "rgba(0,0,0,.3)", borderRadius: 8, padding: "8px 12px",
+          fontSize: 11, fontFamily: "monospace", color: "#94a3b8",
+          wordBreak: "break-all", border: `1px solid ${S.border}`,
+        }}>
+          {resizeScript}
+        </div>
+        <p style={{ fontSize: 11, color: S.dim, margin: "5px 0 0" }}>
+          In WordPress, add this via a Custom HTML block or your theme's footer. Without it, the iframe stays at 700px tall.
+        </p>
+        <button type="button" onClick={handleCopyScript} style={{
+          marginTop: 6, padding: "5px 14px", fontSize: 12, borderRadius: 7, fontWeight: 600,
+          border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)",
+          color: copiedScript ? "#4ade80" : S.text, cursor: "pointer",
+        }}>
+          {copiedScript ? "Copied ✓" : "Copy script"}
         </button>
       </div>
     </div>
