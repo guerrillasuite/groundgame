@@ -301,11 +301,27 @@ function CalendarForm({
 // ── Embed code card ────────────────────────────────────────────────────────────
 
 function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: string) => void }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied]           = useState(false);
+  const [hideTitle, setHideTitle]     = useState(false);
+  const [transparent, setTransparent] = useState(false);
+
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const src = `${origin}/public/cal/${cal.token}`;
+  const params = new URLSearchParams();
+  if (hideTitle)   params.set("hide_title",  "1");
+  if (transparent) params.set("transparent", "1");
+  const paramStr = params.toString() ? `?${params.toString()}` : "";
+  const src      = `${origin}/public/cal/${cal.token}${paramStr}`;
   const iframeId = `ggcal-${cal.token.slice(0, 8)}`;
-  const embed = `<iframe id="${iframeId}" src="${src}" width="100%" height="700" frameborder="0" style="border-radius:12px;min-width:300px;display:block" title="${cal.name}"></iframe>\n<script>window.addEventListener('message',function(e){if(e.data&&e.data.type==='gg-cal-height'){var f=document.getElementById('${iframeId}');if(f)f.style.height=e.data.height+'px';}});<\/script>`;
+  const iframeStyle = `border-radius:12px;min-width:300px;display:block${transparent ? ";background:transparent" : ""}`;
+  const embed = `<iframe id="${iframeId}" src="${src}" width="100%" height="700" frameborder="0" style="${iframeStyle}" title="${cal.name}"${transparent ? ' allowtransparency="true"' : ""}></iframe>\n<script>window.addEventListener('message',function(e){if(e.data&&e.data.type==='gg-cal-height'){var f=document.getElementById('${iframeId}');if(f)f.style.height=e.data.height+'px';}});<\/script>`;
+
+  const OPT_BTN = (active: boolean): React.CSSProperties => ({
+    padding: "3px 10px", fontSize: 11, borderRadius: 6, fontWeight: 600,
+    cursor: "pointer", transition: "all .1s",
+    border: active ? "1px solid rgba(99,102,241,.5)" : `1px solid ${S.border}`,
+    background: active ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.04)",
+    color: active ? "#a5b4fc" : S.dim,
+  });
 
   function handleCopy() {
     navigator.clipboard.writeText(embed).then(() => {
@@ -343,6 +359,24 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
             color: "#fca5a5", cursor: "pointer", flexShrink: 0, fontWeight: 500,
           }}
         >Delete</button>
+      </div>
+
+      {/* Display options */}
+      <div>
+        <div style={{ fontSize: 11, color: S.dim, marginBottom: 6 }}>Embed options</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button type="button" onClick={() => setHideTitle((v) => !v)} style={OPT_BTN(hideTitle)}>
+            {hideTitle ? "✓ " : ""}Hide title
+          </button>
+          <button type="button" onClick={() => setTransparent((v) => !v)} style={OPT_BTN(transparent)}>
+            {transparent ? "✓ " : ""}Transparent background
+          </button>
+        </div>
+        {transparent && (
+          <p style={{ fontSize: 11, color: S.dim, margin: "5px 0 0" }}>
+            Your page's background will show through. The host site must also set <code style={{ background: "rgba(255,255,255,.07)", padding: "1px 4px", borderRadius: 3 }}>allowtransparency="true"</code> on the iframe.
+          </p>
+        )}
       </div>
 
       <div>

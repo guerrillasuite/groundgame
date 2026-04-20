@@ -274,6 +274,9 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
   const [curDate, setCurDate] = useState(searchParams.get("date") ?? todayStr());
   const [modal, setModal]   = useState<PublicItem | null>(null);
 
+  const hideTitle  = searchParams.get("hide_title")  === "1";
+  const transparent = searchParams.get("transparent") === "1";
+
   useEffect(() => {
     fetch(`/api/public/cal/${token}`)
       .then((r) => {
@@ -384,18 +387,20 @@ export default function PublicCalendarEmbed({ token }: { token: string }) {
     <>
     <style>{`html,body{height:auto!important;overflow:auto!important;}`}</style>
     <div style={{
-      background: "rgb(12 16 24)",
+      background: transparent ? "transparent" : "rgb(12 16 24)",
       fontFamily: "system-ui, -apple-system, sans-serif", color: S_text,
       padding: "20px 20px", boxSizing: "border-box",
     }}>
       <div style={{ maxWidth: 960, margin: "0 auto" }}>
 
         {/* Header */}
-        <div style={{ marginBottom: 20 }}>
-          <h1 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 700, color: S_text }}>
-            {calConfig?.name}
-          </h1>
-        </div>
+        {!hideTitle && (
+          <div style={{ marginBottom: 20 }}>
+            <h1 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 700, color: S_text }}>
+              {calConfig?.name}
+            </h1>
+          </div>
+        )}
 
         {/* Controls */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
