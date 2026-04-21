@@ -96,11 +96,13 @@ export async function POST(req: NextRequest) {
       .not("email", "is", null)
       .neq("email", "");
 
-    const eligible = (ppl ?? []).filter(
+    const withEmail = ppl ?? [];
+    const eligible = withEmail.filter(
       (p: any) => p.email && !unsubEmails.has(p.email.toLowerCase())
     );
-    const suppressed = personIds.length - eligible.length;
-    return NextResponse.json({ count: eligible.length, suppressed });
+    const no_email = personIds.length - withEmail.length;
+    const unsubscribed = withEmail.length - eligible.length;
+    return NextResponse.json({ count: eligible.length, suppressed: no_email + unsubscribed, no_email, unsubscribed });
   }
 
   // ── Segment-based audience ───────────────────────────────────────────────
@@ -183,7 +185,7 @@ export async function POST(req: NextRequest) {
   const eligible = filtered.filter(
     (p) => p.email && !unsubEmails.has(p.email.toLowerCase())
   );
-  const suppressed = filtered.length - eligible.length + (rows.length - filtered.length);
+  const unsubscribed = filtered.length - eligible.length;
 
-  return NextResponse.json({ count: eligible.length, suppressed });
+  return NextResponse.json({ count: eligible.length, suppressed: unsubscribed, no_email: 0, unsubscribed });
 }

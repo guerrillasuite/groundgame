@@ -254,8 +254,12 @@ export async function sendCampaign(
     (p) => p.email && !unsubEmails.has(p.email.toLowerCase())
   );
 
+  if (allPeople.length === 0) {
+    return { ok: false, error: "No recipients have an email address on file. Add emails to your contacts and try again.", httpStatus: 400 };
+  }
+
   if (eligible.length === 0) {
-    return { ok: false, error: "All recipients are unsubscribed", httpStatus: 400 };
+    return { ok: false, error: `All ${allPeople.length} recipient${allPeople.length !== 1 ? "s" : ""} are on the suppression list. If this is unexpected, go to Dispatch → Settings → Suppression List to review.`, httpStatus: 400 };
   }
 
   // ── Fetch location data for City/State merge tags ────────────────────────────

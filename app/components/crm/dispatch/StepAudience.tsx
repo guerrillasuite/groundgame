@@ -50,7 +50,7 @@ type PersonRow = {
   email: string | null;
 };
 
-type AudiencePreview = { count: number; suppressed: number } | null;
+type AudiencePreview = { count: number; suppressed: number; no_email?: number; unsubscribed?: number } | null;
 
 interface Props {
   data: AudienceData;
@@ -414,11 +414,18 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
             Preview & Select →
           </button>
           {preview && (
-            <span style={{ fontSize: 14, color: "rgb(var(--text-100))" }}>
-              <strong>{preview.count.toLocaleString()}</strong> recipient{preview.count !== 1 ? "s" : ""}
-              {preview.suppressed > 0 && (
-                <span style={{ color: "rgb(var(--text-300))", marginLeft: 8 }}>
-                  · {preview.suppressed.toLocaleString()} excluded
+            <span style={{ fontSize: 14, color: "rgb(var(--text-100))", display: "flex", flexDirection: "column", gap: 2 }}>
+              <span>
+                <strong>{preview.count.toLocaleString()}</strong> recipient{preview.count !== 1 ? "s" : ""}
+              </span>
+              {(preview.no_email ?? 0) > 0 && (
+                <span style={{ fontSize: 12, color: "#f59e0b" }}>
+                  ⚠ {preview.no_email!.toLocaleString()} contact{preview.no_email !== 1 ? "s" : ""} have no email address
+                </span>
+              )}
+              {(preview.unsubscribed ?? 0) > 0 && (
+                <span style={{ fontSize: 12, color: "rgb(var(--text-300))" }}>
+                  · {preview.unsubscribed!.toLocaleString()} unsubscribed
                 </span>
               )}
             </span>

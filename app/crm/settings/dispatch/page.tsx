@@ -46,6 +46,28 @@ export default async function DispatchSettingsPage() {
           </div>
           <span style={{ opacity: 0.4, fontSize: 18 }}>→</span>
         </Link>
+        <Link
+          href="/crm/settings/dispatch/suppressions"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "16px 20px",
+            background: "var(--gg-card, white)",
+            border: "1px solid var(--gg-border, #e5e7eb)",
+            borderRadius: 10,
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, fontWeight: 600, fontSize: 15 }}>Suppression List</p>
+            <p style={{ margin: "3px 0 0", fontSize: 13, color: "var(--gg-text-dim, #6b7280)" }}>
+              View and remove unsubscribed addresses that are blocked from receiving emails.
+            </p>
+          </div>
+          <span style={{ opacity: 0.4, fontSize: 18 }}>→</span>
+        </Link>
       </div>
     </section>
   );
