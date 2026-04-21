@@ -95,6 +95,7 @@ export async function sendCampaign(
 
   // ── Resolve recipient person IDs ─────────────────────────────────────────────
   let recipientPersonIds: string[] = [];
+  let segRows: Array<Record<string, any>> = []; // populated for segment audience; reused below
 
   if (campaign.audience_type === "manual" && campaign.audience_person_ids) {
     recipientPersonIds = (campaign.audience_person_ids as string[]).filter(Boolean);
@@ -117,7 +118,7 @@ export async function sendCampaign(
       .neq("email", "")
       .limit(10000);
 
-    let segRows: Array<Record<string, any>> = [...((ppl as any[]) ?? [])];
+    segRows = [...((ppl as any[]) ?? [])];
 
     // Enrich location if needed
     const needsLocation = filters.some((f) =>
@@ -218,7 +219,10 @@ export async function sendCampaign(
     return { ok: false, error: "No recipients found for this campaign", httpStatus: 400 };
   }
 
-  // ── Fetch person details in chunks of 500 ───────────────────────────────────
+  // ── Resolve person details ───────────────────────────────────────────────────
+  // Segment audiences already fetched full person rows in segRows — reuse them
+  // to avoid a .in("id", largeArray) re-fetch that fails silently for 200+ UUIDs.
+  // List/manual audiences need a chunk fetch (use 100 per chunk, safely under the limit).
   type PersonData = {
     id: string;
     first_name: string | null;
@@ -227,17 +231,23 @@ export async function sendCampaign(
     household_id: string | null;
   };
 
-  const allPeople: PersonData[] = [];
-  for (let i = 0; i < recipientPersonIds.length; i += 500) {
-    const chunk = recipientPersonIds.slice(i, i + 500);
-    const { data } = await sb
-      .from("people")
-      .select("id, first_name, last_name, email, household_id, tenant_people!inner(tenant_id)")
-      .eq("tenant_people.tenant_id", tenantId)
-      .in("id", chunk)
-      .not("email", "is", null)
-      .neq("email", "");
-    allPeople.push(...(data ?? []));
+  let allPeople: PersonData[];
+
+  if (campaign.audience_type === "segment") {
+    allPeople = (segRows as PersonData[]).filter((p) => p.email);
+  } else {
+    allPeople = [];
+    for (let i = 0; i < recipientPersonIds.length; i += 100) {
+      const chunk = recipientPersonIds.slice(i, i + 100);
+      const { data } = await sb
+        .from("people")
+        .select("id, first_name, last_name, email, household_id, tenant_people!inner(tenant_id)")
+        .eq("tenant_people.tenant_id", tenantId)
+        .in("id", chunk)
+        .not("email", "is", null)
+        .neq("email", "");
+      allPeople.push(...(data ?? []));
+    }
   }
 
   // ── Suppress unsubscribes ────────────────────────────────────────────────────
