@@ -279,6 +279,7 @@ export default function SurveyPanel({
   const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers ?? {});
   const [openAnswer, setOpenAnswer] = useState(""); // for text/number/email/phone/date
   const [otherMultiText, setOtherMultiText] = useState(""); // for multiple_select_with_other
+  const [otherTexts, setOtherTexts] = useState<Record<string, string>>({}); // persists other text across all questions
   const [personalScore, setPersonalScore] = useState(0);
   const [economicScore, setEconomicScore] = useState(0);
   const [result, setResult] = useState<QuizResult>("moderate");
@@ -425,7 +426,7 @@ export default function SurveyPanel({
         const res = await fetch("/api/survey/panel-submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ survey_id: surveyId, tenant_id: tenantId, answers, delivery: deliveryPayload, contact_id: overrideContactId || contactId || undefined }),
+          body: JSON.stringify({ survey_id: surveyId, tenant_id: tenantId, answers, other_texts: otherTexts, delivery: deliveryPayload, contact_id: overrideContactId || contactId || undefined }),
         });
         const data = await res.json().catch(() => ({}));
         if (data.opportunity_id) setOpportunityId(data.opportunity_id);
@@ -818,6 +819,7 @@ export default function SurveyPanel({
                 onClick={() => {
                   const val = JSON.stringify(multiVals);
                   const txt = multiVals.includes("other") && otherMultiText ? otherMultiText : undefined;
+                  if (txt) setOtherTexts((prev) => ({ ...prev, [currentQuestion.id]: txt }));
                   saveAnswerNow(currentQuestion.id, val, txt);
                   selectAnswer(val);
                   setOtherMultiText("");

@@ -151,9 +151,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-  const { survey_id, answers, delivery, contact_id, skip_stop } = body as {
+  const { survey_id, answers, other_texts, delivery, contact_id, skip_stop } = body as {
     survey_id: string;
     answers: Record<string, string>;
+    other_texts?: Record<string, string>;
     contact_id?: string;
     skip_stop?: boolean;
     delivery?: {
@@ -296,6 +297,7 @@ export async function POST(req: NextRequest) {
     survey_id,
     question_id: questionId,
     answer_value: String(answerValue),
+    answer_text: other_texts?.[questionId] ?? null,
   }));
   if (responseRows.length > 0) {
     await sb.from("responses").upsert(responseRows, { onConflict: "crm_contact_id,survey_id,question_id" });
