@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Search, Check, Users } from "lucide-react";
+import { ArrowLeft, Search, Check, Users, Plus } from "lucide-react";
 import type { ColumnDef } from "@/app/api/crm/schema/route";
 import FilterSection, {
   type FilterRow,
