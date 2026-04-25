@@ -85,6 +85,14 @@ function resolveCol(field: string): string {
   return field === "address" ? "address_line1" : field;
 }
 
+// Convert JSONB dot-path (e.g. votes_history.2024_presidential_general)
+// to PostgREST arrow syntax (votes_history->>2024_presidential_general).
+// Plain column names (no dot) are returned unchanged.
+function toPostgrestCol(col: string): string {
+  const dot = col.indexOf(".");
+  return dot >= 0 ? `${col.slice(0, dot)}->>${col.slice(dot + 1)}` : col;
+}
+
 const NUMERIC_TYPES = new Set([
   "integer", "int", "int2", "int4", "int8",
   "bigint", "smallint", "numeric", "decimal",
@@ -92,38 +100,42 @@ const NUMERIC_TYPES = new Set([
 ]);
 
 function applyFilter(query: any, col: string, op: FilterOp, value: string, data_type?: string) {
+  const pgCol = toPostgrestCol(col);
+  const isJsonb = col.includes(".");
   const numeric = data_type ? NUMERIC_TYPES.has(data_type) : false;
   switch (op) {
     case "contains":
-      return query.ilike(col, `%${value}%`);
+      return query.ilike(pgCol, `%${value}%`);
     case "equals":
-      return numeric ? query.eq(col, value) : query.ilike(col, value);
+      return numeric ? query.eq(pgCol, value) : query.ilike(pgCol, value);
     case "starts_with":
-      return query.ilike(col, `${value}%`);
+      return query.ilike(pgCol, `${value}%`);
     case "not_contains":
-      return query.not(col, "ilike", `%${value}%`);
+      return query.not(pgCol, "ilike", `%${value}%`);
     case "is_empty":
-      return numeric ? query.is(col, null) : query.or(`${col}.is.null,${col}.eq.`);
+      // JSONB: .or() with ->> syntax; plain numeric: null check; plain text: null or empty string
+      if (isJsonb) return query.or(`${pgCol}.is.null,${pgCol}.eq.`);
+      return numeric ? query.is(pgCol, null) : query.or(`${pgCol}.is.null,${pgCol}.eq.`);
     case "not_empty":
-      return numeric ? query.not(col, "is", null) : query.not(col, "is", null).neq(col, "");
+      return numeric ? query.not(pgCol, "is", null) : query.not(pgCol, "is", null).neq(pgCol, "");
     case "greater_than":
-      return query.gt(col, value);
+      return query.gt(pgCol, value);
     case "less_than":
-      return query.lt(col, value);
+      return query.lt(pgCol, value);
     case "gte":
-      return query.gte(col, value);
+      return query.gte(pgCol, value);
     case "lte":
-      return query.lte(col, value);
+      return query.lte(pgCol, value);
     case "in_list":
-      return query.in(col, value.split(",").map((v: string) => v.trim()).filter(Boolean));
+      return query.in(pgCol, value.split(",").map((v: string) => v.trim()).filter(Boolean));
     case "not_in_list": {
       const vals = value.split(",").map((v: string) => v.trim()).filter(Boolean);
-      return vals.length > 0 ? query.not(col, "in", `(${vals.join(",")})`) : query;
+      return vals.length > 0 ? query.not(pgCol, "in", `(${vals.join(",")})`) : query;
     }
     case "is_true":
-      return query.eq(col, true);
+      return query.eq(pgCol, true);
     case "is_false":
-      return query.eq(col, false);
+      return query.eq(pgCol, false);
     default:
       return query;
   }
