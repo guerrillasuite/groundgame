@@ -39,8 +39,25 @@ function formatDate(iso: string | null) {
 
 export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
   const [filter, setFilter] = useState<Campaign["status"] | "all">("all");
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
-  const visible = filter === "all" ? campaigns : campaigns.filter((c) => c.status === filter);
+  async function handleDelete(id: string) {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/dispatch/campaign/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setDeletedIds((prev) => new Set([...prev, id]));
+      }
+    } finally {
+      setDeleting(false);
+      setConfirmingId(null);
+    }
+  }
+
+  const visible = (filter === "all" ? campaigns : campaigns.filter((c) => c.status === filter))
+    .filter((c) => !deletedIds.has(c.id));
 
   const counts = campaigns.reduce<Record<string, number>>((acc, c) => {
     acc[c.status] = (acc[c.status] ?? 0) + 1;
@@ -228,6 +245,39 @@ export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
               >
                 {formatDate(c.sent_at ?? c.scheduled_at ?? c.created_at)}
               </div>
+
+              {/* Delete */}
+              {c.status !== "sending" && (
+                confirmingId === c.id ? (
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <span style={{ fontSize: 12, color: "rgb(var(--text-300))" }}>Delete?</span>
+                    <button
+                      onClick={(e) => { e.preventDefault(); handleDelete(c.id); }}
+                      disabled={deleting}
+                      style={{ fontSize: 12, padding: "3px 10px", borderRadius: 5, border: "none", background: "#dc2626", color: "white", cursor: "pointer", fontWeight: 600 }}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      onClick={(e) => { e.preventDefault(); setConfirmingId(null); }}
+                      style={{ fontSize: 12, padding: "3px 10px", borderRadius: 5, border: "1px solid rgb(var(--border-600))", background: "transparent", color: "rgb(var(--text-300))", cursor: "pointer" }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => { e.preventDefault(); setConfirmingId(c.id); }}
+                    style={{ flexShrink: 0, padding: "4px 8px", border: "none", background: "transparent", cursor: "pointer", opacity: 0.4, fontSize: 16, lineHeight: 1 }}
+                    title="Delete campaign"
+                  >
+                    🗑
+                  </button>
+                )
+              )}
             </Link>
           );
         })}

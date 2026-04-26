@@ -80,8 +80,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     .single();
 
   if (!campaign) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (campaign.status !== "draft") {
-    return NextResponse.json({ error: "Only draft campaigns can be deleted" }, { status: 400 });
+  if (campaign.status === "sending") {
+    return NextResponse.json({ error: "Cannot delete a campaign that is currently sending" }, { status: 400 });
   }
 
   const { error } = await sb
