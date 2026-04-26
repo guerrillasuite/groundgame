@@ -3,6 +3,16 @@ import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
 import { hasFeature } from "@/lib/features";
+import {
+  applyFilter,
+  fetchAll,
+  queryInChunks,
+  resolveCol,
+  LOCATION_JOIN_FIELDS,
+  HOUSEHOLD_JOIN_FIELDS,
+  resolvePersonIdsByHouseholds,
+  FilterOp,
+} from "@/app/api/crm/search/route";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,46 +25,26 @@ function makeSb(tenantId: string) {
   );
 }
 
-type SegmentFilter = { field: string; op: string; value: string };
+type SegmentFilter = { field: string; op: string; value: string; data_type?: string };
 
-function applyFilter(filter: SegmentFilter, row: Record<string, any>): boolean {
-  const { field, op, value } = filter;
-  const parts = field.split(".");
-  let fieldVal: any = row;
-  for (const part of parts) {
-    fieldVal = fieldVal?.[part];
-    if (fieldVal == null) { fieldVal = ""; break; }
+/** JS-side filter for company/opp nested objects (cross-table joins not on people). */
+function jsFilter(f: SegmentFilter, row: Record<string, any>): boolean {
+  const parts = f.field.split(".");
+  let val: any = row;
+  for (const p of parts) { val = val?.[p]; if (val == null) { val = ""; break; } }
+  const s = String(val ?? "").toLowerCase();
+  const v = f.value.toLowerCase();
+  switch (f.op) {
+    case "contains":     return s.includes(v);
+    case "equals":       return s === v;
+    case "starts_with":  return s.startsWith(v);
+    case "not_contains": return !s.includes(v);
+    case "is_empty":     return s === "";
+    case "not_empty":    return s !== "";
+    case "greater_than": return parseFloat(s) > parseFloat(v);
+    case "less_than":    return parseFloat(s) < parseFloat(v);
+    default:             return true;
   }
-  const strVal = String(fieldVal ?? "").toLowerCase();
-  const fVal = value.toLowerCase();
-  switch (op) {
-    case "contains":    return strVal.includes(fVal);
-    case "equals":      return strVal === fVal;
-    case "starts_with": return strVal.startsWith(fVal);
-    case "not_contains": return !strVal.includes(fVal);
-    case "is_empty":    return strVal === "";
-    case "not_empty":   return strVal !== "";
-    case "greater_than": return parseFloat(strVal) > parseFloat(fVal);
-    case "less_than":   return parseFloat(strVal) < parseFloat(fVal);
-    default:            return true;
-  }
-}
-
-/** Fetch all rows from a table, bypassing PostgREST's 1000-row default limit */
-async function fetchAll<T>(
-  query: () => ReturnType<ReturnType<typeof makeSb>["from"]>["select"],
-  pageSize = 1000
-): Promise<T[]> {
-  const results: T[] = [];
-  let offset = 0;
-  while (true) {
-    const { data, error } = await (query() as any).range(offset, offset + pageSize - 1);
-    if (error || !data || data.length === 0) break;
-    results.push(...data);
-    if (data.length < pageSize) break;
-    offset += pageSize;
-  }
-  return results;
 }
 
 export async function POST(req: NextRequest) {
@@ -72,94 +62,126 @@ export async function POST(req: NextRequest) {
 
   const sb = makeSb(tenant.id);
 
-  // ── List-based ─────────────────────────────────────────────────────────────
+  // ── List-based ────────────────────────────────────────────────────────────
   if (audience_type === "list" && audience_list_id) {
-    const items = await fetchAll<{ person_id: string }>(
-      () => sb.from("walklist_items").select("person_id")
+    const items = await fetchAll(() =>
+      sb.from("walklist_items").select("person_id")
         .eq("walklist_id", audience_list_id)
-        .not("person_id", "is", null) as any
+        .not("person_id", "is", null)
     );
-    const personIds = items.map((i) => i.person_id).filter(Boolean);
+    const personIds = (items as any[]).map((i) => i.person_id).filter(Boolean);
     if (personIds.length === 0) return NextResponse.json({ people: [] });
 
-    // Fetch person details in chunks of 200
-    const people: Array<Record<string, any>> = [];
-    for (let i = 0; i < personIds.length; i += 200) {
-      const chunk = personIds.slice(i, i + 200);
-      const { data } = await sb
+    const people = await queryInChunks(sb, "people",
+      "id, first_name, last_name, email, tenant_people!inner(tenant_id)",
+      "id", personIds,
+      (q: any) => q.eq("tenant_people.tenant_id", tenant.id).not("email", "is", null).neq("email", "")
+    );
+    return NextResponse.json({
+      people: people.map(({ id, first_name, last_name, email }: any) => ({ id, first_name, last_name, email })),
+    });
+  }
+
+  // ── Segment-based (PostgREST filtering) ───────────────────────────────────
+  const filters: SegmentFilter[] = audience_segment_filters ?? [];
+
+  const directFilters    = filters.filter((f) => !LOCATION_JOIN_FIELDS.has(f.field) && !HOUSEHOLD_JOIN_FIELDS.has(f.field) && !f.field.startsWith("company.") && !f.field.startsWith("opp."));
+  const locationFilters  = filters.filter((f) => LOCATION_JOIN_FIELDS.has(f.field));
+  const householdFilters = filters.filter((f) => HOUSEHOLD_JOIN_FIELDS.has(f.field));
+  const companyFilters   = filters.filter((f) => f.field.startsWith("company."));
+  const oppFilters       = filters.filter((f) => f.field.startsWith("opp."));
+
+  // Resolve location filters → person IDs
+  let personIdFilterFromLocation: string[] | null = null;
+  if (locationFilters.length > 0) {
+    let locData: any[];
+    try {
+      locData = await fetchAll(() => {
+        let q = sb.from("locations").select("id").eq("tenant_id", tenant.id);
+        for (const f of locationFilters) q = applyFilter(q, resolveCol(f.field), f.op as FilterOp, f.value, f.data_type);
+        return q;
+      });
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+    const locIds = locData.map((l: any) => l.id);
+    if (locIds.length === 0) return NextResponse.json({ people: [] });
+    const { data: hhs } = await sb.from("households").select("id").eq("tenant_id", tenant.id).in("location_id", locIds);
+    const hhIds = (hhs ?? []).map((h: any) => h.id);
+    if (hhIds.length === 0) return NextResponse.json({ people: [] });
+    personIdFilterFromLocation = await resolvePersonIdsByHouseholds(sb, tenant.id, hhIds);
+    if (personIdFilterFromLocation.length === 0) return NextResponse.json({ people: [] });
+  }
+
+  // Resolve household filters → person IDs
+  let personIdFilterFromHH: string[] | null = null;
+  if (householdFilters.length > 0) {
+    let hhData: any[];
+    try {
+      hhData = await fetchAll(() => {
+        let q = sb.from("households").select("id").eq("tenant_id", tenant.id);
+        for (const f of householdFilters) q = applyFilter(q, f.field, f.op as FilterOp, f.value, f.data_type);
+        return q;
+      });
+    } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+    const hhIds = hhData.map((h: any) => h.id);
+    if (hhIds.length === 0) return NextResponse.json({ people: [] });
+    personIdFilterFromHH = await resolvePersonIdsByHouseholds(sb, tenant.id, hhIds);
+    if (personIdFilterFromHH.length === 0) return NextResponse.json({ people: [] });
+  }
+
+  // Intersect person ID sets
+  let finalPersonIdFilter: string[] | null = null;
+  if (personIdFilterFromLocation && personIdFilterFromHH) {
+    const setHH = new Set(personIdFilterFromHH);
+    finalPersonIdFilter = personIdFilterFromLocation.filter((id) => setHH.has(id));
+    if (finalPersonIdFilter.length === 0) return NextResponse.json({ people: [] });
+  } else {
+    finalPersonIdFilter = personIdFilterFromLocation ?? personIdFilterFromHH ?? null;
+  }
+
+  // Fetch people via PostgREST (no row limit)
+  let rows: any[];
+  try {
+    rows = await fetchAll(() => {
+      let q = sb
         .from("people")
-        .select("id, first_name, last_name, email, tenant_people!inner(tenant_id)")
+        .select("id, first_name, last_name, email, household_id, tenant_people!inner(tenant_id)")
         .eq("tenant_people.tenant_id", tenant.id)
-        .in("id", chunk)
         .not("email", "is", null)
         .neq("email", "");
-      people.push(...(data ?? []));
-    }
-    return NextResponse.json({ people: people.map(({ id, first_name, last_name, email }) => ({ id, first_name, last_name, email })) });
+      for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op as FilterOp, f.value, f.data_type);
+      if (finalPersonIdFilter) q = q.in("id", finalPersonIdFilter);
+      return q;
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 
-  // ── Segment-based ──────────────────────────────────────────────────────────
-  const filters: SegmentFilter[] = (audience_segment_filters as any[]) ?? [];
-  const needsLocation = filters.some((f) => ["city", "state", "postal_code"].includes(f.field));
-  const needsCompany  = filters.some((f) => f.field.startsWith("company."));
-  const needsOpp      = filters.some((f) => f.field.startsWith("opp."));
+  // Deduplicate
+  rows = [...new Map(rows.map((p: any) => [p.id, p])).values()];
 
-  // Fetch ALL people with email, paginating past the 1000-row limit
-  const rawPeople = await fetchAll<Record<string, any>>(
-    () => sb.from("people")
-      .select("id, first_name, last_name, email, household_id, tenant_people!inner(tenant_id)")
-      .eq("tenant_people.tenant_id", tenant.id)
-      .not("email", "is", null)
-      .neq("email", "") as any
-  );
-
-  let rows: Array<Record<string, any>> = rawPeople;
-
-  // Enrich location
-  if (needsLocation && rows.length > 0) {
-    const hhIds = [...new Set(rows.map((p) => p.household_id).filter(Boolean))] as string[];
-    if (hhIds.length > 0) {
-      const hh: Array<Record<string, any>> = [];
-      for (let i = 0; i < hhIds.length; i += 200) {
-        const { data } = await sb.from("households").select("id, location_id").in("id", hhIds.slice(i, i + 200));
-        hh.push(...(data ?? []));
-      }
-      const locIds = hh.map((h) => h.location_id).filter(Boolean);
-      if (locIds.length > 0) {
-        const locs: Array<Record<string, any>> = [];
-        for (let i = 0; i < locIds.length; i += 200) {
-          const { data } = await sb.from("locations").select("id, city, state, postal_code").in("id", locIds.slice(i, i + 200));
-          locs.push(...(data ?? []));
-        }
-        const locMap = new Map(locs.map((l) => [l.id, l]));
-        const hhMap  = new Map(hh.map((h) => [h.id, h]));
-        rows = rows.map((p) => {
-          const hhRow = p.household_id ? hhMap.get(p.household_id) : null;
-          const loc   = hhRow?.location_id ? locMap.get(hhRow.location_id) : null;
-          return { ...p, city: loc?.city ?? "", state: loc?.state ?? "", postal_code: loc?.postal_code ?? "" };
-        });
-      }
-    }
-  }
-
-  // Enrich company
-  if (needsCompany && rows.length > 0) {
-    const pids = rows.map((p) => p.id);
-    const pcRows: Array<Record<string, any>> = [];
+  // Company JS enrichment + filter
+  if (companyFilters.length > 0 && rows.length > 0) {
+    const pids = rows.map((p: any) => p.id);
+    const pcRows: any[] = [];
     for (let i = 0; i < pids.length; i += 200) {
       const { data } = await sb.from("person_companies")
         .select("person_id, company:company_id(name, industry, status)")
         .in("person_id", pids.slice(i, i + 200));
       pcRows.push(...(data ?? []));
     }
-    const companyMap = new Map(pcRows.map((pc) => [pc.person_id, pc.company]));
-    rows = rows.map((p) => ({ ...p, company: companyMap.get(p.id) ?? {} }));
+    const companyMap = new Map(pcRows.map((pc: any) => [pc.person_id, pc.company]));
+    rows = rows.map((p: any) => ({ ...p, company: companyMap.get(p.id) ?? {} }));
+    rows = rows.filter((row) => companyFilters.every((f) => jsFilter(f, row)));
   }
 
-  // Enrich opportunity
-  if (needsOpp && rows.length > 0) {
-    const pids = rows.map((p) => p.id);
-    const opps: Array<Record<string, any>> = [];
+  // Opp JS enrichment + filter
+  if (oppFilters.length > 0 && rows.length > 0) {
+    const pids = rows.map((p: any) => p.id);
+    const opps: any[] = [];
     for (let i = 0; i < pids.length; i += 200) {
       const { data } = await sb.from("opportunities")
         .select("contact_person_id, stage, pipeline, source, priority")
@@ -167,16 +189,12 @@ export async function POST(req: NextRequest) {
         .in("contact_person_id", pids.slice(i, i + 200));
       opps.push(...(data ?? []));
     }
-    const oppMap = new Map(opps.map((o) => [o.contact_person_id, o]));
-    rows = rows.map((p) => ({ ...p, opp: oppMap.get(p.id) ?? {} }));
+    const oppMap = new Map(opps.map((o: any) => [o.contact_person_id, o]));
+    rows = rows.map((p: any) => ({ ...p, opp: oppMap.get(p.id) ?? {} }));
+    rows = rows.filter((row) => oppFilters.every((f) => jsFilter(f, row)));
   }
 
-  // Apply JS filters
-  const filtered = filters.length > 0
-    ? rows.filter((row) => filters.every((f) => applyFilter(f, row)))
-    : rows;
-
   return NextResponse.json({
-    people: filtered.map(({ id, first_name, last_name, email }) => ({ id, first_name, last_name, email })),
+    people: rows.map(({ id, first_name, last_name, email }: any) => ({ id, first_name, last_name, email })),
   });
 }

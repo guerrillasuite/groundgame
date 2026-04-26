@@ -4,6 +4,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { createHash } from "crypto";
+import {
+  applyFilter,
+  fetchAll,
+  resolveCol,
+  LOCATION_JOIN_FIELDS,
+  HOUSEHOLD_JOIN_FIELDS,
+  resolvePersonIdsByHouseholds,
+  FilterOp,
+} from "@/app/api/crm/search/route";
 
 const APP_URL =
   process.env.APP_URL ??
@@ -65,6 +74,25 @@ function applyTrackableLink(
   });
 }
 
+function jsFilterSeg(f: { field: string; op: string; value: string }, row: Record<string, any>): boolean {
+  const parts = f.field.split(".");
+  let val: any = row;
+  for (const p of parts) { val = val?.[p]; if (val == null) { val = ""; break; } }
+  const s = String(val ?? "").toLowerCase();
+  const v = f.value.toLowerCase();
+  switch (f.op) {
+    case "contains":     return s.includes(v);
+    case "equals":       return s === v;
+    case "starts_with":  return s.startsWith(v);
+    case "not_contains": return !s.includes(v);
+    case "is_empty":     return s === "";
+    case "not_empty":    return s !== "";
+    case "greater_than": return parseFloat(s) > parseFloat(v);
+    case "less_than":    return parseFloat(s) < parseFloat(v);
+    default:             return true;
+  }
+}
+
 export type SendCampaignResult =
   | { ok: true; sent: number; failed: number }
   | { ok: false; error: string; httpStatus: number };
@@ -107,112 +135,115 @@ export async function sendCampaign(
       .not("person_id", "is", null);
     recipientPersonIds = (items ?? []).map((i: any) => i.person_id);
   } else if (campaign.audience_type === "segment") {
-    const filters: Array<{ field: string; op: string; value: string }> =
-      (campaign.audience_segment_filters as any[]) ?? [];
+    type SegFilter = { field: string; op: string; value: string; data_type?: string };
+    const filters: SegFilter[] = (campaign.audience_segment_filters as any[]) ?? [];
+    let goto_send = false;
 
-    const { data: ppl } = await sb
-      .from("people")
-      .select("id, email, first_name, last_name, household_id, tenant_people!inner(tenant_id)")
-      .eq("tenant_people.tenant_id", tenantId)
-      .not("email", "is", null)
-      .neq("email", "")
-      .limit(10000);
+    const directFilters    = filters.filter((f) => !LOCATION_JOIN_FIELDS.has(f.field) && !HOUSEHOLD_JOIN_FIELDS.has(f.field) && !f.field.startsWith("company.") && !f.field.startsWith("opp."));
+    const locationFilters  = filters.filter((f) => LOCATION_JOIN_FIELDS.has(f.field));
+    const householdFilters = filters.filter((f) => HOUSEHOLD_JOIN_FIELDS.has(f.field));
+    const companyFilters   = filters.filter((f) => f.field.startsWith("company."));
+    const oppFilters       = filters.filter((f) => f.field.startsWith("opp."));
 
-    segRows = [...((ppl as any[]) ?? [])];
-
-    // Enrich location if needed
-    const needsLocation = filters.some((f) =>
-      ["city", "state", "postal_code"].includes(f.field)
-    );
-    if (needsLocation && segRows.length > 0) {
-      const hhIds = [...new Set(segRows.map((p) => p.household_id).filter(Boolean))] as string[];
-      if (hhIds.length > 0) {
-        const { data: hh } = await sb
-          .from("households")
-          .select("id, location_id")
-          .in("id", hhIds.slice(0, 500));
-        const locIds = (hh ?? []).map((h: any) => h.location_id).filter(Boolean);
-        if (locIds.length > 0) {
-          const { data: locs } = await sb
-            .from("locations")
-            .select("id, city, state, postal_code")
-            .in("id", locIds.slice(0, 500));
-          const locMap = new Map((locs ?? []).map((l: any) => [l.id, l]));
-          const hhMap = new Map((hh ?? []).map((h: any) => [h.id, h]));
-          segRows = segRows.map((p) => {
-            const hhRow = p.household_id ? hhMap.get(p.household_id) : null;
-            const loc = hhRow?.location_id ? locMap.get(hhRow.location_id) : null;
-            return {
-              ...p,
-              city: loc?.city ?? "",
-              state: loc?.state ?? "",
-              postal_code: loc?.postal_code ?? "",
-            };
-          });
+    // Resolve location filters → person IDs
+    let personIdFilterFromLocation: string[] | null = null;
+    if (locationFilters.length > 0) {
+      const locData = await fetchAll(() => {
+        let q = sb.from("locations").select("id").eq("tenant_id", tenantId);
+        for (const f of locationFilters) q = applyFilter(q, resolveCol(f.field), f.op as FilterOp, f.value, f.data_type);
+        return q;
+      });
+      const locIds = locData.map((l: any) => l.id);
+      if (locIds.length === 0) { recipientPersonIds = []; segRows = []; goto_send = true; }
+      else {
+        const { data: hhs } = await sb.from("households").select("id").eq("tenant_id", tenantId).in("location_id", locIds);
+        const hhIds = (hhs ?? []).map((h: any) => h.id);
+        if (hhIds.length === 0) { recipientPersonIds = []; segRows = []; goto_send = true; }
+        else {
+          personIdFilterFromLocation = await resolvePersonIdsByHouseholds(sb, tenantId, hhIds);
+          if (personIdFilterFromLocation.length === 0) { recipientPersonIds = []; segRows = []; goto_send = true; }
         }
       }
     }
 
-    // Enrich company if needed
-    const needsCompany = filters.some((f) => f.field.startsWith("company."));
-    if (needsCompany && segRows.length > 0) {
-      const pids = segRows.map((p) => p.id);
-      const { data: pcRows } = await sb
-        .from("person_companies")
-        .select("person_id, company:company_id(name, industry, status)")
-        .in("person_id", pids.slice(0, 1000));
-      const companyByPersonId = new Map(
-        (pcRows ?? []).map((pc: any) => [pc.person_id, pc.company])
-      );
-      segRows = segRows.map((p) => ({
-        ...p,
-        company: companyByPersonId.get(p.id) ?? {},
-      }));
+    // Resolve household filters → person IDs
+    let personIdFilterFromHH: string[] | null = null;
+    if (!goto_send && householdFilters.length > 0) {
+      const hhData = await fetchAll(() => {
+        let q = sb.from("households").select("id").eq("tenant_id", tenantId);
+        for (const f of householdFilters) q = applyFilter(q, f.field, f.op as FilterOp, f.value, f.data_type);
+        return q;
+      });
+      const hhIds = hhData.map((h: any) => h.id);
+      if (hhIds.length === 0) { recipientPersonIds = []; segRows = []; goto_send = true; }
+      else {
+        personIdFilterFromHH = await resolvePersonIdsByHouseholds(sb, tenantId, hhIds);
+        if (personIdFilterFromHH.length === 0) { recipientPersonIds = []; segRows = []; goto_send = true; }
+      }
     }
 
-    // Enrich opportunity if needed
-    const needsOpp = filters.some((f) => f.field.startsWith("opp."));
-    if (needsOpp && segRows.length > 0) {
-      const pids = segRows.map((p) => p.id);
-      const { data: opps } = await sb
-        .from("opportunities")
-        .select("contact_person_id, stage, pipeline, source, priority")
-        .eq("tenant_id", tenantId)
-        .in("contact_person_id", pids.slice(0, 1000));
-      const oppByPersonId = new Map(
-        (opps ?? []).map((o: any) => [o.contact_person_id, o])
-      );
-      segRows = segRows.map((p) => ({ ...p, opp: oppByPersonId.get(p.id) ?? {} }));
-    }
+    if (!goto_send) {
+      // Intersect person ID sets
+      let finalPersonIdFilter: string[] | null = null;
+      if (personIdFilterFromLocation && personIdFilterFromHH) {
+        const setHH = new Set(personIdFilterFromHH);
+        finalPersonIdFilter = personIdFilterFromLocation.filter((id) => setHH.has(id));
+        if (finalPersonIdFilter.length === 0) { recipientPersonIds = []; segRows = []; goto_send = true; }
+      } else {
+        finalPersonIdFilter = personIdFilterFromLocation ?? personIdFilterFromHH ?? null;
+      }
 
-    // Apply filters
-    if (filters.length > 0) {
-      segRows = segRows.filter((row) =>
-        filters.every((f) => {
-          const parts = f.field.split(".");
-          let val: any = row;
-          for (const part of parts) {
-            val = val?.[part];
-            if (val == null) { val = ""; break; }
+      if (!goto_send) {
+        // Fetch people via PostgREST (no row limit)
+        segRows = await fetchAll(() => {
+          let q = sb
+            .from("people")
+            .select("id, first_name, last_name, email, household_id, tenant_people!inner(tenant_id)")
+            .eq("tenant_people.tenant_id", tenantId)
+            .not("email", "is", null)
+            .neq("email", "");
+          for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op as FilterOp, f.value, f.data_type);
+          if (finalPersonIdFilter) q = q.in("id", finalPersonIdFilter);
+          return q;
+        });
+
+        // Deduplicate
+        segRows = [...new Map(segRows.map((p: any) => [p.id, p])).values()];
+
+        // Company JS enrichment + filter
+        if (companyFilters.length > 0 && segRows.length > 0) {
+          const pids = segRows.map((p: any) => p.id);
+          const pcRows: any[] = [];
+          for (let i = 0; i < pids.length; i += 200) {
+            const { data } = await sb.from("person_companies")
+              .select("person_id, company:company_id(name, industry, status)")
+              .in("person_id", pids.slice(i, i + 200));
+            pcRows.push(...(data ?? []));
           }
-          const strVal = String(val ?? "").toLowerCase();
-          const fVal = f.value.toLowerCase();
-          switch (f.op) {
-            case "contains":     return strVal.includes(fVal);
-            case "equals":       return strVal === fVal;
-            case "starts_with":  return strVal.startsWith(fVal);
-            case "not_contains": return !strVal.includes(fVal);
-            case "is_empty":     return strVal === "";
-            case "not_empty":    return strVal !== "";
-            case "greater_than": return parseFloat(strVal) > parseFloat(fVal);
-            case "less_than":    return parseFloat(strVal) < parseFloat(fVal);
-            default:             return true;
-          }
-        })
-      );
-    }
+          const companyMap = new Map(pcRows.map((pc: any) => [pc.person_id, pc.company]));
+          segRows = segRows.map((p: any) => ({ ...p, company: companyMap.get(p.id) ?? {} }));
+          segRows = segRows.filter((row: any) => companyFilters.every((f) => jsFilterSeg(f, row)));
+        }
 
-    recipientPersonIds = segRows.map((p) => p.id);
+        // Opp JS enrichment + filter
+        if (oppFilters.length > 0 && segRows.length > 0) {
+          const pids = segRows.map((p: any) => p.id);
+          const opps: any[] = [];
+          for (let i = 0; i < pids.length; i += 200) {
+            const { data } = await sb.from("opportunities")
+              .select("contact_person_id, stage, pipeline, source, priority")
+              .eq("tenant_id", tenantId)
+              .in("contact_person_id", pids.slice(i, i + 200));
+            opps.push(...(data ?? []));
+          }
+          const oppMap = new Map(opps.map((o: any) => [o.contact_person_id, o]));
+          segRows = segRows.map((p: any) => ({ ...p, opp: oppMap.get(p.id) ?? {} }));
+          segRows = segRows.filter((row: any) => oppFilters.every((f) => jsFilterSeg(f, row)));
+        }
+
+        recipientPersonIds = segRows.map((p: any) => p.id);
+      }
+    }
   }
 
   if (recipientPersonIds.length === 0) {

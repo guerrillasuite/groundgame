@@ -11,7 +11,7 @@ function makeSb(tenantId: string) {
 }
 
 // Chunked .in() helper — avoids PostgREST URL limit for large ID arrays.
-async function queryInChunks(
+export async function queryInChunks(
   sb: any, table: string, select: string, inCol: string, ids: string[],
   extraFilters?: (q: any) => any, chunkSize = 200
 ): Promise<any[]> {
@@ -27,7 +27,7 @@ async function queryInChunks(
 
 // Supabase PostgREST caps rows at max_rows (default 1000).
 // Loop with .range() to fetch everything.
-async function fetchAll(buildQuery: () => any, chunkSize = 1000): Promise<any[]> {
+export async function fetchAll(buildQuery: () => any, chunkSize = 1000): Promise<any[]> {
   const all: any[] = [];
   let from = 0;
   while (true) {
@@ -62,7 +62,7 @@ export type SearchTarget = "people" | "households" | "locations" | "companies";
 
 // Fields that live on the locations table, resolved via join for people/households searches.
 // Any field NOT in this set is treated as a direct column on the people/households table.
-const LOCATION_JOIN_FIELDS = new Set([
+export const LOCATION_JOIN_FIELDS = new Set([
   // Core address
   "city", "state", "postal_code", "address", "address_line1", "unit",
   // GIS address components
@@ -81,7 +81,7 @@ const LOCATION_JOIN_FIELDS = new Set([
 ]);
 
 // "address" is a virtual alias → maps to address_line1 in the DB
-function resolveCol(field: string): string {
+export function resolveCol(field: string): string {
   return field === "address" ? "address_line1" : field;
 }
 
@@ -99,7 +99,7 @@ const NUMERIC_TYPES = new Set([
   "real", "float4", "float8", "double precision",
 ]);
 
-function applyFilter(query: any, col: string, op: FilterOp, value: string, data_type?: string) {
+export function applyFilter(query: any, col: string, op: FilterOp, value: string, data_type?: string) {
   const pgCol = toPostgrestCol(col);
   const isJsonb = col.includes(".");
   const numeric = data_type ? NUMERIC_TYPES.has(data_type) : false;
@@ -141,10 +141,10 @@ function applyFilter(query: any, col: string, op: FilterOp, value: string, data_
   }
 }
 
-// Resolve household IDs → person IDs via BOTH link paths:
+// Resolve household IDs → person IDs via BOTH link paths (exported for reuse in dispatch routes):
 //   Path A: people.household_id (direct FK, often null on imported data)
 //   Path B: person_households junction table (canonical link)
-async function resolvePersonIdsByHouseholds(
+export async function resolvePersonIdsByHouseholds(
   sb: any, tenantId: string, hhIds: string[]
 ): Promise<string[]> {
   if (hhIds.length === 0) return [];
@@ -170,7 +170,7 @@ async function resolvePersonIdsByHouseholds(
 }
 
 // Fields that live on the households table (joined via people.household_id)
-const HOUSEHOLD_JOIN_FIELDS = new Set([
+export const HOUSEHOLD_JOIN_FIELDS = new Set([
   "total_persons", "adults_count", "children_count", "generations_count",
   "household_voter_count", "household_parties", "head_of_household",
   "household_gender", "has_senior", "has_young_adult", "has_children",

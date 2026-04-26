@@ -34,6 +34,7 @@ export type SegmentFilter = {
   field: string;
   op: string;
   value: string;
+  data_type?: string;
 };
 
 type Walklist = {
@@ -62,6 +63,13 @@ const FILTER_FIELDS = [
   { key: "email",            label: "Email",                group: "Person" },
   { key: "first_name",       label: "First Name",           group: "Person" },
   { key: "last_name",        label: "Last Name",            group: "Person" },
+  { key: "contact_type",     label: "Contact Type",         group: "Person" },
+  { key: "party",            label: "Party",                group: "Person" },
+  { key: "party_switcher",   label: "Party Switcher",       group: "Person" },
+  { key: "votes_history.2024_presidential_general",  label: "Voted 2024 General",       group: "Voting" },
+  { key: "votes_history.2024_presidential_primary",  label: "Voted 2024 Primary",        group: "Voting" },
+  { key: "votes_history.2022_midterm_general",       label: "Voted 2022 Midterm",        group: "Voting" },
+  { key: "votes_history.2020_presidential_general",  label: "Voted 2020 General",        group: "Voting" },
   { key: "city",             label: "City",                 group: "Location" },
   { key: "state",            label: "State",                group: "Location" },
   { key: "postal_code",      label: "ZIP Code",             group: "Location" },
@@ -74,12 +82,15 @@ const FILTER_FIELDS = [
   { key: "opp.priority",     label: "Opportunity Priority", group: "Opportunity" },
 ];
 
+const FIELD_GROUPS = ["Person", "Voting", "Location", "Company", "Opportunity"];
+
 const FILTER_OPS = [
-  { value: "contains",    label: "Contains" },
-  { value: "equals",      label: "Is" },
-  { value: "starts_with", label: "Starts with" },
-  { value: "not_empty",   label: "Has a value" },
-  { value: "is_empty",    label: "Is empty" },
+  { value: "contains",     label: "Contains" },
+  { value: "equals",       label: "Is" },
+  { value: "not_contains", label: "Does not contain" },
+  { value: "starts_with",  label: "Starts with" },
+  { value: "not_empty",    label: "Has a value" },
+  { value: "is_empty",     label: "Is empty" },
 ];
 
 const NO_VALUE_OPS = new Set(["is_empty", "not_empty"]);
@@ -106,15 +117,36 @@ function IndeterminateCheckbox({ checked, indeterminate, onChange }: {
   );
 }
 
+// Static enum options for fields with known value sets
+const STATIC_ENUM_OPTS: Record<string, string[]> = {
+  party:         ["DEM", "REP", "IND", "NPA", "LIB", "GRN", "OTH"],
+  party_switcher: ["yes", "no"],
+  "votes_history.2024_presidential_general": ["Y", "N", "A", "E"],
+  "votes_history.2024_presidential_primary":  ["Y", "N", "A", "E"],
+  "votes_history.2022_midterm_general":        ["Y", "N", "A", "E"],
+  "votes_history.2020_presidential_general":  ["Y", "N", "A", "E"],
+};
+
 export default function StepAudience({ data, onChange, walklists }: Props) {
   const [preview, setPreview] = useState<AudiencePreview>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [contactTypeOpts, setContactTypeOpts] = useState<string[]>([]);
 
   const [filterRows, setFilterRows] = useState<FilterRow[]>(() =>
     data.audience_segment_filters?.map((f) => ({ ...f, _id: uid() })) ?? [
       { _id: uid(), field: "email", op: "not_empty", value: "" },
     ]
   );
+
+  // Fetch tenant contact types for the dynamic dropdown
+  useEffect(() => {
+    fetch("/api/crm/settings/contact-types")
+      .then((r) => r.json())
+      .then((types: Array<{ key: string; label: string }>) => {
+        if (Array.isArray(types)) setContactTypeOpts(types.map((t) => t.key));
+      })
+      .catch(() => {});
+  }, []);
 
   // ── Confirm selection modal state ─────────────────────────────────────────
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -129,7 +161,7 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
   const syncFilters = useCallback(
     (rows: FilterRow[]) => {
       onChange({
-        audience_segment_filters: rows.map(({ field, op, value }) => ({ field, op, value })),
+        audience_segment_filters: rows.map(({ field, op, value, data_type }) => ({ field, op, value, data_type })),
       });
     },
     [onChange]
@@ -337,7 +369,7 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
                   {i === 0 && <label style={labelStyle}>Field</label>}
                   <select style={{ ...inputStyle, cursor: "pointer" }} value={f.field}
                     onChange={(e) => updateFilterRow(f._id, { field: e.target.value })}>
-                    {["Person", "Location", "Company", "Opportunity"].map((group) => (
+                    {FIELD_GROUPS.map((group) => (
                       <optgroup key={group} label={group}>
                         {FILTER_FIELDS.filter((ff) => ff.group === group).map((ff) => (
                           <option key={ff.key} value={ff.key}>{ff.label}</option>
@@ -361,11 +393,27 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
                     <div style={{ ...inputStyle, color: "rgb(var(--text-300))", fontStyle: "italic" }}>
                       (no value)
                     </div>
-                  ) : (
-                    <input style={inputStyle} value={f.value}
-                      onChange={(e) => updateFilterRow(f._id, { value: e.target.value })}
-                      placeholder="Value…" />
-                  )}
+                  ) : (() => {
+                    const enumOpts = f.field === "contact_type"
+                      ? contactTypeOpts
+                      : (STATIC_ENUM_OPTS[f.field] ?? null);
+                    if (enumOpts && enumOpts.length > 0) {
+                      return (
+                        <select style={{ ...inputStyle, cursor: "pointer" }} value={f.value}
+                          onChange={(e) => updateFilterRow(f._id, { value: e.target.value })}>
+                          <option value="">— Any —</option>
+                          {enumOpts.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      );
+                    }
+                    return (
+                      <input style={inputStyle} value={f.value}
+                        onChange={(e) => updateFilterRow(f._id, { value: e.target.value })}
+                        placeholder="Value…" />
+                    );
+                  })()}
                 </div>
                 <button type="button" className="gg-btn-icon"
                   disabled={filterRows.length <= 1}
