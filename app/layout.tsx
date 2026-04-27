@@ -1,5 +1,6 @@
 import "./styles/globals.css";
 import type { Metadata } from "next";
+import { ToastProvider } from "@/app/components/Toast/ToastProvider";
 
 export const metadata: Metadata = {
   title: "GroundGame",
@@ -12,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {/* Sets --app-vh on load and resize; inline script avoids client-chunk HMR crash */}
         <script dangerouslySetInnerHTML={{ __html: `(function(){function s(){document.documentElement.style.setProperty('--app-vh',window.innerHeight*.01+'px');}s();window.addEventListener('resize',s);})();` }} />
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

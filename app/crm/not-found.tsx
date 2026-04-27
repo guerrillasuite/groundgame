@@ -1,39 +1,29 @@
 "use client";
 
-import { useMemo, useEffect } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 
 const HEADLINES = [
-  "We broke something. Our bad.",
-  "Command has gone dark. We're working on reestablishing contact.",
-  "Our servers are having an existential crisis.",
-  "Something blew up on our end. Definitely not yours.",
+  "Intel suggests this location doesn't exist.",
+  "That sector isn't on any of our maps.",
+  "We've lost the signal on that route.",
+  "Dead end. Even our scouts couldn't find this one.",
 ];
 
-export default function GlobalError({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
+export default function CrmNotFound() {
   const headline = useMemo(
     () => HEADLINES[Math.floor(Math.random() * HEADLINES.length)],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
-
   return (
     <>
       <style>{`
-        @keyframes gs-glitch-entrance-500 {
+        @keyframes gs-glitch-entrance-crm {
           0%   { clip-path: inset(0 0 100% 0); transform: translateX(0); filter: brightness(1); }
           5%   { clip-path: inset(20% 0 60% 0); transform: translateX(-4px); filter: brightness(2.5); }
-          8%   { text-shadow: -6px 0 #ff4400, 6px 0 #ffcc00; }
+          8%   { text-shadow: -6px 0 #ff0040, 6px 0 #00ffff; }
           10%  { clip-path: inset(0 0 0 0); transform: translateX(3px); filter: brightness(1); }
           14%  { clip-path: inset(55% 0 30% 0); transform: translateX(-2px); }
           18%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
@@ -47,26 +37,25 @@ export default function GlobalError({
           80%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
           100% { clip-path: inset(0 0 0 0); transform: translateX(0); filter: brightness(1); }
         }
-        @keyframes gs-glitch-idle-500 {
+        @keyframes gs-glitch-idle-crm {
           0%, 92%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
-          93%      { clip-path: inset(60% 0 30% 0); transform: translateX(-1px); text-shadow: -2px 0 rgba(255,68,0,.4), 2px 0 rgba(255,204,0,.4); }
+          93%      { clip-path: inset(60% 0 30% 0); transform: translateX(-1px); text-shadow: -2px 0 rgba(255,0,64,.4), 2px 0 rgba(0,255,255,.4); }
           94%      { clip-path: inset(0 0 0 0); transform: translateX(1px); }
           95%      { clip-path: inset(85% 0 5% 0); transform: translateX(0); }
           96%      { clip-path: inset(0 0 0 0); }
           100%     { clip-path: inset(0 0 0 0); transform: translateX(0); }
         }
-        .gs-glitch-entrance-500 { animation: gs-glitch-entrance-500 2.2s ease-out forwards; }
-        .gs-glitch-idle-500     { animation: gs-glitch-idle-500 5s linear infinite; animation-delay: 2.2s; }
+        .gs-glitch-entrance-crm { animation: gs-glitch-entrance-crm 2.2s ease-out forwards; }
+        .gs-glitch-idle-crm     { animation: gs-glitch-idle-crm 5s linear infinite; animation-delay: 2.2s; }
       `}</style>
 
       <div style={{
-        minHeight: "100dvh",
-        background: "radial-gradient(ellipse 60% 50% at 50% 40%, rgba(239,68,68,0.06), rgb(10 13 20) 70%)",
+        minHeight: "70vh",
+        background: "radial-gradient(ellipse 60% 60% at 50% 40%, rgba(37,99,235,0.07), transparent 70%)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "16px",
-        fontFamily: "system-ui, -apple-system, sans-serif",
+        padding: "32px 16px",
         position: "relative",
         overflow: "hidden",
       }}>
@@ -78,17 +67,17 @@ export default function GlobalError({
           zIndex: 0,
         }}>
           <span
-            className="gs-glitch-entrance-500"
+            className="gs-glitch-entrance-crm"
             style={{
-              fontSize: "clamp(120px, 22vw, 200px)",
+              fontSize: "clamp(100px, 18vw, 160px)",
               fontWeight: 900,
-              color: "rgba(255,255,255,0.035)",
+              color: "rgba(255,255,255,0.03)",
               letterSpacing: "-0.04em",
               lineHeight: 1,
               display: "block",
             }}
           >
-            <span className="gs-glitch-idle-500">500</span>
+            <span className="gs-glitch-idle-crm">404</span>
           </span>
         </div>
 
@@ -97,14 +86,14 @@ export default function GlobalError({
           position: "relative",
           zIndex: 1,
           width: "100%",
-          maxWidth: 480,
+          maxWidth: 440,
           background: "rgba(28,36,48,0.88)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
           border: "1px solid rgba(255,255,255,0.06)",
-          borderRadius: 16,
-          padding: "40px 36px",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.55), inset 3px 0 0 0 #ef4444",
+          borderRadius: 14,
+          padding: "36px 32px",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.45), inset 3px 0 0 0 var(--gg-primary, #2563eb)",
         }}>
           <div style={{
             fontSize: 10,
@@ -112,14 +101,14 @@ export default function GlobalError({
             letterSpacing: "0.18em",
             textTransform: "uppercase",
             color: "var(--gg-dim, rgb(134 150 168))",
-            marginBottom: 14,
+            marginBottom: 12,
           }}>
-            Error 500
+            Error 404
           </div>
 
           <h1 style={{
             margin: "0 0 10px",
-            fontSize: 22,
+            fontSize: 20,
             fontWeight: 700,
             color: "var(--gg-text, rgb(238 242 246))",
             lineHeight: 1.3,
@@ -128,46 +117,26 @@ export default function GlobalError({
           </h1>
 
           <p style={{
-            margin: "0 0 28px",
+            margin: "0 0 24px",
             fontSize: 14,
             color: "var(--gg-dim, rgb(134 150 168))",
             lineHeight: 1.6,
           }}>
-            Our team has been notified. Try again in a moment.
+            Use the navigation above or return to the dashboard.
           </p>
 
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <button
-              onClick={reset}
-              style={{
-                padding: "10px 20px",
-                background: "var(--gg-primary, #2563eb)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Try again
-            </button>
-
-            <Link href="/" style={{
-              display: "inline-flex",
-              alignItems: "center",
-              padding: "10px 20px",
-              background: "transparent",
-              color: "var(--gg-dim, rgb(134 150 168))",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 8,
-              textDecoration: "none",
-              fontSize: 14,
-              fontWeight: 500,
-            }}>
-              ← Back to base
-            </Link>
-          </div>
+          <Link href="/crm" style={{
+            display: "inline-block",
+            padding: "9px 18px",
+            background: "var(--gg-primary, #2563eb)",
+            color: "#fff",
+            borderRadius: 8,
+            textDecoration: "none",
+            fontSize: 14,
+            fontWeight: 600,
+          }}>
+            ← Back to dashboard
+          </Link>
         </div>
       </div>
     </>
