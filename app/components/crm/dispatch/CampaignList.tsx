@@ -271,7 +271,7 @@ export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
                 ) : (
                   <button
                     onClick={(e) => { e.preventDefault(); setConfirmingId(c.id); }}
-                    style={{ flexShrink: 0, padding: "4px 8px", border: "none", background: "transparent", cursor: "pointer", opacity: 0.4, fontSize: 16, lineHeight: 1 }}
+                    style={{ flexShrink: 0, padding: "4px 8px", border: "none", background: "transparent", cursor: "pointer", fontSize: 16, lineHeight: 1, color: "#dc2626", opacity: 0.6 }}
                     title="Delete campaign"
                   >
                     🗑
