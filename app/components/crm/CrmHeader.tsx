@@ -41,6 +41,11 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
   if (f("crm_stops"))   fieldItems.push({ href: "/crm/stops",   label: "Stops" });
   if (fieldItems.length > 0) nav.push({ label: "Field", items: fieldItems });
 
+  // Intel Brief: flat link, War Chest+
+  if (f("news")) {
+    nav.push({ href: "/crm/intel-brief", label: "Intel Brief" });
+  }
+
   // SitRep: always a flat link; Missions is surfaced on the SitRep page itself
   if (f("sitrep_core")) {
     nav.push({ href: "/crm/sitrep", label: "SitRep" });
@@ -79,7 +84,11 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
     if (f("sitrep_core")) {
       settingsItems.push({ href: "/crm/settings/sitrep", label: "SitRep" });
     }
+    if (f("news")) {
+      settingsItems.push({ href: "/crm/settings/intel-brief", label: "Intel Brief" });
+    }
     if (isSuperAdmin) {
+      settingsItems.push({ href: "/crm/admin/intel-brief-feeds", label: "Intel Brief Feeds" });
       settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });
     }
     nav.push({ label: "Settings", items: settingsItems });

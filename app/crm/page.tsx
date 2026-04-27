@@ -6,7 +6,9 @@ import { getCrmUser } from "@/lib/crm-auth";
 import { createClient } from "@supabase/supabase-js";
 import { resolveDispoConfig, buildColorMap } from "@/lib/dispositionConfig";
 import { getFamilyByKey, SYSTEM_TYPE_FAMILIES } from "@/lib/sitrep-colors";
+import { hasFeature } from "@/lib/features";
 import SitRepWidgetCalendar from "@/app/crm/components/SitRepWidgetCalendar";
+import { colorHex } from "@/lib/intel-brief-colors";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -157,7 +159,7 @@ const sectionLabel: React.CSSProperties = {
 
 // ── ADMIN DASHBOARD ───────────────────────────────────────────────────────────
 
-async function AdminDashboard({ tenantId, tenantName, userName, settings }: { tenantId: string; tenantName: string; userName: string; settings: any }) {
+async function AdminDashboard({ tenantId, tenantName, userName, settings, features }: { tenantId: string; tenantName: string; userName: string; settings: any; features: readonly any[] }) {
   const sb = makeSb(tenantId);
   const colorMap = buildColorMap(resolveDispoConfig(settings ?? {}));
   const now = new Date().toISOString();
@@ -198,6 +200,8 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     { data: recentStopsRaw },
     { data: sitrepItemsRaw },
     { data: sitrepTypesRaw },
+    newsSettingsRow,
+    newsArticlesRaw,
   ] = await Promise.all([
     sb.from("tenant_people").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     sb.from("households").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
@@ -211,6 +215,12 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
     sb.from("stops").select("id, stop_at, result, person_id, channel, walklist_id").eq("tenant_id", tenantId).order("stop_at", { ascending: false }).limit(20),
     adminSitrepQ,
     sb.from("sitrep_item_types").select("slug, color").eq("tenant_id", tenantId),
+    hasFeature(features, "news")
+      ? sb.from("tenant_news_settings").select("display_threshold, widget_count, categories").eq("tenant_id", tenantId).maybeSingle().then(r => r.data)
+      : Promise.resolve(null),
+    hasFeature(features, "news")
+      ? sb.from("tenant_article_relevance").select("final_score, news_articles!article_id(url, title, source_domain, published_at)").eq("tenant_id", tenantId).order("final_score", { ascending: false }).limit(20).then(r => r.data ?? [])
+      : Promise.resolve([]),
   ]);
 
   const sitrepFamilyMap: Record<string, string[]> = {};
@@ -569,6 +579,66 @@ async function AdminDashboard({ tenantId, tenantName, userName, settings }: { te
           }
         </div>
       </div>
+
+      {/* Intel Brief widget */}
+      {hasFeature(features, "news") && (() => {
+        const newsThreshold: number = (newsSettingsRow as any)?.display_threshold ?? 6.5;
+        const newsCount: number = (newsSettingsRow as any)?.widget_count ?? 5;
+        const newsCats: { key: string; label: string; color: string }[] = (newsSettingsRow as any)?.categories ?? [];
+        const catMap = new Map(newsCats.map((c: any) => [c.key, c]));
+        const topArticles = ((newsArticlesRaw as any[]) ?? [])
+          .filter((r: any) => (r.final_score ?? 0) >= newsThreshold)
+          .slice(0, newsCount);
+
+        function newsTimeAgo(d: string | null): string {
+          if (!d) return "—";
+          const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
+          if (m < 60) return `${m}m`;
+          const h = Math.floor(m / 60);
+          if (h < 24) return `${h}h`;
+          return `${Math.floor(h / 24)}d`;
+        }
+
+        return (
+          <div style={card}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <p style={{ ...sectionLabel, margin: 0 }}>📡 Intel Brief</p>
+              <Link href="/crm/intel-brief" style={{ fontSize: 12, color: "var(--gg-primary,#2563eb)", textDecoration: "none" }}>Full feed →</Link>
+            </div>
+            {topArticles.length === 0 ? (
+              <p style={{ fontSize: 13, color: "var(--gg-text-dim,#9ca3af)", fontStyle: "italic" }}>
+                No articles yet — check back after the ingestion pipeline runs.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {topArticles.map((row: any, i: number) => {
+                  const a = row.news_articles;
+                  if (!a) return null;
+                  const live = (Date.now() - new Date(a.published_at ?? 0).getTime()) < 7200000;
+                  return (
+                    <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "9px 10px", borderRadius: 7, textDecoration: "none", color: "inherit",
+                      borderTop: i > 0 ? "1px solid var(--gg-border,#f3f4f6)" : "none",
+                    }}>
+                      {live && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", flexShrink: 0 }} />}
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--gg-text,#111)" }}>
+                        {a.title ?? "(No title)"}
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--gg-text-dim,#9ca3af)", flexShrink: 0 }}>
+                        {newsTimeAgo(a.published_at)}
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: row.final_score >= 8.5 ? "#16a34a" : "#b45309", flexShrink: 0 }}>
+                        {(row.final_score ?? 0).toFixed(1)}
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </section>
   );
 }
@@ -884,7 +954,7 @@ export default async function CrmHome() {
   const userName = authUser?.user_metadata?.name ?? authUser?.user_metadata?.full_name ?? authUser?.email?.split("@")[0] ?? "";
 
   if (crmUser.isAdmin) {
-    return <AdminDashboard tenantId={tenant.id} tenantName={tenantName} userName={userName} settings={(tenant as any).settings} />;
+    return <AdminDashboard tenantId={tenant.id} tenantName={tenantName} userName={userName} settings={(tenant as any).settings} features={tenant.features} />;
   }
 
   return <FieldDashboard tenantId={tenant.id} userId={crmUser.userId} userName={userName} settings={(tenant as any).settings} />;

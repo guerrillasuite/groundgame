@@ -41,6 +41,7 @@ const HARDCODED_TENANTS: Record<string, string> = {
   'thunder':        'f5627732-3739-4317-87f8-f0e6b1bf980a',
   'lpky':           '96b2b6f4-cec6-4801-9287-4806a7085463',
   'lp-bexar':       'cb751fb2-b8e6-4115-af21-0aa87cb377b1',
+  'cowart4texas':   'f1a15d20-de55-48b6-abfe-22b557d6812b',
 };
 
 // Next 15 requires await on dynamic APIs like headers()

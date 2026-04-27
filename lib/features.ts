@@ -27,6 +27,7 @@ export const ALL_FEATURE_KEYS = [
   "sitrep_calendar",            // SitRep: calendar view (week/month)
   "sitrep_team",                // SitRep: assignable tasks, meetings, team calendar
   "sitrep_missions",            // SitRep: Missions container and detail page
+  "news",                       // Intel Brief: news aggregation + relevance scoring
 ] as const;
 
 export type FeatureKey = (typeof ALL_FEATURE_KEYS)[number];
@@ -64,6 +65,7 @@ export const PLAN_FEATURES: Record<Exclude<Plan, "custom">, readonly FeatureKey[
     "pwa_storefront", "pwa_storefront_take_order", "pwa_storefront_make_sale",
     "pwa_storefront_orders", "pwa_storefront_inventory", "pwa_storefront_survey",
     "sitrep_core", "sitrep_calendar", "sitrep_team", "sitrep_missions",
+    "news",
   ],
   // Everything including enrichment
   enterprise: ALL_FEATURE_KEYS,
@@ -95,6 +97,7 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   sitrep_calendar:            { label: "SitRep Calendar View",             group: "SitRep" },
   sitrep_team:                { label: "SitRep Team Features",             group: "SitRep" },
   sitrep_missions:            { label: "SitRep Missions",                  group: "SitRep" },
+  news:                       { label: "Intel Brief",                       group: "CRM Core" },
 };
 
 export function hasFeature(features: readonly FeatureKey[], key: FeatureKey): boolean {
