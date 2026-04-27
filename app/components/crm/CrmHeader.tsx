@@ -70,6 +70,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
   if (isDirector) {
     const settingsItems: NavItem[] = [
       { href: "/crm/settings", label: "Brand Settings" },
+      { href: "/crm/settings/dashboard", label: "Dashboard" },
       { href: "/crm/settings/users", label: "Users" },
     ];
     if (f("crm")) {
