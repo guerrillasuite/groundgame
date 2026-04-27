@@ -73,7 +73,7 @@ export default function CrmNotFound() {
           <span
             className="gs-glitch-entrance-crm"
             style={{
-              fontSize: "clamp(160px, 22vw, 260px)",
+              fontSize: "clamp(240px, 36vw, 440px)",
               fontWeight: 900,
               color: "rgba(255,255,255,0.09)",
               letterSpacing: "-0.04em",

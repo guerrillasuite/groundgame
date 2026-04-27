@@ -74,7 +74,7 @@ export default function NotFound() {
           <span
             className="gs-glitch-entrance"
             style={{
-              fontSize: "clamp(200px, 28vw, 320px)",
+              fontSize: "clamp(280px, 42vw, 520px)",
               fontWeight: 900,
               color: "rgba(255,255,255,0.09)",
               letterSpacing: "-0.04em",
