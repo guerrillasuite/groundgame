@@ -22,31 +22,35 @@ export default function CrmNotFound() {
       <style>{`
         @keyframes gs-glitch-entrance-crm {
           0%   { clip-path: inset(0 0 100% 0); transform: translateX(0); filter: brightness(1); }
-          5%   { clip-path: inset(20% 0 60% 0); transform: translateX(-4px); filter: brightness(2.5); }
-          8%   { text-shadow: -6px 0 #ff0040, 6px 0 #00ffff; }
-          10%  { clip-path: inset(0 0 0 0); transform: translateX(3px); filter: brightness(1); }
-          14%  { clip-path: inset(55% 0 30% 0); transform: translateX(-2px); }
-          18%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
-          22%  { clip-path: inset(70% 0 5% 0); transform: translateX(4px); filter: brightness(1.8); }
-          26%  { clip-path: inset(0 0 0 0); transform: translateX(-1px); }
-          35%  { clip-path: inset(40% 0 40% 0); transform: translateX(2px); }
-          40%  { clip-path: inset(0 0 0 0); transform: translateX(0); filter: brightness(1); }
-          55%  { clip-path: inset(80% 0 10% 0); transform: translateX(-1px); }
-          60%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
-          75%  { clip-path: inset(15% 0 75% 0); transform: translateX(1px); }
-          80%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
-          100% { clip-path: inset(0 0 0 0); transform: translateX(0); filter: brightness(1); }
+          3%   { clip-path: inset(20% 0 60% 0); transform: translateX(-4px); filter: brightness(2.5); }
+          5%   { text-shadow: -8px 0 #ff0040, 8px 0 #00ffff; }
+          6%   { clip-path: inset(0 0 0 0); transform: translateX(3px); filter: brightness(1); }
+          9%   { clip-path: inset(55% 0 30% 0); transform: translateX(-2px); }
+          11%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
+          13%  { clip-path: inset(70% 0 5% 0); transform: translateX(4px); filter: brightness(1.8); }
+          15%  { clip-path: inset(0 0 0 0); transform: translateX(-1px); }
+          20%  { clip-path: inset(40% 0 40% 0); transform: translateX(2px); }
+          24%  { clip-path: inset(0 0 0 0); transform: translateX(0); filter: brightness(1); }
+          34%  { clip-path: inset(80% 0 10% 0); transform: translateX(-1px); }
+          37%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
+          45%  { clip-path: inset(15% 0 75% 0); transform: translateX(1px); }
+          48%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
+          58%  { clip-path: inset(65% 0 20% 0); transform: translateX(-1px); text-shadow: -4px 0 rgba(255,0,64,.5), 4px 0 rgba(0,255,255,.5); }
+          60%  { clip-path: inset(0 0 0 0); transform: translateX(0); text-shadow: none; }
+          72%  { clip-path: inset(30% 0 55% 0); transform: translateX(1px); }
+          74%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
+          100% { clip-path: inset(0 0 0 0); transform: translateX(0); filter: brightness(1); text-shadow: none; }
         }
         @keyframes gs-glitch-idle-crm {
-          0%, 92%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
-          93%      { clip-path: inset(60% 0 30% 0); transform: translateX(-1px); text-shadow: -2px 0 rgba(255,0,64,.4), 2px 0 rgba(0,255,255,.4); }
-          94%      { clip-path: inset(0 0 0 0); transform: translateX(1px); }
-          95%      { clip-path: inset(85% 0 5% 0); transform: translateX(0); }
-          96%      { clip-path: inset(0 0 0 0); }
+          0%, 88%  { clip-path: inset(0 0 0 0); transform: translateX(0); }
+          89%      { clip-path: inset(60% 0 30% 0); transform: translateX(-1px); text-shadow: -2px 0 rgba(255,0,64,.4), 2px 0 rgba(0,255,255,.4); }
+          90%      { clip-path: inset(0 0 0 0); transform: translateX(1px); }
+          91%      { clip-path: inset(85% 0 5% 0); transform: translateX(0); }
+          92%      { clip-path: inset(0 0 0 0); text-shadow: none; }
           100%     { clip-path: inset(0 0 0 0); transform: translateX(0); }
         }
-        .gs-glitch-entrance-crm { animation: gs-glitch-entrance-crm 2.2s ease-out forwards; }
-        .gs-glitch-idle-crm     { animation: gs-glitch-idle-crm 5s linear infinite; animation-delay: 2.2s; }
+        .gs-glitch-entrance-crm { animation: gs-glitch-entrance-crm 5s ease-out forwards; }
+        .gs-glitch-idle-crm     { animation: gs-glitch-idle-crm 4s linear infinite; animation-delay: 5s; }
       `}</style>
 
       <div style={{
@@ -69,9 +73,9 @@ export default function CrmNotFound() {
           <span
             className="gs-glitch-entrance-crm"
             style={{
-              fontSize: "clamp(100px, 18vw, 160px)",
+              fontSize: "clamp(160px, 22vw, 260px)",
               fontWeight: 900,
-              color: "rgba(255,255,255,0.03)",
+              color: "rgba(255,255,255,0.09)",
               letterSpacing: "-0.04em",
               lineHeight: 1,
               display: "block",
@@ -87,10 +91,10 @@ export default function CrmNotFound() {
           zIndex: 1,
           width: "100%",
           maxWidth: 440,
-          background: "rgba(28,36,48,0.88)",
+          background: "rgba(16,20,30,0.52)",
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.08)",
           borderRadius: 14,
           padding: "36px 32px",
           boxShadow: "0 16px 48px rgba(0,0,0,0.45), inset 3px 0 0 0 var(--gg-primary, #2563eb)",
