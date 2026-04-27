@@ -182,13 +182,13 @@ def ingest_for_tenant(tenant_id: str, keywords: list[str], categories: list[str]
                 continue
 
             # Upsert news_articles (global, no tenant)
-            existing = sb.from_("news_articles").select("id, full_text").eq("url", url).maybe_single().execute()
+            existing_res = sb.from_("news_articles").select("id, full_text").eq("url", url).limit(1).execute()
             article_id = None
             full_text = None
 
-            if existing.data:
-                article_id = existing.data["id"]
-                full_text = existing.data.get("full_text")
+            if existing_res.data:
+                article_id = existing_res.data[0]["id"]
+                full_text = existing_res.data[0].get("full_text")
             else:
                 # Phase 0: fetch full text
                 full_text = fetch_full_text(url)
@@ -216,7 +216,7 @@ def ingest_for_tenant(tenant_id: str, keywords: list[str], categories: list[str]
                 .select("id") \
                 .eq("tenant_id", tenant_id) \
                 .eq("article_id", article_id) \
-                .maybe_single() \
+                .limit(1) \
                 .execute()
             if existing_rel.data:
                 continue  # already scored for this tenant
