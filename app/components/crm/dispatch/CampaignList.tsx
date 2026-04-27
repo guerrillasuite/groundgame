@@ -140,6 +140,16 @@ export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
         ))}
       </div>
 
+      {/* Column headers */}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 18px", marginBottom: 4 }}>
+        <span style={{ minWidth: 70, flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgb(var(--text-300))", minWidth: 160, flexShrink: 0 }}>From</span>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgb(var(--text-300))", minWidth: 80, flexShrink: 0, textAlign: "right" }}>Recipients</span>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "rgb(var(--text-300))", minWidth: 90, flexShrink: 0, textAlign: "right" }}>Date</span>
+        <span style={{ width: 38, flexShrink: 0 }} />
+      </div>
+
       {/* Campaign rows */}
       <div style={{ display: "grid", gap: 8 }}>
         {visible.map((c) => {
@@ -230,7 +240,7 @@ export default function CampaignList({ campaigns }: { campaigns: Campaign[] }) {
                   textAlign: "right",
                 }}
               >
-                {c.audience_count != null ? `${c.audience_count.toLocaleString()} rcpts` : "—"}
+                {c.audience_count != null ? c.audience_count.toLocaleString() : "—"}
               </div>
 
               {/* Date */}
