@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import StepDetails, { type DetailsData } from "./StepDetails";
 import StepAudience, { type AudienceData } from "./StepAudience";
 import StepDesign, { type DesignData } from "./StepDesign";
@@ -26,12 +26,15 @@ interface Props {
   initialAudience?: Partial<AudienceData>;
   initialDesign?: object | null;
   initialHtml?: string;
+  initialStep?: number;
+  initialAudienceCount?: number | null;
   // Server-fetched data
   domains: DispatchDomain[];
   walklists: Walklist[];
 }
 
 const STEPS = ["Details", "Audience", "Design", "Review"];
+const STEP_SLUGS = ["details", "audience", "design", "review"];
 
 const stepIndicatorStyle = (active: boolean, done: boolean): React.CSSProperties => ({
   display: "flex",
@@ -58,11 +61,14 @@ export default function ComposeFlow({
   initialAudience,
   initialDesign,
   initialHtml,
+  initialStep,
+  initialAudienceCount,
   domains,
   walklists,
 }: Props) {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const searchParams = useSearchParams();
+  const [step, setStep] = useState(initialCampaignId ? (initialStep ?? 0) : 0);
   const [campaignId, setCampaignId] = useState<string | null>(initialCampaignId ?? null);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -93,7 +99,7 @@ export default function ComposeFlow({
     html_body: initialHtml ?? "",
   });
 
-  const [audienceCount, setAudienceCount] = useState<number | null>(null);
+  const [audienceCount, setAudienceCount] = useState<number | null>(initialAudienceCount ?? null);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -124,6 +130,13 @@ export default function ComposeFlow({
       return "No people selected. Use Preview & Select to choose recipients.";
     }
     return null;
+  }
+
+  // ── URL-persistent step navigation ────────────────────────────────────────
+
+  function gotoStep(n: number, id: string) {
+    setStep(n);
+    router.replace(`/crm/dispatch/${id}/edit?step=${STEP_SLUGS[n]}`);
   }
 
   // ── Save draft to API ──────────────────────────────────────────────────────
@@ -170,8 +183,12 @@ export default function ComposeFlow({
       setSaving(true);
       try {
         const id = await saveDraft({ status: "draft" });
-        if (!campaignId) setCampaignId(id);
-        setStep(1);
+        if (!campaignId) {
+          // Navigate to the persistent edit URL so refresh restores draft + step
+          router.push(`/crm/dispatch/${id}/edit?step=audience`);
+          return;
+        }
+        gotoStep(1, id);
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -206,7 +223,7 @@ export default function ComposeFlow({
           const json = await res.json();
           if (res.ok) setAudienceCount(json.count ?? null);
         }
-        setStep(2);
+        gotoStep(2, id);
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -228,7 +245,7 @@ export default function ComposeFlow({
     saveDraft({ design_json: data.design_json, html_body: data.html_body })
       .then((id) => {
         if (!campaignId) setCampaignId(id);
-        setStep(3);
+        gotoStep(3, id);
       })
       .catch((e) => setError(e.message))
       .finally(() => setSaving(false));
@@ -281,7 +298,7 @@ export default function ComposeFlow({
             key={label}
             type="button"
             disabled={i > step}
-            onClick={() => i < step && setStep(i)}
+            onClick={() => i < step && campaignId && gotoStep(i, campaignId)}
             style={{
               ...stepIndicatorStyle(i === step, i < step),
               cursor: i < step ? "pointer" : "default",
@@ -330,7 +347,7 @@ export default function ComposeFlow({
         <>
           <StepAudience data={audience} onChange={patchAudience} walklists={walklists} />
           <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" className="gg-btn-ghost" onClick={() => setStep(0)}>
+            <button type="button" className="gg-btn-ghost" onClick={() => campaignId && gotoStep(0, campaignId)}>
               ← Back
             </button>
             <button
@@ -350,7 +367,7 @@ export default function ComposeFlow({
           <button
             type="button"
             className="gg-btn-ghost"
-            onClick={() => setStep(1)}
+            onClick={() => campaignId && gotoStep(1, campaignId)}
             style={{ alignSelf: "flex-start", fontSize: 13 }}
           >
             ← Back to Audience

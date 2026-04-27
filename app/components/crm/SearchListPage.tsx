@@ -209,7 +209,10 @@ export default function SearchListPage({
   // ── Restore from URL on mount — auto-run if ?q= is present ──
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const q = new URLSearchParams(window.location.search).get("q") ?? "";
+    const sp = new URLSearchParams(window.location.search);
+    const q = sp.get("q") ?? "";
+    const m = sp.get("mode") as "search" | "filter" | null;
+    if (m === "filter") setMode("filter");
     if (q) {
       setQuery(q);
       doSearch(q, 0, perPage);
@@ -217,11 +220,12 @@ export default function SearchListPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally runs once on mount only
 
-  // ── Sync URL with search query ──
+  // ── Sync URL with search query and mode ──
   useEffect(() => {
-    if (mode !== "search" || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
     const params = new URLSearchParams();
-    if (query) params.set("q", query);
+    if (mode === "filter") params.set("mode", "filter");
+    if (mode === "search" && query) params.set("q", query);
     const qs = params.toString();
     history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
   }, [mode, query]);

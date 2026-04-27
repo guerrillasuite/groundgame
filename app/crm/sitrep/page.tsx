@@ -1,6 +1,7 @@
 // app/crm/sitrep/page.tsx
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
@@ -98,14 +99,16 @@ export default async function SitRepPage() {
   }
 
   return (
-    <SitRepPanel
-      initialItems={items}
-      missions={missions}
-      users={users}
-      currentUserId={crmUser.userId}
-      hasMissions={hasFeature(tenant.features, "sitrep_missions")}
-      typeColors={typeColors}
-      typeNames={typeNames}
-    />
+    <Suspense>
+      <SitRepPanel
+        initialItems={items}
+        missions={missions}
+        users={users}
+        currentUserId={crmUser.userId}
+        hasMissions={hasFeature(tenant.features, "sitrep_missions")}
+        typeColors={typeColors}
+        typeNames={typeNames}
+      />
+    </Suspense>
   );
 }

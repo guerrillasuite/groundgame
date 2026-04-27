@@ -4,6 +4,7 @@ import { hasFeature } from "@/lib/features";
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import { Suspense } from "react";
 import ComposeFlow, { type DispatchDomain } from "@/app/components/crm/dispatch/ComposeFlow";
 
 export const dynamic = "force-dynamic";
@@ -16,10 +17,14 @@ function makeSb(tenantId: string) {
   );
 }
 
-type Params = { params: Promise<{ id: string }> };
+const STEP_SLUGS = ["details", "audience", "design", "review"];
 
-export default async function EditCampaignPage({ params }: Params) {
+type Params = { params: Promise<{ id: string }>; searchParams: Promise<{ step?: string }> };
+
+export default async function EditCampaignPage({ params, searchParams }: Params) {
   const { id } = await params;
+  const { step: stepSlug } = await searchParams;
+  const initialStep = Math.max(0, Math.min(3, STEP_SLUGS.indexOf(stepSlug ?? "details")));
   const [tenant, user] = await Promise.all([getTenant(), getCrmUser()]);
 
   if (!hasFeature(tenant.features, "crm_dispatch") && !user?.isSuperAdmin) {
@@ -77,28 +82,32 @@ export default async function EditCampaignPage({ params }: Params) {
         </Link>
       </div>
       <h1 style={{ margin: "0 0 24px" }}>Edit Campaign</h1>
-      <ComposeFlow
-        campaignId={campaign.id}
-        initialDetails={{
-          name: campaign.name,
-          subject: campaign.subject,
-          preview_text: campaign.preview_text ?? "",
-          from_name: campaign.from_name,
-          from_local: fromLocal,
-          from_domain: fromDomain,
-          reply_to: campaign.reply_to ?? "",
-        }}
-        initialAudience={{
-          audience_type: campaign.audience_type as "segment" | "list" | "manual",
-          audience_list_id: campaign.audience_list_id ?? null,
-          audience_segment_filters: campaign.audience_segment_filters ?? null,
-          audience_person_ids: (campaign.audience_person_ids as string[] | null) ?? null,
-        }}
-        initialDesign={campaign.design_json}
-        initialHtml={campaign.html_body}
-        domains={domains}
-        walklists={walklists}
-      />
+      <Suspense>
+        <ComposeFlow
+          campaignId={campaign.id}
+          initialStep={initialStep}
+          initialAudienceCount={campaign.audience_count ?? null}
+          initialDetails={{
+            name: campaign.name,
+            subject: campaign.subject,
+            preview_text: campaign.preview_text ?? "",
+            from_name: campaign.from_name,
+            from_local: fromLocal,
+            from_domain: fromDomain,
+            reply_to: campaign.reply_to ?? "",
+          }}
+          initialAudience={{
+            audience_type: campaign.audience_type as "segment" | "list" | "manual",
+            audience_list_id: campaign.audience_list_id ?? null,
+            audience_segment_filters: campaign.audience_segment_filters ?? null,
+            audience_person_ids: (campaign.audience_person_ids as string[] | null) ?? null,
+          }}
+          initialDesign={campaign.design_json}
+          initialHtml={campaign.html_body}
+          domains={domains}
+          walklists={walklists}
+        />
+      </Suspense>
     </section>
   );
 }

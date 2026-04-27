@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -53,8 +54,19 @@ function progress(stats: MissionStats) {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function MissionsPanel({ initialMissions, currentUserId }: Props) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [missions, setMissions] = useState<Mission[]>(initialMissions);
-  const [tab, setTab] = useState<"all" | "planning" | "active" | "complete">("all");
+  const [tab, setTab] = useState<"all" | "planning" | "active" | "complete">(
+    (searchParams.get("tab") as "all" | "planning" | "active" | "complete") || "all"
+  );
+
+  function switchTab(t: "all" | "planning" | "active" | "complete") {
+    setTab(t);
+    const p = new URLSearchParams(searchParams.toString());
+    t === "all" ? p.delete("tab") : p.set("tab", t);
+    router.replace(`?${p}`);
+  }
 
   // New mission modal
   const [showCreate, setShowCreate] = useState(false);
@@ -150,7 +162,7 @@ export default function MissionsPanel({ initialMissions, currentUserId }: Props)
           return (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => switchTab(t)}
               style={{
                 padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
                 border: active ? "1px solid rgba(255,255,255,.2)" : `1px solid ${S.border}`,

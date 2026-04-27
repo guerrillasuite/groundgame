@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { L2_FIELD_MAP } from "@/lib/crm/l2-field-map";
 
@@ -267,8 +268,21 @@ type SchemaField = { column: string; label: string; data_type: string; is_join: 
 const LOCATION_FIELD_COLS = new Set(["address_line1", "city", "state", "postal_code"]);
 
 export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: boolean }) {
-  const [step, setStep] = useState<Step>("upload");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [step, setStep] = useState<Step>(() => {
+    const s = searchParams.get("step") as Step | null;
+    // "map"/"preview"/"validate" require parsed file data — can't restore those on refresh
+    return s === "done" || s === "upload" ? s : "upload";
+  });
   const [parsed, setParsed] = useState<ParsedData | null>(null);
+
+  function gotoStep(s: Step) {
+    setStep(s);
+    const p = new URLSearchParams(searchParams.toString());
+    if (s === "upload") p.delete("step"); else p.set("step", s);
+    router.replace(`?${p}`);
+  }
   const [mapping, setMapping] = useState<Record<string, TargetField>>({});
   const [schemaFields, setSchemaFields] = useState<SchemaField[]>([]);
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
@@ -352,7 +366,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
       setParsed(data);
       setMapping(autoMapping);
       setGivingCycleYears(autoGivingYears);
-      setStep("map");
+      gotoStep("map");
     } catch (e: any) {
       setParseErr(`Failed to parse file: ${e?.message ?? e}`);
     }
@@ -374,7 +388,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
 
   async function goToPreview() {
     await loadAdminInfo();
-    setStep("preview");
+    gotoStep("preview");
   }
 
   // ── Build mapped rows from parsed data ────────────────────────────────────
@@ -524,10 +538,10 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
       }
 
       setValidateResult(acc);
-      setStep("validate");
+      gotoStep("validate");
     } catch (e: any) {
       setValidateResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [(e as Error).message] });
-      setStep("validate");
+      gotoStep("validate");
     } finally {
       setImporting(false);
     }
@@ -557,20 +571,20 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
       }
 
       setResult(acc);
-      setStep("done");
+      gotoStep("done");
       if (createOppsOnImport && ((acc.insertedPersonIds?.length ?? 0) + (acc.insertedCompanyIds?.length ?? 0)) > 0) {
         handleCreateOpps(acc);
       }
     } catch (e: any) {
       setResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [(e as Error).message] });
-      setStep("done");
+      gotoStep("done");
     } finally {
       setImporting(false);
     }
   }
 
   function reset() {
-    setStep("upload");
+    gotoStep("upload");
     setParsed(null);
     setMapping({});
     setResult(null);
@@ -1154,7 +1168,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
           )}
 
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => setStep("map")} style={ghostBtn}>← Edit mapping</button>
+            <button onClick={() => gotoStep("map")} style={ghostBtn}>← Edit mapping</button>
             <button
               onClick={runValidate}
               disabled={importing}

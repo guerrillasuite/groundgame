@@ -1,6 +1,7 @@
 // app/crm/sitrep/missions/page.tsx
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
@@ -66,9 +67,11 @@ export default async function MissionsPage() {
   }));
 
   return (
-    <MissionsPanel
-      initialMissions={missionsWithStats}
-      currentUserId={crmUser.userId}
-    />
+    <Suspense>
+      <MissionsPanel
+        initialMissions={missionsWithStats}
+        currentUserId={crmUser.userId}
+      />
+    </Suspense>
   );
 }

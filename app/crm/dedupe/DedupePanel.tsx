@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -517,7 +518,18 @@ const TABS: { key: MergeType; label: string }[] = [
 ];
 
 export default function DedupePanel() {
-  const [tab, setTab] = useState<MergeType>("people");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [tab, setTab] = useState<MergeType>(
+    (searchParams.get("tab") as MergeType) || "people"
+  );
+
+  function switchTab(t: MergeType) {
+    setTab(t);
+    const p = new URLSearchParams(searchParams.toString());
+    t === "people" ? p.delete("tab") : p.set("tab", t);
+    router.replace(`?${p}`);
+  }
 
   const tabBtn = (t: MergeType): React.CSSProperties => ({
     ...ghostBtn,
@@ -538,7 +550,7 @@ export default function DedupePanel() {
 
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "1px solid var(--gg-border,#e5e7eb)", marginBottom: 4 }}>
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={tabBtn(t.key)}>{t.label}</button>
+          <button key={t.key} onClick={() => switchTab(t.key)} style={tabBtn(t.key)}>{t.label}</button>
         ))}
       </div>
 

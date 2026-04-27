@@ -4,6 +4,7 @@ import { hasFeature } from "@/lib/features";
 import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import { Suspense } from "react";
 import ComposeFlow, { type DispatchDomain } from "@/app/components/crm/dispatch/ComposeFlow";
 
 export const dynamic = "force-dynamic";
@@ -65,7 +66,7 @@ export default async function NewCampaignPage() {
         </Link>
       </div>
       <h1 style={{ margin: "0 0 24px" }}>New Campaign</h1>
-      <ComposeFlow domains={domains} walklists={walklists} />
+      <Suspense><ComposeFlow domains={domains} walklists={walklists} /></Suspense>
     </section>
   );
 }

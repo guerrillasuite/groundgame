@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 interface QuestionResult {
   question_id: string;
@@ -116,11 +117,22 @@ interface ResultsDashboardProps {
 }
 
 export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [stats, setStats] = useState<SurveyStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const [tab, setTab] = useState<"summary" | "responses">("summary");
+  const [tab, setTab] = useState<"summary" | "ind-response">(
+    (searchParams.get("tab") as "summary" | "ind-response") || "summary"
+  );
+
+  function switchTab(t: "summary" | "ind-response") {
+    setTab(t);
+    const p = new URLSearchParams(searchParams.toString());
+    if (t === "summary") p.delete("tab"); else p.set("tab", t);
+    router.replace(`?${p}`);
+  }
   const [responsesData, setResponsesData] = useState<ResponsesData | null>(null);
   const [responsesLoading, setResponsesLoading] = useState(false);
   const [responseSearch, setResponseSearch] = useState("");
@@ -171,7 +183,7 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
   }, [surveyId]);
 
   useEffect(() => {
-    if (tab === "responses") fetchResponses();
+    if (tab === "ind-response") fetchResponses();
   }, [tab]);
 
   const handleExport = async (format: 'csv' | 'json' = 'csv') => {
@@ -277,7 +289,7 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
     );
   }
 
-  const tabStyle = (t: "summary" | "responses") => ({
+  const tabStyle = (t: "summary" | "ind-response") => ({
     padding: "8px 18px",
     borderRadius: 8,
     fontWeight: 600,
@@ -364,12 +376,12 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
 
       {/* Tab switcher */}
       <div style={{ display: "flex", gap: 8 }}>
-        <button style={tabStyle("summary")} onClick={() => setTab("summary")}>Summary</button>
-        <button style={tabStyle("responses")} onClick={() => setTab("responses")}>Individual Responses</button>
+        <button style={tabStyle("summary")} onClick={() => switchTab("summary")}>Summary</button>
+        <button style={tabStyle("ind-response")} onClick={() => switchTab("ind-response")}>Individual Responses</button>
       </div>
 
       {/* ── Responses tab ── */}
-      {tab === "responses" && (
+      {tab === "ind-response" && (
         <div style={{ background: "var(--gg-card, white)", borderRadius: 12, border: "1px solid var(--gg-border, #e5e7eb)", overflow: "hidden" }}>
           {/* Search + count bar */}
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--gg-border, #e5e7eb)", display: "flex", alignItems: "center", gap: 12 }}>

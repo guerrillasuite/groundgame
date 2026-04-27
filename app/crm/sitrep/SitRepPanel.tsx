@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect, FormEvent } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -293,13 +293,29 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function SitRepPanel({ initialItems, missions, users, currentUserId, hasMissions, typeColors, typeNames }: Props) {
-  const pathname   = usePathname();
-  const isCalendar = !!pathname?.includes("/calendar");
+  const pathname     = usePathname();
+  const isCalendar   = !!pathname?.includes("/calendar");
+  const searchParams = useSearchParams();
+  const router       = useRouter();
 
   const [items, setItems]               = useState<SitRepItem[]>(initialItems);
-  const [scope, setScope]               = useState<"mine" | "all">("mine");
-  const [typeFilter, setTypeFilter]     = useState<"all" | "task" | "event" | "meeting">("all");
-  const [statusFilter, setStatusFilter] = useState<"active" | "done" | "all">("active");
+  const [scope, setScope]               = useState<"mine" | "all">(
+    (searchParams.get("scope") as "mine" | "all") || "mine"
+  );
+  const [typeFilter, setTypeFilter]     = useState<"all" | "task" | "event" | "meeting">(
+    (searchParams.get("type") as "all" | "task" | "event" | "meeting") || "all"
+  );
+  const [statusFilter, setStatusFilter] = useState<"active" | "done" | "all">(
+    (searchParams.get("status") as "active" | "done" | "all") || "active"
+  );
+
+  function pushFilters(newScope: "mine" | "all", newType: "all" | "task" | "event" | "meeting", newStatus: "active" | "done" | "all") {
+    const p = new URLSearchParams(searchParams.toString());
+    newScope === "mine" ? p.delete("scope") : p.set("scope", newScope);
+    newType === "all" ? p.delete("type") : p.set("type", newType);
+    newStatus === "active" ? p.delete("status") : p.set("status", newStatus);
+    router.replace(`?${p}`);
+  }
 
   const [quickTitle, setQuickTitle] = useState("");
   const [quickDate,  setQuickDate]  = useState("");
@@ -657,22 +673,22 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
       {/* ── Filter bar + List/Calendar toggle ── */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <div style={{ display: "flex", gap: 3 }}>
-          <FilterPill active={scope === "mine"} onClick={() => setScope("mine")}>Mine</FilterPill>
-          <FilterPill active={scope === "all"}  onClick={() => setScope("all")}>All</FilterPill>
+          <FilterPill active={scope === "mine"} onClick={() => { setScope("mine"); pushFilters("mine", typeFilter, statusFilter); }}>Mine</FilterPill>
+          <FilterPill active={scope === "all"}  onClick={() => { setScope("all");  pushFilters("all",  typeFilter, statusFilter); }}>All</FilterPill>
         </div>
         <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
         <div style={{ display: "flex", gap: 3 }}>
           {(["all","task","event","meeting"] as const).map((t) => (
-            <FilterPill key={t} active={typeFilter === t} onClick={() => setTypeFilter(t)}>
+            <FilterPill key={t} active={typeFilter === t} onClick={() => { setTypeFilter(t); pushFilters(scope, t, statusFilter); }}>
               {t === "all" ? "All Types" : t === "task" ? "Tasks" : t === "event" ? "Events" : "Meetings"}
             </FilterPill>
           ))}
         </div>
         <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
         <div style={{ display: "flex", gap: 3 }}>
-          <FilterPill active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>Active</FilterPill>
-          <FilterPill active={statusFilter === "done"}   onClick={() => setStatusFilter("done")}>Done</FilterPill>
-          <FilterPill active={statusFilter === "all"}    onClick={() => setStatusFilter("all")}>All</FilterPill>
+          <FilterPill active={statusFilter === "active"} onClick={() => { setStatusFilter("active"); pushFilters(scope, typeFilter, "active"); }}>Active</FilterPill>
+          <FilterPill active={statusFilter === "done"}   onClick={() => { setStatusFilter("done");   pushFilters(scope, typeFilter, "done");   }}>Done</FilterPill>
+          <FilterPill active={statusFilter === "all"}    onClick={() => { setStatusFilter("all");    pushFilters(scope, typeFilter, "all");    }}>All</FilterPill>
         </div>
 
         {/* List / Calendar toggle */}
