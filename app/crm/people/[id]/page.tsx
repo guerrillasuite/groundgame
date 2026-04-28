@@ -55,7 +55,7 @@ export default async function PersonDetail({ params }: Params) {
       education_level, marital_status, religion,
       occupation, occupation_title, company_name, income_range, net_worth_range,
       length_of_residence, moved_from_state, meta_json,
-      tenant_people!inner(tenant_id, notes, custom_data, contact_types, tags)`)
+      tenant_people!inner(tenant_id, notes, custom_data, contact_types)`)
     .eq("id", personId)
     .eq("tenant_people.tenant_id", tenant.id)
     .single();
@@ -74,14 +74,21 @@ export default async function PersonDetail({ params }: Params) {
   const rawContactTypes = (person as any).tenant_people?.[0]?.contact_types ?? (person as any).tenant_people?.contact_types;
   const currentContactTypes: string[] = Array.isArray(rawContactTypes) ? rawContactTypes : (rawContactTypes ? [rawContactTypes] : []);
 
-  // Tags
-  const rawTags = (person as any).tenant_people?.[0]?.tags ?? (person as any).tenant_people?.tags;
-  const currentTagIds: string[] = Array.isArray(rawTags) ? rawTags : [];
+  // Tags — separate queries so a missing column (pre-migration) doesn't break the page
+  const { data: tpTagRow } = await sb
+    .from("tenant_people")
+    .select("tags")
+    .eq("tenant_id", tenant.id)
+    .eq("person_id", personId)
+    .maybeSingle()
+    .catch(() => ({ data: null }));
+  const currentTagIds: string[] = Array.isArray((tpTagRow as any)?.tags) ? (tpTagRow as any).tags : [];
   const { data: allTagsData } = await sb
     .from("tenant_tags")
     .select("id, name")
     .eq("tenant_id", tenant.id)
-    .order("name");
+    .order("name")
+    .catch(() => ({ data: null }));
   const allTags: { id: string; name: string }[] = Array.isArray(allTagsData) ? [...allTagsData] : [];
 
   // 4) Household — try junction table first, then direct field
