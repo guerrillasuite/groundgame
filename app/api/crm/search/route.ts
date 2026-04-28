@@ -367,7 +367,8 @@ export async function POST(request: NextRequest) {
       const col = f.field === "tp_created_at" ? "created_at" : "updated_at";
       let q = sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
       q = applyFilter(q, col, f.op, f.value, "timestamp");
-      const { data: tpRows } = await q;
+      const { data: tpRows, error: tpErr } = await q;
+      if (tpErr) continue;
       const ids = (tpRows ?? []).map((r: any) => r.person_id);
       if (finalPersonIdFilter) {
         const set = new Set(ids);
@@ -387,7 +388,6 @@ export async function POST(request: NextRequest) {
         // Any completed survey
         const { data: sessRows } = await sb
           .from("survey_sessions").select("crm_contact_id")
-          .eq("tenant_id", tenant.id)
           .not("completed_at", "is", null);
         const allCompletedIds = [...new Set((sessRows ?? []).map((r: any) => r.crm_contact_id).filter(Boolean))];
         if (f.op === "not_empty") {
@@ -406,7 +406,6 @@ export async function POST(request: NextRequest) {
         if (surveyIds.length === 0) { if (f.op === "in_list") return NextResponse.json([]); continue; }
         const { data: sessRows } = await sb
           .from("survey_sessions").select("crm_contact_id")
-          .eq("tenant_id", tenant.id)
           .in("survey_id", surveyIds)
           .not("completed_at", "is", null);
         const completedIds = [...new Set((sessRows ?? []).map((r: any) => r.crm_contact_id).filter(Boolean))];
