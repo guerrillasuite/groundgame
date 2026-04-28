@@ -505,12 +505,24 @@ export async function POST(request: NextRequest) {
             return q;
           } : undefined
         );
+      } else if (directFilters.length > 0) {
+        // directFilters with no ID set — fetchAll+inner join caps at 1000.
+        // Pre-load all tenant person IDs, then queryInChunks handles the rest.
+        const allTpRows = await fetchAll(() =>
+          sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id)
+        );
+        const allIds = allTpRows.map((r: any) => r.person_id);
+        people = await queryInChunks(
+          sb, "people", PEOPLE_SELECT_BARE, "id", allIds,
+          (q: any) => {
+            for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
+            return q;
+          }
+        );
       } else {
-        people = await fetchAll(() => {
-          let q = sb.from("people").select(PEOPLE_SELECT_FULL).eq("tenant_people.tenant_id", tenant.id);
-          for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
-          return q;
-        });
+        people = await fetchAll(() =>
+          sb.from("people").select(PEOPLE_SELECT_FULL).eq("tenant_people.tenant_id", tenant.id)
+        );
       }
     } catch (err: any) {
       return NextResponse.json({ error: err.message }, { status: 500 });
