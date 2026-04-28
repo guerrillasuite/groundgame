@@ -54,8 +54,8 @@ export async function AttentionNeeded({ tenantId }: { tenantId: string }) {
       padding: "16px 20px",
       boxShadow: "inset 3px 0 0 0 #ef4444",
     }}>
-      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: S.dim, margin: "0 0 10px" }}>
-        ⚠ Attention Needed
+      <p style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: S.dim, margin: "0 0 10px" }}>
+        Attention Needed
       </p>
       <div style={{ display: "flex", flexDirection: "column" }}>
         {overdueItems.length > 0 && (

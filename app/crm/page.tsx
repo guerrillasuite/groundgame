@@ -131,7 +131,7 @@ export default async function CrmHome() {
 
         {adminWidgets.pipeline && (
           <Suspense fallback={<SectionSkeleton rows={1} height={110} />}>
-            <CollapsibleCard title="🎯 Opportunity Pipeline" accentColor="#6366f1" viewAllHref="/crm/opportunities" storageKey="admin-pipeline" padding="16px 20px 20px">
+            <CollapsibleCard title="Opportunity Pipeline" accentColor="#6366f1" viewAllHref="/crm/opportunities" storageKey="admin-pipeline" padding="16px 20px 20px">
               <PipelineKanban tenantId={tenant.id} />
             </CollapsibleCard>
           </Suspense>
@@ -139,7 +139,7 @@ export default async function CrmHome() {
 
         {hasNews && adminWidgets.intel_brief && (
           <Suspense fallback={<SectionSkeleton rows={4} />}>
-            <CollapsibleCard title="📡 Intel Brief" accentColor="#0ea5e9" viewAllHref="/crm/intel-brief" storageKey="admin-intel">
+            <CollapsibleCard title="Intel Brief" accentColor="#0ea5e9" viewAllHref="/crm/intel-brief" storageKey="admin-intel">
               <IntelBriefWidget tenantId={tenant.id} />
             </CollapsibleCard>
           </Suspense>
@@ -147,7 +147,7 @@ export default async function CrmHome() {
 
         {adminWidgets.active_lists && (
           <Suspense fallback={<SectionSkeleton rows={6} height={42} />}>
-            <CollapsibleCard title="📋 Active Lists" accentColor="#10b981" viewAllHref="/crm/lists" storageKey="admin-lists" padding="0 0 8px">
+            <CollapsibleCard title="Active Lists" accentColor="#10b981" viewAllHref="/crm/lists" storageKey="admin-lists" padding="0 0 8px">
               <ActiveLists tenantId={tenant.id} />
             </CollapsibleCard>
           </Suspense>
@@ -163,14 +163,14 @@ export default async function CrmHome() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           {adminWidgets.recent_activity && (
             <Suspense fallback={<SectionSkeleton rows={8} height={32} />}>
-              <CollapsibleCard title="⚡ Recent Activity" accentColor="#64748b" viewAllHref="/crm/stops" storageKey="admin-activity">
+              <CollapsibleCard title="Recent Activity" accentColor="#64748b" viewAllHref="/crm/stops" storageKey="admin-activity">
                 <RecentActivity tenantId={tenant.id} settings={settings} />
               </CollapsibleCard>
             </Suspense>
           )}
           {adminWidgets.sitrep && (
             <Suspense fallback={<SectionSkeleton rows={8} height={32} />}>
-              <CollapsibleCard title="📋 SitRep" accentColor="#3b82f6" viewAllHref="/crm/sitrep" storageKey="admin-sitrep">
+              <CollapsibleCard title="SitRep" accentColor="#3b82f6" viewAllHref="/crm/sitrep" storageKey="admin-sitrep">
                 <SitRepWidget tenantId={tenant.id} settings={settings} />
               </CollapsibleCard>
             </Suspense>
@@ -193,7 +193,7 @@ export default async function CrmHome() {
 
       {fieldWidgets.my_lists && (
         <Suspense fallback={<SectionSkeleton rows={5} height={48} />}>
-          <CollapsibleCard title="📋 My Lists" accentColor="#10b981" viewAllHref="/crm/lists" storageKey="field-lists" padding="0 0 8px">
+          <CollapsibleCard title="My Lists" accentColor="#10b981" viewAllHref="/crm/lists" storageKey="field-lists" padding="0 0 8px">
             <FieldLists tenantId={tenant.id} userId={crmUser.userId} />
           </CollapsibleCard>
         </Suspense>
@@ -202,14 +202,14 @@ export default async function CrmHome() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {fieldWidgets.sitrep && (
           <Suspense fallback={<SectionSkeleton rows={6} height={32} />}>
-            <CollapsibleCard title="📋 My SitRep" accentColor="#3b82f6" viewAllHref="/crm/sitrep" storageKey="field-sitrep">
+            <CollapsibleCard title="My SitRep" accentColor="#3b82f6" viewAllHref="/crm/sitrep" storageKey="field-sitrep">
               <FieldSitRepWidget tenantId={tenant.id} userId={crmUser.userId} />
             </CollapsibleCard>
           </Suspense>
         )}
         {fieldWidgets.recent_stops && (
           <Suspense fallback={<SectionSkeleton rows={6} height={32} />}>
-            <CollapsibleCard title="⚡ My Stops" accentColor="#64748b" storageKey="field-stops">
+            <CollapsibleCard title="My Stops" accentColor="#64748b" storageKey="field-stops">
               <FieldRecentStops tenantId={tenant.id} userId={crmUser.userId} settings={settings} />
             </CollapsibleCard>
           </Suspense>

@@ -57,7 +57,7 @@ export function CollapsibleCard({
         userSelect: "none",
       }} onClick={toggle}>
         <span style={{
-          fontSize: 11, fontWeight: 700, textTransform: "uppercase",
+          fontSize: 13, fontWeight: 700, textTransform: "uppercase",
           letterSpacing: "0.07em", color: S.dim, flex: 1,
         }}>
           {title}

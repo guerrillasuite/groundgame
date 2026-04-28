@@ -39,8 +39,8 @@ export async function SurveyProgress({ tenantId }: { tenantId: string }) {
         padding: "16px 20px", cursor: "pointer",
         borderBottom: `1px solid ${S.border}`,
       }}>
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: S.dim, flex: 1 }}>
-          📊 Survey Progress
+        <span style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: S.dim, flex: 1 }}>
+          Survey Progress
         </span>
         <Link href="/crm/survey" style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", flexShrink: 0 }}>
           View all →
