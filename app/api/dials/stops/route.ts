@@ -25,21 +25,23 @@ export async function POST(req: NextRequest) {
   const { id: tenantId } = await getTenant();
   const sb = makeSb(tenantId);
 
-  // Optional person info update
+  // Optional person info update (best-effort)
   if (body.person_update?.id) {
     const pu = body.person_update;
-    await sb.rpc("gs_update_person_v1", {
-      _tenant_id: tenantId,
-      _person: {
-        id: pu.id,
-        first_name: pu.first_name ?? null,
-        last_name: pu.last_name ?? null,
-        occupation: pu.occupation ?? null,
-        employer: pu.employer ?? null,
-        phone: pu.phone ?? null,
-        email: pu.email ?? null,
-      },
-    }).catch(() => {}); // Non-fatal — person update is best-effort
+    try {
+      await sb.rpc("gs_update_person_v1", {
+        _tenant_id: tenantId,
+        _person: {
+          id: pu.id,
+          first_name: pu.first_name ?? null,
+          last_name: pu.last_name ?? null,
+          occupation: pu.occupation ?? null,
+          employer: pu.employer ?? null,
+          phone: pu.phone ?? null,
+          email: pu.email ?? null,
+        },
+      });
+    } catch {}
   }
 
   // Create stop
@@ -66,23 +68,25 @@ export async function POST(req: NextRequest) {
     (Array.isArray(stopRows) ? stopRows[0]?.stop_id ?? stopRows[0]?.id : (stopRows as any)?.stop_id ?? (stopRows as any)?.id) ||
     null;
 
-  // Optional opportunity
+  // Optional opportunity (best-effort)
   if (stopId && body.opportunity && (body.result === "contact_made" || body.result === "connected" || body.result === "follow_up")) {
     const opp = body.opportunity;
-    await sb.rpc("gs_create_opportunity_v2", {
-      _tenant_id: tenantId,
-      _payload: {
-        stop_id: stopId,
-        contact_person_id: body.person_id ?? null,
-        title: opp.title ?? "Call contact",
-        stage: opp.stage ?? "new",
-        amount_cents: opp.amount_cents ?? null,
-        due_at: opp.due_at ?? null,
-        priority: opp.priority ?? null,
-        description: opp.description ?? null,
-        source: "dials",
-      },
-    }).catch(() => {}); // Non-fatal
+    try {
+      await sb.rpc("gs_create_opportunity_v2", {
+        _tenant_id: tenantId,
+        _payload: {
+          stop_id: stopId,
+          contact_person_id: body.person_id ?? null,
+          title: opp.title ?? "Call contact",
+          stage: opp.stage ?? "new",
+          amount_cents: opp.amount_cents ?? null,
+          due_at: opp.due_at ?? null,
+          priority: opp.priority ?? null,
+          description: opp.description ?? null,
+          source: "dials",
+        },
+      });
+    } catch {}
   }
 
   return NextResponse.json({ ok: true, stop_id: stopId });
