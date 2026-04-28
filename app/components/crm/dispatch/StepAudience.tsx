@@ -73,6 +73,7 @@ const SIMPLE_FIELDS = [
   { key: "first_name",  label: "First Name",           group: "Person" },
   { key: "last_name",   label: "Last Name",            group: "Person" },
   { key: "contact_type",label: "Contact Type",         group: "Person" },
+  { key: "tags",        label: "Tags",                 group: "Person" },
   { key: "party",       label: "Party",                group: "Person" },
   { key: "votes_history.2024_presidential_general", label: "Voted 2024 General",  group: "Voting" },
   { key: "votes_history.2024_presidential_primary",  label: "Voted 2024 Primary",  group: "Voting" },
@@ -153,6 +154,7 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
   const [peopleSchema, setPeopleSchema] = useState<ColumnDef[]>(FALLBACK_PEOPLE);
   const [hhSchema, setHhSchema] = useState<ColumnDef[]>(FALLBACK_HH);
   const [contactTypeOpts, setContactTypeOpts] = useState<string[]>([]);
+  const [tagOpts, setTagOpts] = useState<string[]>([]);
 
   // ── Filter state ──────────────────────────────────────────────────────────
   // peopleFilters drives both simple and advanced People section
@@ -182,12 +184,18 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
   const [selectorPage, setSelectorPage] = useState(0);
   const [selectorSearch, setSelectorSearch] = useState("");
 
-  // ── Fetch contact types on mount ──────────────────────────────────────────
+  // ── Fetch contact types and tags on mount ────────────────────────────────
   useEffect(() => {
     fetch("/api/crm/settings/contact-types")
       .then((r) => r.json())
       .then((types: Array<{ key: string }>) => {
         if (Array.isArray(types)) setContactTypeOpts(types.map((t) => t.key));
+      })
+      .catch(() => {});
+    fetch("/api/crm/tags")
+      .then((r) => r.json())
+      .then((tags: Array<{ name: string }>) => {
+        if (Array.isArray(tags)) setTagOpts(tags.map((t) => t.name).filter(Boolean));
       })
       .catch(() => {});
   }, []);
@@ -396,7 +404,12 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
                     <div>
                       {i === 0 && <label style={labelStyle}>Field</label>}
                       <select style={{ ...inputStyle, cursor: "pointer" }} value={f.field}
-                        onChange={(e) => updateFilter(f.id, { field: e.target.value, value: "" })}>
+                        onChange={(e) => {
+                          const newField = e.target.value;
+                          const patch: Partial<FilterRow> = { field: newField, value: "" };
+                          if (newField === "tags") patch.op = "in_list" as any;
+                          updateFilter(f.id, patch);
+                        }}>
                         {SIMPLE_GROUPS.map((group) => (
                           <optgroup key={group} label={group}>
                             {SIMPLE_FIELDS.filter((ff) => ff.group === group).map((ff) => (
@@ -408,17 +421,59 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
                     </div>
                     <div>
                       {i === 0 && <label style={labelStyle}>Condition</label>}
-                      <select style={{ ...inputStyle, cursor: "pointer" }} value={f.op}
-                        onChange={(e) => updateFilter(f.id, { op: e.target.value as any })}>
-                        {SIMPLE_OPS.map((op) => (
-                          <option key={op.value} value={op.value}>{op.label}</option>
-                        ))}
-                      </select>
+                      {f.field === "tags" ? (
+                        <select style={{ ...inputStyle, cursor: "pointer" }} value={f.op}
+                          onChange={(e) => updateFilter(f.id, { op: e.target.value as any })}>
+                          <option value="in_list">Has any of</option>
+                          <option value="not_in_list">Has none of</option>
+                          <option value="not_empty">Has any tag</option>
+                          <option value="is_empty">Has no tags</option>
+                        </select>
+                      ) : (
+                        <select style={{ ...inputStyle, cursor: "pointer" }} value={f.op}
+                          onChange={(e) => updateFilter(f.id, { op: e.target.value as any })}>
+                          {SIMPLE_OPS.map((op) => (
+                            <option key={op.value} value={op.value}>{op.label}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                     <div>
                       {i === 0 && <label style={labelStyle}>Value</label>}
                       {SIMPLE_NO_VALUE_OPS.has(f.op) ? (
                         <div style={{ ...inputStyle, color: "rgb(var(--text-300))", fontStyle: "italic" }}>(no value)</div>
+                      ) : f.field === "tags" && (f.op === "in_list" || f.op === "not_in_list") ? (
+                        tagOpts.length === 0 ? (
+                          <div style={{ ...inputStyle, fontSize: 12, color: "rgb(var(--text-300))", fontStyle: "italic" }}>
+                            No tags created yet
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "4px 0" }}>
+                            {tagOpts.map((tag) => {
+                              const selected = new Set(f.value.split(",").map((v) => v.trim()).filter(Boolean));
+                              const on = selected.has(tag);
+                              const isExclude = f.op === "not_in_list";
+                              const activeColor = isExclude ? "#dc2626" : "rgb(var(--primary-600))";
+                              return (
+                                <button key={tag} type="button"
+                                  onClick={() => {
+                                    const next = new Set(selected);
+                                    if (on) next.delete(tag); else next.add(tag);
+                                    updateFilter(f.id, { value: [...next].join(",") });
+                                  }}
+                                  style={{
+                                    padding: "3px 9px", borderRadius: 4, fontSize: 12, cursor: "pointer",
+                                    border: `1px solid ${on ? activeColor : "rgb(var(--border-600))"}`,
+                                    background: on ? (isExclude ? "rgba(220,38,38,0.1)" : "rgba(37,99,235,0.1)") : "rgb(var(--card-700))",
+                                    color: on ? activeColor : "rgb(var(--text-300))",
+                                    fontWeight: on ? 600 : 400,
+                                  }}>
+                                  {tag}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )
                       ) : (() => {
                         const enumOpts = f.field === "contact_type"
                           ? contactTypeOpts
@@ -478,7 +533,7 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
                 onChange={(rows) => { setPeopleFilters(rows); syncAll(rows, hhFilters); }}
                 defaultOpen
                 hideJoined={false}
-                dynamicEnumOpts={{ contact_type: contactTypeOpts }}
+                dynamicEnumOpts={{ contact_type: contactTypeOpts, tags: tagOpts }}
               />
               <FilterSection
                 title="Household"

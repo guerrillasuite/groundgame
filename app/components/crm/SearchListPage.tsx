@@ -90,15 +90,24 @@ const NUMERIC_TYPES = new Set([
 
 function isNumericType(type: string) { return NUMERIC_TYPES.has(type); }
 
+const TAG_ARRAY_OPS: { value: FilterOp; label: string }[] = [
+  { value: "in_list",     label: "has any of" },
+  { value: "not_in_list", label: "has none of" },
+  { value: "is_empty",    label: "has no tags" },
+  { value: "not_empty",   label: "has any tag" },
+];
+
 function opsForType(type: string) {
   if (type === "boolean") return BOOL_OPS;
   if (isNumericType(type)) return NUM_OPS;
+  if (type === "tag_array") return TAG_ARRAY_OPS;
   return TEXT_OPS;
 }
 
 function defaultOp(type: string): FilterOp {
   if (type === "boolean") return "is_true";
   if (isNumericType(type)) return "equals";
+  if (type === "tag_array") return "in_list";
   return "contains";
 }
 
@@ -127,10 +136,14 @@ export default function SearchListPage({
   contactTypeOptions,
   defaultContent,
 }: Props) {
-  // Merge dynamic contact type options into ENUM_OPTIONS at render time
-  const enumOptions = contactTypeOptions?.length
-    ? { ...ENUM_OPTIONS, contact_type: contactTypeOptions }
-    : ENUM_OPTIONS;
+  const [tagOpts, setTagOpts] = useState<string[]>([]);
+
+  // Merge dynamic contact type options and tag options into ENUM_OPTIONS at render time
+  const enumOptions: Record<string, string[]> = {
+    ...ENUM_OPTIONS,
+    ...(contactTypeOptions?.length ? { contact_type: contactTypeOptions } : {}),
+    ...(tagOpts.length ? { tags: tagOpts } : {}),
+  };
 
   // ── State ──
   const [query, setQuery] = useState("");
@@ -166,17 +179,22 @@ export default function SearchListPage({
   // ── Load schema for filter mode ──
   useEffect(() => {
     if (mode !== "filter" || !target || schema.length > 0) return;
-    fetch(`/api/crm/schema?table=${target}`)
-      .then((r) => r.json())
-      .then((cols: SchemaCol[]) => {
-        setSchema(cols);
-        if (cols.length > 0) {
+    const fetches: Promise<any>[] = [fetch(`/api/crm/schema?table=${target}`).then((r) => r.json())];
+    if (target === "people") fetches.push(fetch("/api/crm/tags").then((r) => r.json()).catch(() => []));
+    Promise.all(fetches)
+      .then(([cols, tags]) => {
+        const schemaCols = cols as SchemaCol[];
+        setSchema(schemaCols);
+        if (target === "people" && Array.isArray(tags)) {
+          setTagOpts(tags.map((t: any) => t.name).filter(Boolean));
+        }
+        if (schemaCols.length > 0) {
           setFilterRows([{
             id: ++_rowId,
-            field: cols[0].column,
-            op: defaultOp(cols[0].data_type),
+            field: schemaCols[0].column,
+            op: defaultOp(schemaCols[0].data_type),
             value: "",
-            data_type: cols[0].data_type,
+            data_type: schemaCols[0].data_type,
           }]);
         }
       })

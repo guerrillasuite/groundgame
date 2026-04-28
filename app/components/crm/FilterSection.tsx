@@ -59,15 +59,24 @@ export const NUMERIC_TYPES = new Set([
 
 export function isNumericType(dt: string) { return NUMERIC_TYPES.has(dt); }
 
+export const TAG_ARRAY_OPS: { value: FilterOp; label: string }[] = [
+  { value: "in_list",     label: "has any of" },
+  { value: "not_in_list", label: "has none of" },
+  { value: "is_empty",    label: "has no tags" },
+  { value: "not_empty",   label: "has any tag" },
+];
+
 export function opsForType(dt: string): { value: FilterOp; label: string }[] {
   if (dt === "boolean") return BOOL_OPS;
   if (isNumericType(dt)) return NUM_OPS;
+  if (dt === "tag_array") return TAG_ARRAY_OPS;
   return TEXT_OPS;
 }
 
 export function defaultOp(dt: string): FilterOp {
   if (dt === "boolean") return "is_true";
   if (isNumericType(dt)) return "equals";
+  if (dt === "tag_array") return "in_list";
   return "contains";
 }
 
