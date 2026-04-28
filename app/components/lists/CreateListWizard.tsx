@@ -223,6 +223,8 @@ export default function CreateListWizard() {
 
   // Opportunity stages (for dynamic stage chips)
   const [stages, setStages] = useState<{ key: string; label: string }[]>([]);
+  const [contactTypeOpts, setContactTypeOpts] = useState<string[]>([]);
+  const [tagOpts, setTagOpts] = useState<string[]>([]);
 
   // Per-section filter state
   const [primaryFilters, setPrimaryFilters] = useState<FilterRow[]>(() => [
@@ -288,12 +290,20 @@ export default function CreateListWizard() {
     }
   }
 
-  // Load all schemas on mount
+  // Load all schemas, stages, contact types, and tags on mount
   useEffect(() => {
     loadAllSchemas();
     fetch("/api/crm/opportunities/stages")
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setStages(d); })
+      .catch(() => {});
+    fetch("/api/crm/settings/contact-types")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setContactTypeOpts(d.map((t: any) => t.key).filter(Boolean)); })
+      .catch(() => {});
+    fetch("/api/crm/tags")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setTagOpts(d.map((t: any) => t.name).filter(Boolean)); })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -589,7 +599,7 @@ export default function CreateListWizard() {
               {/* ── People target ── */}
               {target === "people" && (
                 <>
-                  <FilterSection title="People" filters={primaryFilters} schema={schemas.people ?? []} onChange={setPrimaryFilters} defaultOpen hideJoined />
+                  <FilterSection title="People" filters={primaryFilters} schema={schemas.people ?? []} onChange={setPrimaryFilters} defaultOpen hideJoined dynamicEnumOpts={{ contact_type: contactTypeOpts, tags: tagOpts }} />
                   <FilterSection title="Location" filters={locFilters} schema={schemas.locations ?? []} onChange={setLocFilters} />
                   <FilterSection title="Household" filters={hhFilters} schema={schemas.households ?? []} onChange={setHhFilters} hideJoined />
                   <FilterSection
