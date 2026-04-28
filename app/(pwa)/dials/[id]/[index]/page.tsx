@@ -27,11 +27,6 @@ type Person = {
   notes?: string | null;
 };
 
-// 🔒 TEMP: hard-code tenant for all writes in test env.
-// Set NEXT_PUBLIC_TEST_TENANT_ID in your env, or replace the default literal here.
-const FORCED_TENANT_ID =
-  process.env.NEXT_PUBLIC_TEST_TENANT_ID ?? "00000000-0000-0000-0000-000000000000";
-
 /** Server-verified tenant id (for reads). */
 async function getTenantIdFromServer(): Promise<string | null> {
   try {
@@ -489,18 +484,31 @@ export default function CallScreen({ params }: { params: { id: string; index: st
     try {
       const effectiveWalklistId = await resolveEffectiveWalklistId(params.id);
 
-      // 🔒 Use ONE forced tenant value for all writes
-      const tenantId = FORCED_TENANT_ID;
-
       const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id ?? '00000000-0000-0000-0000-000000000000';
+      const userId = auth?.user?.id ?? null;
       const duration = startedAt ? Math.round((Date.now() - startedAt) / 1000) : null;
 
-      // 1) Update person (skip for company items)
-      if (p.person_id) {
-        const { error: updErr } = await supabase.rpc('gs_update_person_v1', {
-          _tenant_id: tenantId,
-          _person: {
+      const opportunity = mkOpp ? {
+        title: oppTitle.trim() || `Follow-up: ${fullName}`,
+        stage: oppStage || null,
+        amount_cents: oppValue === '' ? null : Math.round(Number(oppValue) * 100),
+        due_at: oppDue ? new Date(`${oppDue}T12:00:00`).toISOString() : null,
+        priority: oppPriority || null,
+        description: oppNotes || null,
+      } : null;
+
+      const res = await fetch('/api/dials/stops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walklist_id: effectiveWalklistId,
+          walklist_item_id: p.walklist_item_id ?? null,
+          person_id: p.person_id ?? null,
+          user_id: userId,
+          result,
+          notes: notes || (p.company_name ? `Company: ${p.company_name}` : '') || null,
+          duration_sec: duration,
+          person_update: p.person_id ? {
             id: p.person_id,
             first_name: p.first_name,
             last_name: p.last_name,
@@ -508,72 +516,14 @@ export default function CallScreen({ params }: { params: { id: string; index: st
             employer: p.employer,
             phone: p.phone,
             email: p.email,
-          },
-        });
-        if (updErr) throw updErr;
-      }
-
-      // 2) Create stop — include forced tenant and effective ids
-      const { data: stopData, error: stopErr } = await supabase.rpc('gs_create_stop_v1', {
-        _tenant_id: tenantId,
-        _payload: {
-          tenant_id: tenantId,
-          walklist_id: effectiveWalklistId,
-          walklist_item_id: p.walklist_item_id ?? null,
-          person_id: p.person_id ?? null,
-          user_id: userId,
-          channel: 'call',
-          result,
-          notes: notes || (p.company_name ? `Company: ${p.company_name}` : ''),
-          duration_sec: duration,
-        },
+          } : null,
+          opportunity,
+        }),
       });
-      if (stopErr) throw stopErr;
 
-      // Normalize stopId from any return shape
-      let stopId: string | null =
-        (Array.isArray(stopData) ? stopData[0]?.stop_id ?? stopData[0]?.id : null) ||
-        (stopData && (stopData.stop_id ?? stopData.id)) ||
-        null;
-
-      // Fallback: last stop for this person/list/user (no .single/.maybeSingle)
-      if (!stopId) {
-        const recent = await supabase
-          .from('stops')
-          .select('id')
-          .eq('walklist_id', effectiveWalklistId)
-          .eq('person_id', p.person_id)
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(1);
-        if (recent.error) throw recent.error;
-        stopId = recent.data?.[0]?.id ?? null;
-      }
-      if (!stopId) throw new Error('Could not resolve stop id');
-
-      // 3) Optional opportunity — use the SAME forced tenant
-      if (mkOpp && stopId) {
-        const title = oppTitle.trim() || `Follow-up: ${fullName}`;
-        const amountCents = oppValue === '' ? null : Math.round(Number(oppValue) * 100);
-        const dueAt = oppDue ? new Date(`${oppDue}T12:00:00`) : null;
-
-        const { error: oppErr } = await supabase.rpc('gs_create_opportunity_v1', {
-          _tenant_id: tenantId,
-          _payload: {
-            tenant_id: tenantId,
-            stop_id: stopId,
-            person_id: p.person_id,
-            title,
-            stage: oppStage || null,
-            amount_cents: amountCents,
-            due_at: dueAt ? dueAt.toISOString() : null,
-            priority: oppPriority || null,
-            description: oppNotes || null,
-            source: 'walklist',
-          },
-        });
-        if (oppErr) throw oppErr;
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to save stop');
+      const stopId: string | null = data.stop_id ?? null;
 
       // Auto-create callback reminder if date was provided
       if (result === 'call_back' && callbackDate) {

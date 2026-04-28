@@ -275,7 +275,7 @@ export default function KnockSurvey({
 
   async function goNext() {
     setSaving(true);
-    await saveAnswer(q.id, currentVal, textInputs.get(q.id));
+    if (currentVal) await saveAnswer(q.id, currentVal, textInputs.get(q.id));
     setSaving(false);
     if (isLast) {
       await completeSurvey();

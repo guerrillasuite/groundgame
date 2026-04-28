@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { markVisited, insertPendingStop, markStopSynced, markStopError } from "@/lib/db/doors";
 
@@ -30,8 +30,12 @@ export async function POST(req: NextRequest) {
     photo_url: body.photo_url ?? null,
   });
 
-  // Try Supabase sync immediately
-  const supabase = getSupabaseServer({ writable: true });
+  // Try Supabase sync immediately (service role key required — stops table is RLS-protected)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
+  );
   let stopId: string | null = null;
 
   try {

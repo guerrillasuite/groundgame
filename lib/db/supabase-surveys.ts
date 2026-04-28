@@ -450,30 +450,43 @@ export async function completeSession(params: {
 
 // ── Results ───────────────────────────────────────────────────────────────────
 
+async function fetchAllRows(buildQuery: () => any, chunkSize = 1000): Promise<any[]> {
+  const rows: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data } = await buildQuery().range(from, from + chunkSize - 1);
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < chunkSize) break;
+    from += chunkSize;
+  }
+  return rows;
+}
+
 export async function getSurveyResults(surveyId: string, tenantId: string) {
   const sb = getServiceClient(tenantId);
 
-  const [
-    { data: survey },
-    { data: sessions },
-    { data: questions },
-    { data: responses },
-  ] = await Promise.all([
+  const [{ data: survey }, { data: questions }] = await Promise.all([
     sb.from("surveys").select("id, title, description").eq("id", surveyId).single(),
-    sb.from("survey_sessions").select("completed_at").eq("survey_id", surveyId),
     sb.from("questions").select("id, question_text, question_type, order_index").eq("survey_id", surveyId).order("order_index"),
-    sb.from("responses").select("question_id, answer_value, answer_text").eq("survey_id", surveyId),
   ]);
 
   if (!survey) return null;
 
-  const totalStarted = sessions?.length ?? 0;
-  const totalCompleted = sessions?.filter((s) => s.completed_at).length ?? 0;
+  const sessions = await fetchAllRows(() =>
+    sb.from("survey_sessions").select("completed_at").eq("survey_id", surveyId)
+  );
+  const responses = await fetchAllRows(() =>
+    sb.from("responses").select("question_id, answer_value, answer_text").eq("survey_id", surveyId)
+  );
+
+  const totalStarted = sessions.length;
+  const totalCompleted = sessions.filter((s: any) => s.completed_at).length;
 
   const MULTI_SELECT_TYPES = new Set(["multiple_select", "multiple_select_with_other"]);
 
   const questionResults = (questions ?? []).map((q) => {
-    const qResponses = (responses ?? []).filter((r) => r.question_id === q.id);
+    const qResponses = responses.filter((r: any) => r.question_id === q.id);
     const total = qResponses.length;
     const isMultiSelect = MULTI_SELECT_TYPES.has(q.question_type);
     const counts = new Map<string, number>();
