@@ -112,6 +112,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/survey/response");
   const isPwaApi =
     pathname.startsWith("/api/doors") ||
+    pathname.startsWith("/api/dials") ||
     (pathname.startsWith("/api/survey") && !isPublicSurveySubmit) ||
     pathname.startsWith("/api/contacts");
 

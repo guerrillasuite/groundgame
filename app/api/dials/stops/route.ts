@@ -13,6 +13,7 @@ function makeSb(tenantId: string) {
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json().catch(() => null);
   if (!body?.walklist_id || !body?.result) {
     return NextResponse.json(
@@ -85,4 +86,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, stop_id: stopId });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "Internal server error" }, { status: 500 });
+  }
 }

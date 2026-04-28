@@ -521,8 +521,9 @@ export default function CallScreen({ params }: { params: { id: string; index: st
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to save stop');
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
       const stopId: string | null = data.stop_id ?? null;
 
       // Auto-create callback reminder if date was provided
