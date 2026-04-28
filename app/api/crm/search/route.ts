@@ -207,11 +207,12 @@ export async function POST(request: NextRequest) {
   }
 
   // ── PEOPLE ───────────────────────────────────────────────────────────────
-  const TP_VIRTUAL_FIELDS = new Set(["tags", "tp_created_at", "tp_updated_at", "completed_survey"]);
+  const TP_VIRTUAL_FIELDS = new Set(["tags", "tp_created_at", "last_stop_date", "completed_survey"]);
 
   if (target === "people") {
     const tagFilters       = filters.filter((f) => f.field === "tags");
-    const tpDateFilters    = filters.filter((f) => f.field === "tp_created_at" || f.field === "tp_updated_at");
+    const tpDateFilters    = filters.filter((f) => f.field === "tp_created_at");
+    const stopFilters      = filters.filter((f) => f.field === "last_stop_date");
     const surveyFilters    = filters.filter((f) => f.field === "completed_survey");
     const directFilters    = filters.filter((f) => !TP_VIRTUAL_FIELDS.has(f.field) && !LOCATION_JOIN_FIELDS.has(f.field) && !HOUSEHOLD_JOIN_FIELDS.has(f.field));
     const locationFilters  = filters.filter((f) => LOCATION_JOIN_FIELDS.has(f.field));
@@ -362,11 +363,10 @@ export async function POST(request: NextRequest) {
       if (finalPersonIdFilter.length === 0) return NextResponse.json([]);
     }
 
-    // Resolve tp_created_at / tp_updated_at filters against tenant_people
+    // Resolve tp_created_at filter against tenant_people.linked_at
     for (const f of tpDateFilters) {
-      const col = f.field === "tp_created_at" ? "created_at" : "updated_at";
       let q = sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
-      q = applyFilter(q, col, f.op, f.value, "timestamp");
+      q = applyFilter(q, "linked_at", f.op, f.value, "timestamp");
       const { data: tpRows, error: tpErr } = await q;
       if (tpErr) continue;
       const ids = (tpRows ?? []).map((r: any) => r.person_id);
@@ -379,21 +379,68 @@ export async function POST(request: NextRequest) {
       if (!finalPersonIdFilter || finalPersonIdFilter.length === 0) return NextResponse.json([]);
     }
 
-    // Resolve completed_survey filters against survey_sessions
+    // Resolve last_stop_date filters against stops.stop_at (tenant-scoped)
+    for (const f of stopFilters) {
+      let q = sb.from("stops").select("person_id").eq("tenant_id", tenant.id).not("person_id", "is", null);
+      if (f.op === "not_empty") {
+        // has any stop — just get distinct person_ids
+        const { data: stopRows, error: stopErr } = await q;
+        if (stopErr) continue;
+        const ids = [...new Set((stopRows ?? []).map((r: any) => r.person_id).filter(Boolean))];
+        if (finalPersonIdFilter) {
+          const set = new Set(ids);
+          finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
+        } else {
+          finalPersonIdFilter = ids;
+        }
+      } else if (f.op === "is_empty") {
+        // has no stops — all tenant people minus those with any stop
+        const { data: stopRows, error: stopErr } = await q;
+        if (stopErr) continue;
+        const hasStopped = new Set((stopRows ?? []).map((r: any) => r.person_id).filter(Boolean));
+        const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+        const noneIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !hasStopped.has(id));
+        if (finalPersonIdFilter) {
+          const set = new Set(noneIds);
+          finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
+        } else {
+          finalPersonIdFilter = noneIds;
+        }
+      } else {
+        // date comparison — filter stops by stop_at, get distinct person_ids
+        q = applyFilter(q, "stop_at", f.op, f.value, "timestamp");
+        const { data: stopRows, error: stopErr } = await q;
+        if (stopErr) continue;
+        const ids = [...new Set((stopRows ?? []).map((r: any) => r.person_id).filter(Boolean))];
+        if (finalPersonIdFilter) {
+          const set = new Set(ids);
+          finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
+        } else {
+          finalPersonIdFilter = ids;
+        }
+      }
+      if (!finalPersonIdFilter || finalPersonIdFilter.length === 0) return NextResponse.json([]);
+    }
+
+    // Resolve completed_survey filters against survey_sessions (scoped via tenant surveys)
     for (const f of surveyFilters) {
       const noVal = f.op === "is_empty" || f.op === "not_empty";
       let matchIds: string[] = [];
 
+      // Always scope through tenant's own surveys to avoid cross-tenant contamination
+      const { data: tenantSurveyRows } = await sb.from("surveys").select("id").eq("tenant_id", tenant.id);
+      const tenantSurveyIds = (tenantSurveyRows ?? []).map((s: any) => s.id);
+
       if (noVal) {
-        // Any completed survey
-        const { data: sessRows } = await sb
-          .from("survey_sessions").select("crm_contact_id")
-          .not("completed_at", "is", null);
+        // Completed any of this tenant's surveys
+        const { data: sessRows } = tenantSurveyIds.length
+          ? await sb.from("survey_sessions").select("crm_contact_id").in("survey_id", tenantSurveyIds).not("completed_at", "is", null)
+          : { data: [] };
         const allCompletedIds = [...new Set((sessRows ?? []).map((r: any) => r.crm_contact_id).filter(Boolean))];
         if (f.op === "not_empty") {
           matchIds = allCompletedIds;
         } else {
-          // is_empty = has completed no surveys: all people minus those who completed any
+          // is_empty: all tenant people minus those who completed any survey
           const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
           const completed = new Set(allCompletedIds);
           matchIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !completed.has(id));
@@ -427,17 +474,26 @@ export async function POST(request: NextRequest) {
       if (!finalPersonIdFilter || finalPersonIdFilter.length === 0) return NextResponse.json([]);
     }
 
+    const PEOPLE_SELECT = "id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, tenant_people!inner(tenant_id)";
     let people: any[];
     try {
-      people = await fetchAll(() => {
-        let q = sb
-          .from("people")
-          .select("id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, tenant_people!inner(tenant_id)")
-          .eq("tenant_people.tenant_id", tenant.id);
-        for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
-        if (finalPersonIdFilter) q = q.in("id", finalPersonIdFilter);
-        return q;
-      });
+      if (finalPersonIdFilter) {
+        // Use chunked .in() to avoid PostgREST URL limit for large ID arrays
+        people = await queryInChunks(
+          sb, "people", PEOPLE_SELECT, "id", finalPersonIdFilter,
+          (q: any) => {
+            q = q.eq("tenant_people.tenant_id", tenant.id);
+            for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
+            return q;
+          }
+        );
+      } else {
+        people = await fetchAll(() => {
+          let q = sb.from("people").select(PEOPLE_SELECT).eq("tenant_people.tenant_id", tenant.id);
+          for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
+          return q;
+        });
+      }
     } catch (err: any) {
       return NextResponse.json({ error: err.message }, { status: 500 });
     }

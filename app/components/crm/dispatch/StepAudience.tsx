@@ -117,7 +117,7 @@ const FALLBACK_PEOPLE: ColumnDef[] = [
   { column: "postal_code",      label: "ZIP Code",           data_type: "text",             is_join: true  },
   { column: "tags",             label: "Tags",               data_type: "tag_array",        is_join: false },
   { column: "tp_created_at",    label: "Date Added to CRM",  data_type: "timestamp",        is_join: false },
-  { column: "tp_updated_at",    label: "Last Updated in CRM",data_type: "timestamp",        is_join: false },
+  { column: "last_stop_date",   label: "Most Recent Stop",   data_type: "timestamp",        is_join: false },
   { column: "completed_survey", label: "Completed Survey",   data_type: "survey_completion",is_join: false },
 ];
 const FALLBACK_HH: ColumnDef[] = [

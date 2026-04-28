@@ -221,7 +221,7 @@ const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
     { column: "moved_from_state",   label: "Moved From State",               data_type: "text",     is_join: false },
     { column: "tags",               label: "Tags",                           data_type: "tag_array",         is_join: false },
     { column: "tp_created_at",      label: "Date Added to CRM",              data_type: "timestamp",         is_join: false },
-    { column: "tp_updated_at",      label: "Last Updated in CRM",            data_type: "timestamp",         is_join: false },
+    { column: "last_stop_date",     label: "Most Recent Stop",               data_type: "timestamp",         is_join: false },
     { column: "completed_survey",   label: "Completed Survey",               data_type: "survey_completion", is_join: false },
     ...LOCATION_JOIN_FIELDS,
   ],
@@ -397,8 +397,8 @@ export async function GET(request: NextRequest) {
         result.push({ column: "tags",             label: "Tags",                  data_type: "tag_array",         is_join: false });
       if (!existingCols.has("tp_created_at"))
         result.push({ column: "tp_created_at",    label: "Date Added to CRM",     data_type: "timestamp",         is_join: false });
-      if (!existingCols.has("tp_updated_at"))
-        result.push({ column: "tp_updated_at",    label: "Last Updated in CRM",   data_type: "timestamp",         is_join: false });
+      if (!existingCols.has("last_stop_date"))
+        result.push({ column: "last_stop_date",   label: "Most Recent Stop",      data_type: "timestamp",         is_join: false });
       if (!existingCols.has("completed_survey"))
         result.push({ column: "completed_survey", label: "Completed Survey",      data_type: "survey_completion", is_join: false });
     }

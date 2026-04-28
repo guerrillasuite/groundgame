@@ -6,7 +6,6 @@ import { ArrowLeft, Search, Check, Users, Plus } from "lucide-react";
 import type { ColumnDef } from "@/app/api/crm/schema/route";
 import FilterSection, {
   type FilterRow,
-  type FilterOp,
   NO_VALUE_OPS,
   makeFilterId,
   defaultOp,
@@ -66,7 +65,7 @@ const FALLBACK_SCHEMA: Record<string, ColumnDef[]> = {
     { column: "contact_type",     label: "Contact Type",       data_type: "text",             is_join: false },
     { column: "tags",             label: "Tags",               data_type: "tag_array",        is_join: false },
     { column: "tp_created_at",    label: "Date Added to CRM",  data_type: "timestamp",        is_join: false },
-    { column: "tp_updated_at",    label: "Last Updated in CRM",data_type: "timestamp",        is_join: false },
+    { column: "last_stop_date",   label: "Most Recent Stop",   data_type: "timestamp",        is_join: false },
     { column: "completed_survey", label: "Completed Survey",   data_type: "survey_completion",is_join: false },
     { column: "party",            label: "Party",              data_type: "text",             is_join: false },
     { column: "city",        label: "City",         data_type: "text",      is_join: true  },
