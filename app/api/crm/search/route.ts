@@ -339,9 +339,9 @@ export async function POST(request: NextRequest) {
         const matchIds = (tpRows ?? []).map((r: any) => r.person_id);
         if (f.op === "not_in_list") {
           // has none of — get all people then subtract
-          const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+          const allTpRows = await fetchAll(() => sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id));
           const excluded = new Set(matchIds);
-          const noneIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !excluded.has(id));
+          const noneIds = allTpRows.map((r: any) => r.person_id).filter((id: string) => !excluded.has(id));
           personIdFilterFromTags = personIdFilterFromTags
             ? personIdFilterFromTags.filter((id) => noneIds.includes(id))
             : noneIds;
@@ -365,11 +365,14 @@ export async function POST(request: NextRequest) {
 
     // Resolve tp_created_at filter against tenant_people.linked_at
     for (const f of tpDateFilters) {
-      let q = sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
-      q = applyFilter(q, "linked_at", f.op, f.value, "timestamp");
-      const { data: tpRows, error: tpErr } = await q;
-      if (tpErr) continue;
-      const ids = (tpRows ?? []).map((r: any) => r.person_id);
+      let tpRows: any[];
+      try {
+        tpRows = await fetchAll(() => {
+          let q = sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+          return applyFilter(q, "linked_at", f.op, f.value, "timestamp");
+        });
+      } catch { continue; }
+      const ids = tpRows.map((r: any) => r.person_id);
       if (finalPersonIdFilter) {
         const set = new Set(ids);
         finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
@@ -381,37 +384,44 @@ export async function POST(request: NextRequest) {
 
     // Resolve last_stop_date filters against stops.stop_at (tenant-scoped)
     for (const f of stopFilters) {
-      let q = sb.from("stops").select("person_id").eq("tenant_id", tenant.id).not("person_id", "is", null);
-      if (f.op === "not_empty") {
-        // has any stop — just get distinct person_ids
-        const { data: stopRows, error: stopErr } = await q;
-        if (stopErr) continue;
-        const ids = [...new Set((stopRows ?? []).map((r: any) => r.person_id).filter(Boolean))];
-        if (finalPersonIdFilter) {
-          const set = new Set(ids);
-          finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
+      if (f.op === "not_empty" || f.op === "is_empty") {
+        let stopRows: any[];
+        try {
+          stopRows = await fetchAll(() =>
+            sb.from("stops").select("person_id").eq("tenant_id", tenant.id).not("person_id", "is", null)
+          );
+        } catch { continue; }
+        const hasStopped = new Set(stopRows.map((r: any) => r.person_id).filter(Boolean));
+        if (f.op === "not_empty") {
+          const ids = [...hasStopped];
+          if (finalPersonIdFilter) {
+            const set = new Set(ids);
+            finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
+          } else {
+            finalPersonIdFilter = ids;
+          }
         } else {
-          finalPersonIdFilter = ids;
-        }
-      } else if (f.op === "is_empty") {
-        // has no stops — all tenant people minus those with any stop
-        const { data: stopRows, error: stopErr } = await q;
-        if (stopErr) continue;
-        const hasStopped = new Set((stopRows ?? []).map((r: any) => r.person_id).filter(Boolean));
-        const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
-        const noneIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !hasStopped.has(id));
-        if (finalPersonIdFilter) {
-          const set = new Set(noneIds);
-          finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
-        } else {
-          finalPersonIdFilter = noneIds;
+          const allTpRows = await fetchAll(() =>
+            sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id)
+          );
+          const noneIds = allTpRows.map((r: any) => r.person_id).filter((id: string) => !hasStopped.has(id));
+          if (finalPersonIdFilter) {
+            const set = new Set(noneIds);
+            finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
+          } else {
+            finalPersonIdFilter = noneIds;
+          }
         }
       } else {
         // date comparison — filter stops by stop_at, get distinct person_ids
-        q = applyFilter(q, "stop_at", f.op, f.value, "timestamp");
-        const { data: stopRows, error: stopErr } = await q;
-        if (stopErr) continue;
-        const ids = [...new Set((stopRows ?? []).map((r: any) => r.person_id).filter(Boolean))];
+        let stopRows: any[];
+        try {
+          stopRows = await fetchAll(() => {
+            let q = sb.from("stops").select("person_id").eq("tenant_id", tenant.id).not("person_id", "is", null);
+            return applyFilter(q, "stop_at", f.op, f.value, "timestamp");
+          });
+        } catch { continue; }
+        const ids = [...new Set(stopRows.map((r: any) => r.person_id).filter(Boolean))];
         if (finalPersonIdFilter) {
           const set = new Set(ids);
           finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
@@ -433,17 +443,22 @@ export async function POST(request: NextRequest) {
 
       if (noVal) {
         // Completed any of this tenant's surveys
-        const { data: sessRows } = tenantSurveyIds.length
-          ? await sb.from("survey_sessions").select("crm_contact_id").in("survey_id", tenantSurveyIds).not("completed_at", "is", null)
-          : { data: [] };
-        const allCompletedIds = [...new Set((sessRows ?? []).map((r: any) => r.crm_contact_id).filter(Boolean))];
+        const sessRows = tenantSurveyIds.length
+          ? await fetchAll(() =>
+              sb.from("survey_sessions").select("crm_contact_id")
+                .in("survey_id", tenantSurveyIds).not("completed_at", "is", null)
+            )
+          : [];
+        const allCompletedIds = [...new Set(sessRows.map((r: any) => r.crm_contact_id).filter(Boolean))];
         if (f.op === "not_empty") {
           matchIds = allCompletedIds;
         } else {
           // is_empty: all tenant people minus those who completed any survey
-          const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+          const allTpRows = await fetchAll(() =>
+            sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id)
+          );
           const completed = new Set(allCompletedIds);
-          matchIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !completed.has(id));
+          matchIds = allTpRows.map((r: any) => r.person_id).filter((id: string) => !completed.has(id));
         }
       } else {
         const surveyTitles = f.value.split(",").map((v: string) => v.trim()).filter(Boolean);
@@ -451,15 +466,17 @@ export async function POST(request: NextRequest) {
         const { data: surveyRows } = await sb.from("surveys").select("id").eq("tenant_id", tenant.id).in("title", surveyTitles);
         const surveyIds = (surveyRows ?? []).map((s: any) => s.id);
         if (surveyIds.length === 0) { if (f.op === "in_list") return NextResponse.json([]); continue; }
-        const { data: sessRows } = await sb
-          .from("survey_sessions").select("crm_contact_id")
-          .in("survey_id", surveyIds)
-          .not("completed_at", "is", null);
-        const completedIds = [...new Set((sessRows ?? []).map((r: any) => r.crm_contact_id).filter(Boolean))];
+        const sessRows = await fetchAll(() =>
+          sb.from("survey_sessions").select("crm_contact_id")
+            .in("survey_id", surveyIds).not("completed_at", "is", null)
+        );
+        const completedIds = [...new Set(sessRows.map((r: any) => r.crm_contact_id).filter(Boolean))];
         if (f.op === "not_in_list") {
-          const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+          const allTpRows = await fetchAll(() =>
+            sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id)
+          );
           const excluded = new Set(completedIds);
-          matchIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !excluded.has(id));
+          matchIds = allTpRows.map((r: any) => r.person_id).filter((id: string) => !excluded.has(id));
         } else {
           matchIds = completedIds;
         }
@@ -474,22 +491,23 @@ export async function POST(request: NextRequest) {
       if (!finalPersonIdFilter || finalPersonIdFilter.length === 0) return NextResponse.json([]);
     }
 
-    const PEOPLE_SELECT = "id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, tenant_people!inner(tenant_id)";
+    // Full select includes inner join for tenant scoping (used when no ID filter).
+    // Bare select omits the join — IDs are already tenant-scoped via tenant_people queries above.
+    const PEOPLE_SELECT_FULL = "id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id, tenant_people!inner(tenant_id)";
+    const PEOPLE_SELECT_BARE = "id, first_name, last_name, email, phone, phone_cell, phone_landline, contact_type, household_id";
     let people: any[];
     try {
       if (finalPersonIdFilter) {
-        // Use chunked .in() to avoid PostgREST URL limit for large ID arrays
         people = await queryInChunks(
-          sb, "people", PEOPLE_SELECT, "id", finalPersonIdFilter,
-          (q: any) => {
-            q = q.eq("tenant_people.tenant_id", tenant.id);
+          sb, "people", PEOPLE_SELECT_BARE, "id", finalPersonIdFilter,
+          directFilters.length ? (q: any) => {
             for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
             return q;
-          }
+          } : undefined
         );
       } else {
         people = await fetchAll(() => {
-          let q = sb.from("people").select(PEOPLE_SELECT).eq("tenant_people.tenant_id", tenant.id);
+          let q = sb.from("people").select(PEOPLE_SELECT_FULL).eq("tenant_people.tenant_id", tenant.id);
           for (const f of directFilters) q = applyFilter(q, resolveCol(f.field), f.op, f.value, f.data_type);
           return q;
         });
