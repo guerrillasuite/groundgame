@@ -1181,14 +1181,18 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
             </label>
           )}
 
-          {/* Tag assignment (people imports only, when tags exist) */}
-          {importType === "people" && allTags.length > 0 && (
+          {/* Tag assignment (people imports only) */}
+          {importType === "people" && (
             <div style={{ border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 8, padding: "14px 18px" }}>
               <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600 }}>Apply tags to new records</p>
               <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
                 Selected tags will be added to all newly created contacts from this import.
               </p>
-              <input
+              {allTags.length === 0 ? (
+                <p style={{ fontSize: 12, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>
+                  No tags yet — <a href="/crm/settings/tags" style={{ color: "var(--gg-primary, #2563eb)" }}>create tags in Settings</a> first.
+                </p>
+              ) : (<><input
                 value={importTagQuery}
                 onChange={(e) => setImportTagQuery(e.target.value)}
                 placeholder="Filter tags…"
@@ -1219,6 +1223,7 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
                   {importTagIds.length} tag{importTagIds.length !== 1 ? "s" : ""} selected
                 </p>
               )}
+              </>)}
             </div>
           )}
 

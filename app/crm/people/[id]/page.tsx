@@ -346,14 +346,15 @@ export default async function PersonDetail({ params }: Params) {
       </div>
 
       {/* Tags */}
-      {allTags.length > 0 && (
-        <div style={cardStyle}>
-          <p style={labelStyle}>Tags</p>
-          <div style={{ marginTop: 10 }}>
-            <TagPicker personId={personId} currentTagIds={currentTagIds} allTags={allTags} />
-          </div>
+      <div style={cardStyle}>
+        <p style={labelStyle}>Tags</p>
+        <div style={{ marginTop: 10 }}>
+          {allTags.length === 0
+            ? <p style={dimStyle}>No tags created yet — <a href="/crm/settings/tags" style={{ color: "var(--gg-primary, #2563eb)" }}>create tags in Settings</a></p>
+            : <TagPicker personId={personId} currentTagIds={currentTagIds} allTags={allTags} />
+          }
         </div>
-      )}
+      </div>
 
       {/* Notes */}
       <div style={cardStyle}>

@@ -687,9 +687,14 @@ export default function BulkEditPanel() {
           </div>
 
           {/* Tags section (people only) */}
-          {target === "people" && allTags.length > 0 && (
+          {target === "people" && (
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
               <p style={{ margin: "0 0 10px", fontWeight: 600, fontSize: 13, color: "var(--gg-text, #111)" }}>Tags</p>
+              {allTags.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim, #9ca3af)", fontStyle: "italic" }}>
+                  No tags yet — <a href="/crm/settings/tags" style={{ color: "var(--gg-primary, #2563eb)" }}>create tags in Settings</a> first.
+                </p>
+              ) : (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 {/* Add tags */}
                 <div>
@@ -747,6 +752,7 @@ export default function BulkEditPanel() {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           )}
 
