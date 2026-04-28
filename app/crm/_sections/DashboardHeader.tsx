@@ -1,16 +1,18 @@
-import { S, makeSb } from "./_helpers";
+import { S, makeSb, startOfTodayUTC } from "./_helpers";
 
 export async function DashboardHeader({
   tenantId,
   tenantName,
   userName,
+  timezone,
 }: {
   tenantId: string;
   tenantName: string;
   userName: string;
+  timezone?: string;
 }) {
   const sb = makeSb(tenantId);
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfTodayUTC(timezone);
 
   const { count: stopsToday } = await sb
     .from("stops")

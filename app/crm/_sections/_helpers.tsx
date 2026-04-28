@@ -47,6 +47,25 @@ export function stageColor(key: string, idx: number, total: number): string {
   return STAGE_COLORS[Math.floor((idx / Math.max(total - 1, 1)) * (STAGE_COLORS.length - 1))];
 }
 
+// ── Timezone-aware day boundary ───────────────────────────────────────────────
+export function startOfTodayUTC(tz?: string | null): Date {
+  const zone = tz || "UTC";
+  const now = new Date();
+  // Get the local date in the given timezone as "YYYY-MM-DD"
+  const localDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(now);
+  // Find what time midnight UTC maps to in this timezone, to compute the offset
+  const midnightUTCasLocal = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone, hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(new Date(`${localDateStr}T00:00:00Z`));
+  const [h, m] = midnightUTCasLocal.split(":").map(Number);
+  // h:m is "what UTC midnight looks like in local time"
+  // e.g. for UTC-6, midnight UTC = 18:00 local previous day → offset = -6h
+  // We need: local midnight = UTC midnight - offset
+  const rawOffsetMs = (h * 60 + m) * 60 * 1000;
+  const offsetMs = h >= 12 ? rawOffsetMs - 86400000 : rawOffsetMs;
+  return new Date(new Date(`${localDateStr}T00:00:00Z`).getTime() - offsetMs);
+}
+
 // ── Helper functions ──────────────────────────────────────────────────────────
 export function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "—";

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { S, card, makeSb, fmtCurrency, DEFAULT_ADMIN_KPIS } from "./_helpers";
+import { S, card, makeSb, fmtCurrency, DEFAULT_ADMIN_KPIS, startOfTodayUTC } from "./_helpers";
 
 const KPI_META: Record<string, { label: string; href: string; color: string }> = {
   stops_today:            { label: "Stops Today",        href: "/crm/stops",         color: "#6366f1" },
@@ -16,10 +16,10 @@ const KPI_META: Record<string, { label: string; href: string; color: string }> =
 
 export { DEFAULT_ADMIN_KPIS };
 
-export async function KpiRow({ tenantId, kpiIds }: { tenantId: string; kpiIds: string[] }) {
+export async function KpiRow({ tenantId, kpiIds, timezone }: { tenantId: string; kpiIds: string[]; timezone?: string }) {
   const sb = makeSb(tenantId);
   const now = new Date();
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const todayStart = startOfTodayUTC(timezone);
   const weekAgo = new Date(now.getTime() - 7 * 86400000);
   const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);

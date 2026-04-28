@@ -1,9 +1,9 @@
-import { S, makeSb } from "./_helpers";
+import { S, makeSb, startOfTodayUTC } from "./_helpers";
 
-export async function FieldHeader({ tenantId, userId, userName }: { tenantId: string; userId: string; userName: string }) {
+export async function FieldHeader({ tenantId, userId, userName, timezone }: { tenantId: string; userId: string; userName: string; timezone?: string }) {
   const sb = makeSb(tenantId);
 
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = startOfTodayUTC(timezone);
   const { count: stopsToday } = await sb
     .from("stops")
     .select("id", { count: "exact", head: true })

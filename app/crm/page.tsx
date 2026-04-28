@@ -118,10 +118,10 @@ export default async function CrmHome() {
       <section style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
         <style>{DASHBOARD_CSS}</style>
 
-        <DashboardHeader tenantId={tenant.id} tenantName={tenantName} userName={userName} />
+        <DashboardHeader tenantId={tenant.id} tenantName={tenantName} userName={userName} timezone={settings.timezone as string | undefined} />
 
         <Suspense fallback={<KpiSkeleton count={adminKpiIds.length} />}>
-          <KpiRow tenantId={tenant.id} kpiIds={adminKpiIds} />
+          <KpiRow tenantId={tenant.id} kpiIds={adminKpiIds} timezone={settings.timezone as string | undefined} />
         </Suspense>
 
         {/* Attention Needed — manages its own card, returns null when clean */}
@@ -185,10 +185,10 @@ export default async function CrmHome() {
     <section style={{ maxWidth: 860, margin: "0 auto", padding: "28px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
       <style>{DASHBOARD_CSS}</style>
 
-      <FieldHeader tenantId={tenant.id} userId={crmUser.userId} userName={userName} />
+      <FieldHeader tenantId={tenant.id} userId={crmUser.userId} userName={userName} timezone={settings.timezone as string | undefined} />
 
       <Suspense fallback={<KpiSkeleton count={fieldKpiIds.length} />}>
-        <FieldKpiRow tenantId={tenant.id} userId={crmUser.userId} kpiIds={fieldKpiIds} />
+        <FieldKpiRow tenantId={tenant.id} userId={crmUser.userId} kpiIds={fieldKpiIds} timezone={settings.timezone as string | undefined} />
       </Suspense>
 
       {fieldWidgets.my_lists && (

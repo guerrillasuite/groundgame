@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { S, makeSb, fmtCurrency } from "./_helpers";
+import { S, makeSb, fmtCurrency, startOfTodayUTC } from "./_helpers";
 
 const FIELD_KPI_META: Record<string, { label: string; href: string; color: string }> = {
   my_stops_today:          { label: "My Stops Today",       href: "/crm/stops",       color: "#22c55e" },
@@ -14,9 +14,10 @@ async function fetchFieldKpiValue(
   id: string,
   tenantId: string,
   userId: string,
-  sb: ReturnType<typeof import("./_helpers").makeSb>
+  sb: ReturnType<typeof import("./_helpers").makeSb>,
+  timezone?: string
 ): Promise<{ value: string; alertColor?: string }> {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = startOfTodayUTC(timezone);
 
   switch (id) {
     case "my_stops_today": {
@@ -62,11 +63,11 @@ async function fetchFieldKpiValue(
   }
 }
 
-export async function FieldKpiRow({ tenantId, userId, kpiIds }: { tenantId: string; userId: string; kpiIds: string[] }) {
+export async function FieldKpiRow({ tenantId, userId, kpiIds, timezone }: { tenantId: string; userId: string; kpiIds: string[]; timezone?: string }) {
   const sb = makeSb(tenantId);
   const ids = kpiIds.length > 0 ? kpiIds : ["my_stops_today", "my_lists", "my_past_due", "contacts_reached_today", "active_ops"];
 
-  const results = await Promise.all(ids.map(id => fetchFieldKpiValue(id, tenantId, userId, sb)));
+  const results = await Promise.all(ids.map(id => fetchFieldKpiValue(id, tenantId, userId, sb, timezone)));
 
   const cards = ids.map((id, i) => ({
     id,
