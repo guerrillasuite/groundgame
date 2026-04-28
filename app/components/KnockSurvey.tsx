@@ -31,6 +31,49 @@ type ViewConfig = {
   page_groups: string[][] | null;
 };
 
+// ── Shared style tokens ───────────────────────────────────────────────────────
+
+const BTN_BASE: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "12px 16px",
+  borderRadius: 12,
+  fontSize: 15,
+  fontWeight: 600,
+  textAlign: "left",
+  cursor: "pointer",
+  transition: "border-color 0.12s, background 0.12s",
+};
+
+const BTN_UNSEL: React.CSSProperties = {
+  ...BTN_BASE,
+  border: "2px solid rgba(255,255,255,0.15)",
+  background: "rgba(255,255,255,0.04)",
+  color: "inherit",
+};
+
+const BTN_SEL: React.CSSProperties = {
+  ...BTN_BASE,
+  border: "2px solid #3b82f6",
+  background: "rgba(59,130,246,0.18)",
+  color: "inherit",
+};
+
+const INPUT_STYLE: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "11px 14px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.15)",
+  background: "rgba(255,255,255,0.06)",
+  color: "inherit",
+  fontSize: 15,
+  boxSizing: "border-box",
+  marginTop: 4,
+};
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
 export default function KnockSurvey({
   surveyId,
   contactId,
@@ -69,7 +112,7 @@ export default function KnockSurvey({
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-dashed p-4 mt-4 text-center opacity-60 text-sm">
+      <div style={{ padding: "20px 0", textAlign: "center", opacity: 0.6, fontSize: 14 }}>
         Loading survey…
       </div>
     );
@@ -80,14 +123,13 @@ export default function KnockSurvey({
     return null;
   }
 
-  // ── Determine question sequence based on view config ──────────────────────
-  // Build ordered question list for this view
+  // ── Question ordering ─────────────────────────────────────────────────────
+
   function getOrderedQuestions(): Question[] {
     let ordered: Question[];
     if (viewConfig.pagination !== "pages" || !viewConfig.page_groups) {
       ordered = questions;
     } else {
-      // Flatten page_groups in order, filtering to valid question IDs
       const qMap = new Map(questions.map((q) => [q.id, q]));
       ordered = [];
       for (const group of viewConfig.page_groups) {
@@ -96,29 +138,38 @@ export default function KnockSurvey({
           if (q) ordered.push(q);
         }
       }
-      // Append any questions not in page_groups (safety net)
       const seen = new Set(ordered.map((q) => q.id));
       for (const q of questions) {
         if (!seen.has(q.id)) ordered.push(q);
       }
     }
-    // Filter invisible questions based on current answers
     return ordered.filter((q) => isQuestionVisible(q, answers));
   }
 
-  // For "pages" mode: get the questions on each page
   function getPages(): Question[][] {
     if (!viewConfig.page_groups) return [questions.filter((q) => isQuestionVisible(q, answers))];
     const qMap = new Map(questions.map((q) => [q.id, q]));
-    return viewConfig.page_groups.map((group) =>
-      group.map((qId) => qMap.get(qId)).filter((q): q is Question => q != null && isQuestionVisible(q, answers))
-    ).filter((g) => g.length > 0);
+    return viewConfig.page_groups
+      .map((group) => group.map((qId) => qMap.get(qId)).filter((q): q is Question => q != null && isQuestionVisible(q, answers)))
+      .filter((g) => g.length > 0);
   }
 
   const orderedQs = getOrderedQuestions();
   const pages = viewConfig.pagination === "pages" ? getPages() : null;
 
-  // ── Save helpers ──────────────────────────────────────────────────────────
+  // ── Answer helpers ────────────────────────────────────────────────────────
+
+  function getAnswerValue(question: Question): string {
+    if (["multiple_select", "multiple_select_with_other"].includes(question.question_type)) {
+      const sels = multiSelections.get(question.id);
+      return sels ? JSON.stringify([...sels]) : "";
+    }
+    if (["text", "text_short", "number", "email", "phone", "date"].includes(question.question_type)) {
+      return textInputs.get(question.id) ?? "";
+    }
+    return answers.get(question.id) ?? "";
+  }
+
   async function saveAnswer(questionId: string, value: string, text?: string) {
     await fetch("/api/survey/response", {
       method: "POST",
@@ -140,7 +191,6 @@ export default function KnockSurvey({
       body: JSON.stringify({ crm_contact_id: contactId, survey_id: surveyId }),
     }).catch(() => {});
 
-    // Collect all current answers for trigger evaluation
     const allAnswers: Record<string, string> = {};
     for (const q of questions) {
       if (["multiple_select", "multiple_select_with_other"].includes(q.question_type)) {
@@ -212,64 +262,27 @@ export default function KnockSurvey({
 
     return (
       <SurveyCard>
-        <SurveyTopBar
-          label={`Page ${pageIdx + 1} of ${pages.length}`}
-          progress={(pageIdx) / pages.length}
-          onRefuse={onDone}
-        />
-        <div style={{ display: "grid", gap: 16, marginBottom: 20 }}>
+        <ProgressBar progress={pageIdx / pages.length} label={`Page ${pageIdx + 1} of ${pages.length}`} onRefuse={onDone} />
+        <div style={{ display: "grid", gap: 20, marginBottom: 24 }}>
           {currentPage.map((q) => (
-            <QuestionRenderer
-              key={q.id}
-              q={q}
-              answers={answers}
-              textInputs={textInputs}
-              multiSelections={multiSelections}
-              setAnswers={setAnswers}
-              setTextInputs={setTextInputs}
-              setMultiSelections={setMultiSelections}
-            />
+            <QuestionRenderer key={q.id} q={q} answers={answers} textInputs={textInputs} multiSelections={multiSelections}
+              setAnswers={setAnswers} setTextInputs={setTextInputs} setMultiSelections={setMultiSelections} />
           ))}
         </div>
-        <div className="actions">
-          <button
-            type="button"
-            className="press-card plain action-skip"
-            disabled={pageIdx === 0}
-            onClick={() => setPageIdx(pageIdx - 1)}
-          >
-            ← Back
-          </button>
-          <button
-            type="button"
-            className="btn action-submit"
-            disabled={saving || currentPage.some((q) => q.required && !getAnswerValue(q))}
-            onClick={submitPage}
-          >
-            {saving ? "Saving…" : isLastPage ? "Done ✓" : `Page ${pageIdx + 2} →`}
-          </button>
-        </div>
+        <NavRow
+          onBack={pageIdx > 0 ? () => setPageIdx(pageIdx - 1) : undefined}
+          onNext={submitPage}
+          nextLabel={saving ? "Saving…" : isLastPage ? "Done ✓" : `Page ${pageIdx + 2} →`}
+          nextDisabled={saving || currentPage.some((q) => q.required && !getAnswerValue(q))}
+        />
       </SurveyCard>
     );
   }
 
-  // ── "One at a time" mode (default) ────────────────────────────────────────
-  // Clamp qIdx to valid range after filtering
+  // ── "One at a time" mode (default) ───────────────────────────────────────
   const safeIdx = Math.min(qIdx, orderedQs.length - 1);
   const q = orderedQs[safeIdx];
   const isLast = safeIdx === orderedQs.length - 1;
-
-  function getAnswerValue(question: Question): string {
-    if (["multiple_select", "multiple_select_with_other"].includes(question.question_type)) {
-      const sels = multiSelections.get(question.id);
-      return sels ? JSON.stringify([...sels]) : "";
-    }
-    if (["text", "text_short", "number", "email", "phone", "date"].includes(question.question_type)) {
-      return textInputs.get(question.id) ?? "";
-    }
-    return answers.get(question.id) ?? "";
-  }
-
   const currentVal = getAnswerValue(q);
   const canGoNext = q.required ? Boolean(currentVal) : true;
 
@@ -286,38 +299,15 @@ export default function KnockSurvey({
 
   return (
     <SurveyCard>
-      <SurveyTopBar
-        label={`Q ${safeIdx + 1} of ${orderedQs.length}`}
-        progress={safeIdx / orderedQs.length}
-        onRefuse={onDone}
+      <ProgressBar progress={safeIdx / orderedQs.length} label={`Question ${safeIdx + 1} of ${orderedQs.length}`} onRefuse={onDone} />
+      <QuestionRenderer q={q} answers={answers} textInputs={textInputs} multiSelections={multiSelections}
+        setAnswers={setAnswers} setTextInputs={setTextInputs} setMultiSelections={setMultiSelections} />
+      <NavRow
+        onBack={safeIdx > 0 ? () => setQIdx(safeIdx - 1) : undefined}
+        onNext={goNext}
+        nextLabel={saving ? "Saving…" : isLast ? "Done ✓" : "Next →"}
+        nextDisabled={!canGoNext || saving}
       />
-      <QuestionRenderer
-        q={q}
-        answers={answers}
-        textInputs={textInputs}
-        multiSelections={multiSelections}
-        setAnswers={setAnswers}
-        setTextInputs={setTextInputs}
-        setMultiSelections={setMultiSelections}
-      />
-      <div className="actions" style={{ marginTop: 20 }}>
-        <button
-          type="button"
-          className="press-card plain action-skip"
-          onClick={() => { if (safeIdx > 0) setQIdx(safeIdx - 1); }}
-          disabled={safeIdx === 0}
-        >
-          ← Back
-        </button>
-        <button
-          type="button"
-          className="btn action-submit"
-          onClick={goNext}
-          disabled={!canGoNext || saving}
-        >
-          {saving ? "Saving…" : isLast ? "Done ✓" : "Next →"}
-        </button>
-      </div>
     </SurveyCard>
   );
 }
@@ -359,52 +349,28 @@ function AllAtOnce({
   const visibleQs = questions.filter((q) => isQuestionVisible(q, answers));
   const allRequired = visibleQs.filter((q) => q.required);
   const allAnswered = allRequired.every((q) => {
-    if (["multiple_select", "multiple_select_with_other"].includes(q.question_type)) {
+    if (["multiple_select", "multiple_select_with_other"].includes(q.question_type))
       return (multiSelections.get(q.id)?.size ?? 0) > 0;
-    }
-    if (["text", "text_short", "number", "email", "phone", "date"].includes(q.question_type)) {
+    if (["text", "text_short", "number", "email", "phone", "date"].includes(q.question_type))
       return Boolean(textInputs.get(q.id)?.trim());
-    }
     return Boolean(answers.get(q.id));
   });
 
   return (
     <SurveyCard>
-      <SurveyTopBar
-        label={`Survey — ${questions.length} question${questions.length !== 1 ? "s" : ""}`}
-        progress={0}
-        onRefuse={onDone}
-      />
-      <div style={{ display: "grid", gap: 16 }}>
+      <ProgressBar progress={0} label={`${questions.length} question${questions.length !== 1 ? "s" : ""}`} onRefuse={onDone} />
+      <div style={{ display: "grid", gap: 24, marginBottom: 24 }}>
         {visibleQs.map((q) => (
-          <QuestionRenderer
-            key={q.id}
-            q={q}
-            answers={answers}
-            textInputs={textInputs}
-            multiSelections={multiSelections}
-            setAnswers={setAnswers}
-            setTextInputs={setTextInputs}
-            setMultiSelections={setMultiSelections}
-          />
+          <QuestionRenderer key={q.id} q={q} answers={answers} textInputs={textInputs} multiSelections={multiSelections}
+            setAnswers={setAnswers} setTextInputs={setTextInputs} setMultiSelections={setMultiSelections} />
         ))}
       </div>
-      <div className="actions" style={{ marginTop: 20 }}>
-        <div />
-        <button
-          type="button"
-          className="btn action-submit"
-          disabled={saving || !allAnswered}
-          onClick={handleSubmit}
-        >
-          {saving ? "Saving…" : "Done ✓"}
-        </button>
-      </div>
+      <NavRow onNext={handleSubmit} nextLabel={saving ? "Saving…" : "Done ✓"} nextDisabled={saving || !allAnswered} />
     </SurveyCard>
   );
 }
 
-// ── Individual question renderer ──────────────────────────────────────────────
+// ── Question renderer ─────────────────────────────────────────────────────────
 
 function QuestionRenderer({
   q, answers, textInputs, multiSelections,
@@ -424,162 +390,135 @@ function QuestionRenderer({
   const currentSelections = multiSelections.get(q.id) ?? new Set<string>();
   const isDropdown = q.display_format === "dropdown";
 
-  function setAnswer(val: string) {
-    setAnswers(new Map(answers.set(q.id, val)));
-  }
-  function setText(val: string) {
-    setTextInputs(new Map(textInputs.set(q.id, val)));
-  }
+  function setAnswer(val: string) { setAnswers(new Map(answers.set(q.id, val))); }
+  function setText(val: string) { setTextInputs(new Map(textInputs.set(q.id, val))); }
   function toggleMulti(val: string) {
     const next = new Set(currentSelections);
-    if (next.has(val)) next.delete(val);
-    else next.add(val);
+    if (next.has(val)) next.delete(val); else next.add(val);
     setMultiSelections(new Map(multiSelections.set(q.id, next)));
   }
 
-  const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm mt-1";
-
   return (
     <div>
-      <p className="text-sm font-medium mb-2">
+      <p style={{ fontSize: 17, fontWeight: 600, marginBottom: 14, lineHeight: 1.4, margin: "0 0 14px" }}>
         {q.question_text}
-        {q.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
+        {q.required && <span style={{ color: "#f87171", marginLeft: 4 }}>*</span>}
       </p>
 
-      {/* Single-choice: option buttons or dropdown */}
+      {/* Single-choice */}
       {["multiple_choice", "multiple_choice_with_other"].includes(q.question_type) && (
         <>
           {isDropdown ? (
-            <select
-              value={currentAnswer}
-              onChange={(e) => setAnswer(e.target.value)}
-              className={inputCls}
-              style={{ cursor: "pointer" }}
-            >
+            <select value={currentAnswer} onChange={(e) => setAnswer(e.target.value)} style={{ ...INPUT_STYLE, cursor: "pointer" }}>
               <option value="">— Select —</option>
               {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
               {q.question_type === "multiple_choice_with_other" && <option value="other">Other…</option>}
             </select>
           ) : (
-            <div className="dispo-grid">
+            <div style={{ display: "grid", gap: 8 }}>
               {options.map((opt) => (
-                <button
-                  key={opt} type="button"
-                  className="press-card plain"
-                  data-selected={currentAnswer === opt}
-                  aria-pressed={currentAnswer === opt}
-                  onClick={() => setAnswer(opt)}
-                >
+                <button key={opt} type="button" onClick={() => setAnswer(opt)}
+                  style={currentAnswer === opt ? BTN_SEL : BTN_UNSEL}>
                   {opt}
                 </button>
               ))}
               {q.question_type === "multiple_choice_with_other" && (
-                <button
-                  type="button" className="press-card plain"
-                  data-selected={currentAnswer === "other"}
-                  aria-pressed={currentAnswer === "other"}
-                  onClick={() => setAnswer("other")}
-                >
+                <button type="button" onClick={() => setAnswer("other")}
+                  style={currentAnswer === "other" ? BTN_SEL : BTN_UNSEL}>
                   Other
                 </button>
               )}
             </div>
           )}
           {currentAnswer === "other" && (
-            <input
-              type="text" className={inputCls + " mt-2"}
-              placeholder="Please specify…"
-              value={currentText}
-              onChange={(e) => setText(e.target.value)}
-              autoFocus
-            />
+            <input type="text" style={{ ...INPUT_STYLE, marginTop: 10 }} placeholder="Please specify…"
+              value={currentText} onChange={(e) => setText(e.target.value)} autoFocus />
           )}
         </>
       )}
 
-      {/* Multi-select: checkboxes or multi dropdown */}
+      {/* Multi-select */}
       {["multiple_select", "multiple_select_with_other"].includes(q.question_type) && (
         <>
           {isDropdown ? (
-            <select
-              multiple
-              value={[...currentSelections]}
-              onChange={(e) => {
-                const vals = new Set(Array.from(e.target.selectedOptions, (o) => o.value));
-                setMultiSelections(new Map(multiSelections.set(q.id, vals)));
-              }}
-              className={inputCls}
-              style={{ minHeight: 100 }}
-            >
+            <select multiple value={[...currentSelections]}
+              onChange={(e) => setMultiSelections(new Map(multiSelections.set(q.id, new Set(Array.from(e.target.selectedOptions, (o) => o.value)))))}
+              style={{ ...INPUT_STYLE, minHeight: 110 }}>
               {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
               {q.question_type === "multiple_select_with_other" && <option value="other">Other…</option>}
             </select>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {options.map((opt) => (
-                <label key={opt} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
-                  <input
-                    type="checkbox"
-                    checked={currentSelections.has(opt)}
-                    onChange={() => toggleMulti(opt)}
-                    style={{ width: 16, height: 16 }}
-                  />
-                  {opt}
-                </label>
+                <button key={opt} type="button" onClick={() => toggleMulti(opt)}
+                  style={currentSelections.has(opt) ? BTN_SEL : BTN_UNSEL}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{
+                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                      border: currentSelections.has(opt) ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.3)",
+                      background: currentSelections.has(opt) ? "#3b82f6" : "transparent",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 12, color: "#fff",
+                    }}>
+                      {currentSelections.has(opt) && "✓"}
+                    </span>
+                    {opt}
+                  </span>
+                </button>
               ))}
               {q.question_type === "multiple_select_with_other" && (
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
-                  <input
-                    type="checkbox"
-                    checked={currentSelections.has("other")}
-                    onChange={() => toggleMulti("other")}
-                    style={{ width: 16, height: 16 }}
-                  />
-                  Other
-                </label>
+                <button type="button" onClick={() => toggleMulti("other")}
+                  style={currentSelections.has("other") ? BTN_SEL : BTN_UNSEL}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{
+                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                      border: currentSelections.has("other") ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.3)",
+                      background: currentSelections.has("other") ? "#3b82f6" : "transparent",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 12, color: "#fff",
+                    }}>
+                      {currentSelections.has("other") && "✓"}
+                    </span>
+                    Other
+                  </span>
+                </button>
               )}
             </div>
           )}
           {currentSelections.has("other") && (
-            <input
-              type="text" className={inputCls + " mt-2"}
-              placeholder="Please specify…"
-              value={currentText}
-              onChange={(e) => setText(e.target.value)}
-            />
+            <input type="text" style={{ ...INPUT_STYLE, marginTop: 10 }} placeholder="Please specify…"
+              value={currentText} onChange={(e) => setText(e.target.value)} />
           )}
         </>
       )}
 
-      {/* Yes/No */}
+      {/* Yes / No */}
       {q.question_type === "yes_no" && (
-        <div className="dispo-grid">
+        <div style={{ display: "flex", gap: 10 }}>
           {["Yes", "No"].map((opt) => (
-            <button
-              key={opt} type="button" className="press-card plain"
-              data-selected={currentAnswer === opt}
-              aria-pressed={currentAnswer === opt}
-              onClick={() => setAnswer(opt)}
-            >
+            <button key={opt} type="button" onClick={() => setAnswer(opt)}
+              style={{ ...BTN_BASE, flex: 1, textAlign: "center", fontSize: 16, fontWeight: 700,
+                border: currentAnswer === opt ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.15)",
+                background: currentAnswer === opt ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.04)",
+                color: "inherit" }}>
               {opt}
             </button>
           ))}
         </div>
       )}
 
-      {/* Rating scale */}
+      {/* Rating */}
       {q.question_type === "rating" && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {Array.from({ length: parseInt(options[0] ?? "5") }, (_, i) => i + 1).map((n) => {
             const val = String(n);
+            const sel = currentAnswer === val;
             return (
-              <button
-                key={n} type="button" className="press-card plain"
-                data-selected={currentAnswer === val}
-                aria-pressed={currentAnswer === val}
-                onClick={() => setAnswer(val)}
-                style={{ minWidth: 40, fontWeight: 600 }}
-              >
+              <button key={n} type="button" onClick={() => setAnswer(val)}
+                style={{ width: 48, height: 48, borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: "pointer",
+                  border: sel ? "2px solid #3b82f6" : "2px solid rgba(255,255,255,0.15)",
+                  background: sel ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.04)",
+                  color: "inherit", transition: "border-color 0.12s, background 0.12s" }}>
                 {n}
               </button>
             );
@@ -589,22 +528,23 @@ function QuestionRenderer({
 
       {/* Text inputs */}
       {q.question_type === "text" && (
-        <textarea rows={3} className={inputCls} placeholder="Your answer…" value={currentText} onChange={(e) => setText(e.target.value)} />
+        <textarea rows={3} style={{ ...INPUT_STYLE, resize: "vertical" }} placeholder="Your answer…"
+          value={currentText} onChange={(e) => setText(e.target.value)} />
       )}
       {q.question_type === "text_short" && (
-        <input type="text" className={inputCls} placeholder="Your answer…" value={currentText} onChange={(e) => setText(e.target.value)} />
+        <input type="text" style={INPUT_STYLE} placeholder="Your answer…" value={currentText} onChange={(e) => setText(e.target.value)} />
       )}
       {q.question_type === "number" && (
-        <input type="number" className={inputCls} placeholder="0" value={currentText} onChange={(e) => setText(e.target.value)} />
+        <input type="number" style={INPUT_STYLE} placeholder="0" value={currentText} onChange={(e) => setText(e.target.value)} />
       )}
       {q.question_type === "email" && (
-        <input type="email" className={inputCls} placeholder="email@example.com" value={currentText} onChange={(e) => setText(e.target.value)} />
+        <input type="email" style={INPUT_STYLE} placeholder="email@example.com" value={currentText} onChange={(e) => setText(e.target.value)} />
       )}
       {q.question_type === "phone" && (
-        <input type="tel" className={inputCls} placeholder="(555) 555-5555" value={currentText} onChange={(e) => setText(e.target.value)} />
+        <input type="tel" style={INPUT_STYLE} placeholder="(555) 555-5555" value={currentText} onChange={(e) => setText(e.target.value)} />
       )}
       {q.question_type === "date" && (
-        <input type="date" className={inputCls} value={currentText} onChange={(e) => setText(e.target.value)} />
+        <input type="date" style={INPUT_STYLE} value={currentText} onChange={(e) => setText(e.target.value)} />
       )}
     </div>
   );
@@ -615,51 +555,63 @@ function QuestionRenderer({
 function SurveyCard({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      background: "var(--surface, rgba(255,255,255,0.06))",
-      border: "1px solid var(--border, rgba(255,255,255,0.1))",
+      background: "rgba(255,255,255,0.05)",
+      border: "1px solid rgba(255,255,255,0.1)",
       borderRadius: 20,
-      padding: "16px 16px 20px",
-      marginTop: 12,
+      padding: "20px 18px 24px",
+      marginTop: 16,
     }}>
       {children}
     </div>
   );
 }
 
-function SurveyTopBar({
-  label,
-  progress,
-  onRefuse,
-}: {
-  label: string;
-  progress: number;
-  onRefuse: () => void;
-}) {
+function ProgressBar({ progress, label, onRefuse }: { progress: number; label: string; onRefuse: () => void }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, marginBottom: 10, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${Math.round(progress * 100)}%`, background: "var(--primary, #2563eb)", borderRadius: 2, transition: "width 0.3s ease" }} />
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 4, marginBottom: 12, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${Math.round(progress * 100)}%`, background: "#3b82f6", borderRadius: 4, transition: "width 0.3s ease" }} />
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.55, letterSpacing: "0.03em" }}>{label}</span>
-        <button
-          type="button"
-          onClick={onRefuse}
-          style={{
-            background: "none",
-            border: "1px solid rgba(255,255,255,0.25)",
-            borderRadius: 10,
-            padding: "6px 16px",
-            fontSize: 13,
-            fontWeight: 500,
-            color: "inherit",
-            opacity: 0.7,
-            cursor: "pointer",
-          }}
-        >
-          Refuse Survey
+        <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.5, letterSpacing: "0.03em" }}>{label}</span>
+        <button type="button" onClick={onRefuse} style={{
+          background: "none", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8,
+          padding: "5px 14px", fontSize: 13, fontWeight: 500, color: "inherit", opacity: 0.65, cursor: "pointer",
+        }}>
+          Skip
         </button>
       </div>
+    </div>
+  );
+}
+
+function NavRow({ onBack, onNext, nextLabel, nextDisabled }: {
+  onBack?: () => void;
+  onNext: () => void;
+  nextLabel: string;
+  nextDisabled?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+      {onBack ? (
+        <button type="button" onClick={onBack} style={{
+          padding: "12px 18px", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer",
+          border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.05)", color: "inherit",
+        }}>
+          ← Back
+        </button>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
+      <button type="button" onClick={onNext} disabled={nextDisabled} style={{
+        flex: 1, padding: "13px 20px", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: nextDisabled ? "default" : "pointer",
+        border: "none",
+        background: nextDisabled ? "rgba(255,255,255,0.1)" : "#2563eb",
+        color: nextDisabled ? "rgba(255,255,255,0.35)" : "#fff",
+        transition: "background 0.15s",
+      }}>
+        {nextLabel}
+      </button>
     </div>
   );
 }
