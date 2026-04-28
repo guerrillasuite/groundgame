@@ -112,9 +112,13 @@ const FALLBACK_PEOPLE: ColumnDef[] = [
   { column: "email",        label: "Email",        data_type: "text",    is_join: false },
   { column: "contact_type", label: "Contact Type", data_type: "text",    is_join: false },
   { column: "party",        label: "Party",        data_type: "text",    is_join: false },
-  { column: "city",         label: "City",         data_type: "text",    is_join: true  },
-  { column: "state",        label: "State",        data_type: "text",    is_join: true  },
-  { column: "postal_code",  label: "ZIP Code",     data_type: "text",    is_join: true  },
+  { column: "city",             label: "City",               data_type: "text",             is_join: true  },
+  { column: "state",            label: "State",              data_type: "text",             is_join: true  },
+  { column: "postal_code",      label: "ZIP Code",           data_type: "text",             is_join: true  },
+  { column: "tags",             label: "Tags",               data_type: "tag_array",        is_join: false },
+  { column: "tp_created_at",    label: "Date Added to CRM",  data_type: "timestamp",        is_join: false },
+  { column: "tp_updated_at",    label: "Last Updated in CRM",data_type: "timestamp",        is_join: false },
+  { column: "completed_survey", label: "Completed Survey",   data_type: "survey_completion",is_join: false },
 ];
 const FALLBACK_HH: ColumnDef[] = [
   { column: "total_persons",        label: "Total Persons",    data_type: "smallint", is_join: false },
@@ -155,6 +159,7 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
   const [hhSchema, setHhSchema] = useState<ColumnDef[]>(FALLBACK_HH);
   const [contactTypeOpts, setContactTypeOpts] = useState<string[]>([]);
   const [tagOpts, setTagOpts] = useState<string[]>([]);
+  const [surveyOpts, setSurveyOpts] = useState<string[]>([]);
 
   // ── Filter state ──────────────────────────────────────────────────────────
   // peopleFilters drives both simple and advanced People section
@@ -196,6 +201,12 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
       .then((r) => r.json())
       .then((tags: Array<{ name: string }>) => {
         if (Array.isArray(tags)) setTagOpts(tags.map((t) => t.name).filter(Boolean));
+      })
+      .catch(() => {});
+    fetch("/api/survey")
+      .then((r) => r.json())
+      .then((surveys: Array<{ title: string }>) => {
+        if (Array.isArray(surveys)) setSurveyOpts(surveys.map((s) => s.title).filter(Boolean));
       })
       .catch(() => {});
   }, []);
@@ -533,7 +544,7 @@ export default function StepAudience({ data, onChange, walklists }: Props) {
                 onChange={(rows) => { setPeopleFilters(rows); syncAll(rows, hhFilters); }}
                 defaultOpen
                 hideJoined={false}
-                dynamicEnumOpts={{ contact_type: contactTypeOpts, tags: tagOpts }}
+                dynamicEnumOpts={{ contact_type: contactTypeOpts, tags: tagOpts, completed_survey: surveyOpts }}
               />
               <FilterSection
                 title="Household"

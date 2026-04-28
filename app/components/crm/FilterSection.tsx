@@ -66,17 +66,28 @@ export const TAG_ARRAY_OPS: { value: FilterOp; label: string }[] = [
   { value: "not_empty",   label: "has any tag" },
 ];
 
+export const SURVEY_OPS: { value: FilterOp; label: string }[] = [
+  { value: "in_list",    label: "has completed (any of)" },
+  { value: "not_in_list",label: "has not completed" },
+  { value: "not_empty",  label: "has completed any survey" },
+  { value: "is_empty",   label: "has completed no surveys" },
+];
+
+export const DATE_TYPES = new Set(["date", "timestamp"]);
+
 export function opsForType(dt: string): { value: FilterOp; label: string }[] {
   if (dt === "boolean") return BOOL_OPS;
-  if (isNumericType(dt)) return NUM_OPS;
+  if (isNumericType(dt) || DATE_TYPES.has(dt)) return NUM_OPS;
   if (dt === "tag_array") return TAG_ARRAY_OPS;
+  if (dt === "survey_completion") return SURVEY_OPS;
   return TEXT_OPS;
 }
 
 export function defaultOp(dt: string): FilterOp {
   if (dt === "boolean") return "is_true";
   if (isNumericType(dt)) return "equals";
-  if (dt === "tag_array") return "in_list";
+  if (DATE_TYPES.has(dt)) return "gte";
+  if (dt === "tag_array" || dt === "survey_completion") return "in_list";
   return "contains";
 }
 
@@ -307,7 +318,7 @@ export default function FilterSection({
                       </select>
                     ) : (
                       <input
-                        type={numeric ? "number" : "text"}
+                        type={numeric ? "number" : DATE_TYPES.has(fieldDef?.data_type ?? f.data_type ?? "") ? "date" : "text"}
                         value={f.value}
                         onChange={(e) => updateRow(f.id, { value: e.target.value })}
                         placeholder="Filter value…"

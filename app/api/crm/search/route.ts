@@ -207,8 +207,13 @@ export async function POST(request: NextRequest) {
   }
 
   // ── PEOPLE ───────────────────────────────────────────────────────────────
+  const TP_VIRTUAL_FIELDS = new Set(["tags", "tp_created_at", "tp_updated_at", "completed_survey"]);
+
   if (target === "people") {
-    const directFilters    = filters.filter((f) => !LOCATION_JOIN_FIELDS.has(f.field) && !HOUSEHOLD_JOIN_FIELDS.has(f.field));
+    const tagFilters       = filters.filter((f) => f.field === "tags");
+    const tpDateFilters    = filters.filter((f) => f.field === "tp_created_at" || f.field === "tp_updated_at");
+    const surveyFilters    = filters.filter((f) => f.field === "completed_survey");
+    const directFilters    = filters.filter((f) => !TP_VIRTUAL_FIELDS.has(f.field) && !LOCATION_JOIN_FIELDS.has(f.field) && !HOUSEHOLD_JOIN_FIELDS.has(f.field));
     const locationFilters  = filters.filter((f) => LOCATION_JOIN_FIELDS.has(f.field));
     const householdFilters = filters.filter((f) => HOUSEHOLD_JOIN_FIELDS.has(f.field));
 
@@ -306,6 +311,121 @@ export async function POST(request: NextRequest) {
       } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
       }
+    }
+
+    // Resolve tag filters → person IDs via tenant_people.tags (UUID array)
+    let personIdFilterFromTags: string[] | null = null;
+    for (const f of tagFilters) {
+      if (f.op === "is_empty" || f.op === "not_empty") {
+        const { data: tpRows } = await sb
+          .from("tenant_people").select("person_id")
+          .eq("tenant_id", tenant.id)
+          .filter("tags", f.op === "is_empty" ? "eq" : "neq", "{}");
+        const ids = (tpRows ?? []).map((r: any) => r.person_id);
+        personIdFilterFromTags = personIdFilterFromTags
+          ? personIdFilterFromTags.filter((id) => ids.includes(id))
+          : ids;
+      } else {
+        const tagNames = f.value.split(",").map((v: string) => v.trim()).filter(Boolean);
+        if (tagNames.length === 0) continue;
+        const { data: tagRows } = await sb.from("tenant_tags").select("id").eq("tenant_id", tenant.id).in("name", tagNames);
+        const tagIds = (tagRows ?? []).map((t: any) => t.id);
+        if (tagIds.length === 0) return NextResponse.json([]);
+        const { data: tpRows } = await sb
+          .from("tenant_people").select("person_id")
+          .eq("tenant_id", tenant.id)
+          .overlaps("tags", tagIds);
+        const matchIds = (tpRows ?? []).map((r: any) => r.person_id);
+        if (f.op === "not_in_list") {
+          // has none of — get all people then subtract
+          const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+          const excluded = new Set(matchIds);
+          const noneIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !excluded.has(id));
+          personIdFilterFromTags = personIdFilterFromTags
+            ? personIdFilterFromTags.filter((id) => noneIds.includes(id))
+            : noneIds;
+        } else {
+          personIdFilterFromTags = personIdFilterFromTags
+            ? personIdFilterFromTags.filter((id) => matchIds.includes(id))
+            : matchIds;
+        }
+      }
+      if (personIdFilterFromTags !== null && personIdFilterFromTags.length === 0) return NextResponse.json([]);
+    }
+    if (personIdFilterFromTags !== null) {
+      if (finalPersonIdFilter) {
+        const set = new Set(finalPersonIdFilter);
+        finalPersonIdFilter = personIdFilterFromTags.filter((id) => set.has(id));
+      } else {
+        finalPersonIdFilter = personIdFilterFromTags;
+      }
+      if (finalPersonIdFilter.length === 0) return NextResponse.json([]);
+    }
+
+    // Resolve tp_created_at / tp_updated_at filters against tenant_people
+    for (const f of tpDateFilters) {
+      const col = f.field === "tp_created_at" ? "created_at" : "updated_at";
+      let q = sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+      q = applyFilter(q, col, f.op, f.value, "timestamp");
+      const { data: tpRows } = await q;
+      const ids = (tpRows ?? []).map((r: any) => r.person_id);
+      if (finalPersonIdFilter) {
+        const set = new Set(ids);
+        finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
+      } else {
+        finalPersonIdFilter = ids;
+      }
+      if (!finalPersonIdFilter || finalPersonIdFilter.length === 0) return NextResponse.json([]);
+    }
+
+    // Resolve completed_survey filters against survey_sessions
+    for (const f of surveyFilters) {
+      const noVal = f.op === "is_empty" || f.op === "not_empty";
+      let matchIds: string[] = [];
+
+      if (noVal) {
+        // Any completed survey
+        const { data: sessRows } = await sb
+          .from("survey_sessions").select("crm_contact_id")
+          .eq("tenant_id", tenant.id)
+          .not("completed_at", "is", null);
+        const allCompletedIds = [...new Set((sessRows ?? []).map((r: any) => r.crm_contact_id).filter(Boolean))];
+        if (f.op === "not_empty") {
+          matchIds = allCompletedIds;
+        } else {
+          // is_empty = has completed no surveys: all people minus those who completed any
+          const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+          const completed = new Set(allCompletedIds);
+          matchIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !completed.has(id));
+        }
+      } else {
+        const surveyTitles = f.value.split(",").map((v: string) => v.trim()).filter(Boolean);
+        if (surveyTitles.length === 0) continue;
+        const { data: surveyRows } = await sb.from("surveys").select("id").eq("tenant_id", tenant.id).in("title", surveyTitles);
+        const surveyIds = (surveyRows ?? []).map((s: any) => s.id);
+        if (surveyIds.length === 0) { if (f.op === "in_list") return NextResponse.json([]); continue; }
+        const { data: sessRows } = await sb
+          .from("survey_sessions").select("crm_contact_id")
+          .eq("tenant_id", tenant.id)
+          .in("survey_id", surveyIds)
+          .not("completed_at", "is", null);
+        const completedIds = [...new Set((sessRows ?? []).map((r: any) => r.crm_contact_id).filter(Boolean))];
+        if (f.op === "not_in_list") {
+          const { data: allTp } = await sb.from("tenant_people").select("person_id").eq("tenant_id", tenant.id);
+          const excluded = new Set(completedIds);
+          matchIds = (allTp ?? []).map((r: any) => r.person_id).filter((id: string) => !excluded.has(id));
+        } else {
+          matchIds = completedIds;
+        }
+      }
+
+      if (finalPersonIdFilter) {
+        const set = new Set(matchIds);
+        finalPersonIdFilter = finalPersonIdFilter.filter((id) => set.has(id));
+      } else {
+        finalPersonIdFilter = matchIds;
+      }
+      if (!finalPersonIdFilter || finalPersonIdFilter.length === 0) return NextResponse.json([]);
     }
 
     let people: any[];

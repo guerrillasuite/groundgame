@@ -63,9 +63,12 @@ const FALLBACK_SCHEMA: Record<string, ColumnDef[]> = {
     { column: "last_name",   label: "Last Name",    data_type: "text",  is_join: false },
     { column: "email",       label: "Email",        data_type: "text",  is_join: false },
     { column: "phone",       label: "Phone",        data_type: "text",  is_join: false },
-    { column: "contact_type",label: "Contact Type", data_type: "text",      is_join: false },
-    { column: "tags",        label: "Tags",         data_type: "tag_array", is_join: false },
-    { column: "party",       label: "Party",        data_type: "text",      is_join: false },
+    { column: "contact_type",     label: "Contact Type",       data_type: "text",             is_join: false },
+    { column: "tags",             label: "Tags",               data_type: "tag_array",        is_join: false },
+    { column: "tp_created_at",    label: "Date Added to CRM",  data_type: "timestamp",        is_join: false },
+    { column: "tp_updated_at",    label: "Last Updated in CRM",data_type: "timestamp",        is_join: false },
+    { column: "completed_survey", label: "Completed Survey",   data_type: "survey_completion",is_join: false },
+    { column: "party",            label: "Party",              data_type: "text",             is_join: false },
     { column: "city",        label: "City",         data_type: "text",      is_join: true  },
     { column: "state",       label: "State",        data_type: "text",      is_join: true  },
     { column: "postal_code", label: "Zip Code",     data_type: "text",      is_join: true  },
@@ -600,7 +603,7 @@ export default function CreateListWizard() {
               {/* ── People target ── */}
               {target === "people" && (
                 <>
-                  <FilterSection title="People" filters={primaryFilters} schema={schemas.people ?? []} onChange={setPrimaryFilters} defaultOpen hideJoined dynamicEnumOpts={{ contact_type: contactTypeOpts, tags: tagOpts }} />
+                  <FilterSection title="People" filters={primaryFilters} schema={schemas.people ?? []} onChange={setPrimaryFilters} defaultOpen hideJoined dynamicEnumOpts={{ contact_type: contactTypeOpts, tags: tagOpts, completed_survey: surveys.map((s) => s.title) }} />
                   <FilterSection title="Location" filters={locFilters} schema={schemas.locations ?? []} onChange={setLocFilters} />
                   <FilterSection title="Household" filters={hhFilters} schema={schemas.households ?? []} onChange={setHhFilters} hideJoined />
                   <FilterSection
