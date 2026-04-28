@@ -219,6 +219,7 @@ const FALLBACK: Record<AllowedTable, ColumnDef[]> = {
     { column: "net_worth_range",    label: "Net Worth Range",                data_type: "text",     is_join: false },
     { column: "length_of_residence",label: "Length of Residence",            data_type: "text",     is_join: false },
     { column: "moved_from_state",   label: "Moved From State",               data_type: "text",     is_join: false },
+    { column: "tags",               label: "Tags",                           data_type: "tag_array", is_join: false },
     ...LOCATION_JOIN_FIELDS,
   ],
   households: [
@@ -387,6 +388,10 @@ export async function GET(request: NextRequest) {
       const dotPaths = FALLBACK.people.filter((f) => f.column.startsWith("votes_history."));
       for (const dp of dotPaths) {
         if (!existingCols.has(dp.column)) result.push(dp);
+      }
+      // Inject tags as a virtual field (stored on tenant_people, handled specially in search)
+      if (!existingCols.has("tags")) {
+        result.push({ column: "tags", label: "Tags", data_type: "tag_array", is_join: false });
       }
     }
 
