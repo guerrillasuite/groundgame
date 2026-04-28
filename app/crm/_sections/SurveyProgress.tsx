@@ -42,7 +42,7 @@ export async function SurveyProgress({ tenantId }: { tenantId: string }) {
         <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: S.dim, flex: 1 }}>
           📊 Survey Progress
         </span>
-        <Link href="/crm/survey" onClick={(e: React.MouseEvent) => e.stopPropagation()} style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", flexShrink: 0 }}>
+        <Link href="/crm/survey" style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", flexShrink: 0 }}>
           View all →
         </Link>
         <svg className="survey-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, transition: "transform .2s ease" }}>
