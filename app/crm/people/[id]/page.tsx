@@ -8,6 +8,7 @@ import EditButton from "@/app/crm/_shared/EditButton";
 import { updateRowAction } from "@/app/crm/_shared/mutations";
 import ContactTypesSelector from "@/app/crm/_shared/ContactTypesSelector";
 import RemindersSection from "@/app/components/crm/RemindersSection";
+import { TagPicker } from "@/app/components/crm/TagPicker";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -54,7 +55,7 @@ export default async function PersonDetail({ params }: Params) {
       education_level, marital_status, religion,
       occupation, occupation_title, company_name, income_range, net_worth_range,
       length_of_residence, moved_from_state, meta_json,
-      tenant_people!inner(tenant_id, notes, custom_data, contact_types)`)
+      tenant_people!inner(tenant_id, notes, custom_data, contact_types, tags)`)
     .eq("id", personId)
     .eq("tenant_people.tenant_id", tenant.id)
     .single();
@@ -72,6 +73,16 @@ export default async function PersonDetail({ params }: Params) {
   const availableContactTypes: { key: string; label: string }[] = Array.isArray(availableCTs) ? [...availableCTs] : [];
   const rawContactTypes = (person as any).tenant_people?.[0]?.contact_types ?? (person as any).tenant_people?.contact_types;
   const currentContactTypes: string[] = Array.isArray(rawContactTypes) ? rawContactTypes : (rawContactTypes ? [rawContactTypes] : []);
+
+  // Tags
+  const rawTags = (person as any).tenant_people?.[0]?.tags ?? (person as any).tenant_people?.tags;
+  const currentTagIds: string[] = Array.isArray(rawTags) ? rawTags : [];
+  const { data: allTagsData } = await sb
+    .from("tenant_tags")
+    .select("id, name")
+    .eq("tenant_id", tenant.id)
+    .order("name");
+  const allTags: { id: string; name: string }[] = Array.isArray(allTagsData) ? [...allTagsData] : [];
 
   // 4) Household — try junction table first, then direct field
   let household: { id: string; name: string | null; location_id: string | null } | null = null;
@@ -328,6 +339,16 @@ export default async function PersonDetail({ params }: Params) {
           />
         </div>
       </div>
+
+      {/* Tags */}
+      {allTags.length > 0 && (
+        <div style={cardStyle}>
+          <p style={labelStyle}>Tags</p>
+          <div style={{ marginTop: 10 }}>
+            <TagPicker personId={personId} currentTagIds={currentTagIds} allTags={allTags} />
+          </div>
+        </div>
+      )}
 
       {/* Notes */}
       <div style={cardStyle}>

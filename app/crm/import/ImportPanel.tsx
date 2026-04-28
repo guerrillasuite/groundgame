@@ -300,6 +300,9 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
   const [createOppsOnImport, setCreateOppsOnImport] = useState(false);
   const [globalContactType, setGlobalContactType] = useState("");
   const [contactTypeOptions, setContactTypeOptions] = useState<{ key: string; label: string }[]>([]);
+  const [allTags, setAllTags] = useState<{ id: string; name: string }[]>([]);
+  const [importTagIds, setImportTagIds] = useState<string[]>([]);
+  const [importTagQuery, setImportTagQuery] = useState("");
   // col → canonical key override for __create_global__ fields
   const [globalKeyOverrides, setGlobalKeyOverrides] = useState<Record<string, string>>({});
   // col → cycle year (4-digit string) for __giving_cycle__ fields
@@ -337,12 +340,14 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
   const handleFile = useCallback(async (file: File) => {
     setParseErr("");
     try {
-      const [data, schemaRes, ctRes] = await Promise.all([
+      const [data, schemaRes, ctRes, tagsRes] = await Promise.all([
         parseFile(file),
         fetch("/api/crm/schema?table=people").then((r) => r.json()).catch(() => []),
         fetch("/api/crm/settings/contact-types").then((r) => r.ok ? r.json() : []).catch(() => []),
+        fetch("/api/crm/tags").then((r) => r.ok ? r.json() : []).catch(() => []),
       ]);
       if (Array.isArray(ctRes)) setContactTypeOptions(ctRes);
+      if (Array.isArray(tagsRes)) setAllTags(tagsRes);
       if (data.rows.length === 0) {
         setParseErr("No rows found in file.");
         return;
@@ -575,6 +580,13 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
       if (createOppsOnImport && ((acc.insertedPersonIds?.length ?? 0) + (acc.insertedCompanyIds?.length ?? 0)) > 0) {
         handleCreateOpps(acc);
       }
+      if (importTagIds.length > 0 && (acc.insertedPersonIds?.length ?? 0) > 0) {
+        fetch("/api/crm/tags/bulk-edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ person_ids: acc.insertedPersonIds, add: importTagIds }),
+        }).catch(() => {});
+      }
     } catch (e: any) {
       setResult({ inserted: 0, updated: 0, skipped: 0, failed: 1, errors: [(e as Error).message] });
       gotoStep("done");
@@ -595,6 +607,8 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
     setSelectedTenant("");
     setImportMode("smart_merge");
     setImportType("people");
+    setImportTagIds([]);
+    setImportTagQuery("");
     setOppsCreated(null);
     setOppsLoading(false);
     setCreateOppsOnImport(false);
@@ -1165,6 +1179,47 @@ export default function ImportPanel({ hasEnrichment = true }: { hasEnrichment?: 
               />
               <span>Create one <strong>Lead Opportunity</strong> per new record after import</span>
             </label>
+          )}
+
+          {/* Tag assignment (people imports only, when tags exist) */}
+          {importType === "people" && allTags.length > 0 && (
+            <div style={{ border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 8, padding: "14px 18px" }}>
+              <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600 }}>Apply tags to new records</p>
+              <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--gg-text-dim, #6b7280)" }}>
+                Selected tags will be added to all newly created contacts from this import.
+              </p>
+              <input
+                value={importTagQuery}
+                onChange={(e) => setImportTagQuery(e.target.value)}
+                placeholder="Filter tags…"
+                style={{ padding: "5px 8px", border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 5, fontSize: 13, marginBottom: 8, width: 200 }}
+              />
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {allTags
+                  .filter((t) => t.name.toLowerCase().includes(importTagQuery.toLowerCase()))
+                  .map((t) => {
+                    const on = importTagIds.includes(t.id);
+                    return (
+                      <button key={t.id} type="button"
+                        onClick={() => setImportTagIds((p) => on ? p.filter((x) => x !== t.id) : [...p, t.id])}
+                        style={{
+                          padding: "4px 12px", borderRadius: 9999, fontSize: 12, fontWeight: on ? 600 : 400,
+                          border: "1px solid", cursor: "pointer",
+                          borderColor: on ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)",
+                          background: on ? "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)" : "transparent",
+                          color: on ? "var(--gg-primary, #2563eb)" : "var(--gg-text, #374151)",
+                        }}>
+                        {t.name}
+                      </button>
+                    );
+                  })}
+              </div>
+              {importTagIds.length > 0 && (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--gg-primary, #2563eb)" }}>
+                  {importTagIds.length} tag{importTagIds.length !== 1 ? "s" : ""} selected
+                </p>
+              )}
+            </div>
           )}
 
           <div style={{ display: "flex", gap: 10 }}>

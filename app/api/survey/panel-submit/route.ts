@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
   // ── Route answers to table buckets based on crm_field mappings ────────────
   const { data: questionRows } = await sb
     .from("questions")
-    .select("id, crm_field, question_type")
+    .select("id, crm_field, question_type, tag_mapping_enabled, tag_prefix")
     .eq("survey_id", survey_id);
 
   const tableFields: Record<string, Record<string, string>> = {
@@ -403,6 +403,39 @@ export async function POST(req: NextRequest) {
         .update(tpPatch)
         .eq("tenant_id", tenant.id)
         .eq("person_id", personId);
+    }
+  }
+
+  // ── Apply tag mappings ────────────────────────────────────────────────────
+  const tagNamesToApply: string[] = [];
+  for (const q of questionRows ?? []) {
+    if (!(q as any).tag_mapping_enabled || !(q as any).tag_prefix?.trim()) continue;
+    const val = answers[q.id];
+    if (!val?.trim()) continue;
+    const prefix = (q as any).tag_prefix.trim();
+    // Multi-answer questions may have comma-separated values
+    const answerValues = val.includes(",") ? val.split(",").map((v: string) => v.trim()).filter(Boolean) : [val.trim()];
+    for (const av of answerValues) {
+      tagNamesToApply.push(`${prefix}:${av}`);
+    }
+  }
+  if (tagNamesToApply.length > 0) {
+    const tagIdResults = await Promise.all(
+      tagNamesToApply.map((name) =>
+        sb.from("tenant_tags").select("id").eq("tenant_id", tenant.id).ilike("name", name).maybeSingle()
+      )
+    );
+    const tagIds = tagIdResults.map((r) => (r.data as any)?.id).filter(Boolean) as string[];
+    if (tagIds.length > 0) {
+      const { data: tpTagRow } = await sb
+        .from("tenant_people")
+        .select("tags")
+        .eq("tenant_id", tenant.id)
+        .eq("person_id", personId)
+        .maybeSingle();
+      const existing: string[] = Array.isArray((tpTagRow as any)?.tags) ? (tpTagRow as any).tags : [];
+      const merged = [...new Set([...existing, ...tagIds])];
+      await sb.from("tenant_people").update({ tags: merged }).eq("tenant_id", tenant.id).eq("person_id", personId);
     }
   }
 

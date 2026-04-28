@@ -24,6 +24,7 @@ type FieldDef   = {
   hasMode?: boolean;
 };
 type FieldEdit  = { enabled: boolean; value: any; mode: "replace" | "append" };
+type Tag = { id: string; name: string };
 
 // ── Entity column display ─────────────────────────────────────────────────────
 
@@ -226,6 +227,11 @@ export default function BulkEditPanel() {
   const [page, setPage]                 = useState(0);
   const perPage = 100;
 
+  const [allTags, setAllTags]       = useState<Tag[]>([]);
+  const [tagAdd, setTagAdd]         = useState<string[]>([]);
+  const [tagRemove, setTagRemove]   = useState<string[]>([]);
+  const [tagQuery, setTagQuery]     = useState("");
+
   // ── Admin check ──────────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -246,12 +252,20 @@ export default function BulkEditPanel() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch("/api/crm/tags")
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => setAllTags(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
   // ── Reset on tab change ───────────────────────────────────────────────────
   useEffect(() => {
     setQuery(""); setSearchResults([]); setSearchTotal(0); setSearchSearched(false);
     setFilterRows([freshRow()]); setFilterResults([]); setFilterSearched(false);
     setSchema([]); setSelected(new Set()); setFieldEdits({});
     setConfirmOpen(false); setApplyResult(null); setPage(0);
+    setTagAdd([]); setTagRemove([]); setTagQuery("");
   }, [target]);
 
   // ── Schema for filter mode ────────────────────────────────────────────────
@@ -356,15 +370,28 @@ export default function BulkEditPanel() {
       updates[fd.key] = edit.value;
       if (fd.hasMode) updates.notes_mode = edit.mode ?? "replace";
     }
-    if (!Object.keys(updates).length) { setApplying(false); return; }
+    const hasFieldEdits = Object.keys(updates).length > 0;
+    const hasTagEdits   = target === "people" && (tagAdd.length > 0 || tagRemove.length > 0);
+    if (!hasFieldEdits && !hasTagEdits) { setApplying(false); return; }
     try {
-      const res  = await fetch("/api/crm/bulk-edit", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target, ids: [...selected], updates }),
-      });
-      const data = await res.json();
-      setApplyResult({ updated: data.updated ?? 0, errors: data.errors });
-      setSelected(new Set()); setFieldEdits({});
+      const errs: string[] = [];
+      if (hasFieldEdits) {
+        const res  = await fetch("/api/crm/bulk-edit", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target, ids: [...selected], updates }),
+        });
+        const data = await res.json();
+        if (data.errors) errs.push(...data.errors);
+      }
+      if (hasTagEdits) {
+        const res = await fetch("/api/crm/tags/bulk-edit", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ person_ids: [...selected], add: tagAdd, remove: tagRemove }),
+        });
+        if (!res.ok) { const d = await res.json(); errs.push(d.error ?? "Tag update failed"); }
+      }
+      setApplyResult({ updated: selected.size, errors: errs.length ? errs : undefined });
+      setSelected(new Set()); setFieldEdits({}); setTagAdd([]); setTagRemove([]);
     } catch (err: any) {
       setApplyResult({ updated: 0, errors: [err.message ?? "Request failed"] });
     } finally { setApplying(false); }
@@ -388,7 +415,8 @@ export default function BulkEditPanel() {
   }
 
   const editFields    = getEditFields(target, contactTypes);
-  const hasValidEdits = editFields.some((f) => fieldEdits[f.key]?.enabled);
+  const hasTagEdits   = target === "people" && (tagAdd.length > 0 || tagRemove.length > 0);
+  const hasValidEdits = editFields.some((f) => fieldEdits[f.key]?.enabled) || hasTagEdits;
   const hasSearched   = mode === "search" ? searchSearched : filterSearched;
 
   return (
@@ -657,6 +685,70 @@ export default function BulkEditPanel() {
               );
             })}
           </div>
+
+          {/* Tags section (people only) */}
+          {target === "people" && allTags.length > 0 && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+              <p style={{ margin: "0 0 10px", fontWeight: 600, fontSize: 13, color: "var(--gg-text, #111)" }}>Tags</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* Add tags */}
+                <div>
+                  <p style={{ margin: "0 0 6px", fontSize: 12, color: "var(--gg-text-dim, #6b7280)", fontWeight: 600 }}>Add to selected</p>
+                  <input
+                    value={tagQuery}
+                    onChange={(e) => setTagQuery(e.target.value)}
+                    placeholder="Filter tags…"
+                    style={{ width: "100%", boxSizing: "border-box", padding: "5px 8px", border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 5, fontSize: 13, marginBottom: 6 }}
+                  />
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 120, overflowY: "auto" }}>
+                    {allTags
+                      .filter((t) => !tagRemove.includes(t.id) && t.name.toLowerCase().includes(tagQuery.toLowerCase()))
+                      .map((t) => {
+                        const on = tagAdd.includes(t.id);
+                        return (
+                          <button key={t.id} type="button"
+                            onClick={() => setTagAdd((p) => on ? p.filter((x) => x !== t.id) : [...p, t.id])}
+                            style={{
+                              padding: "3px 10px", borderRadius: 9999, fontSize: 12, fontWeight: on ? 600 : 400,
+                              border: "1px solid", cursor: "pointer",
+                              borderColor: on ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)",
+                              background: on ? "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)" : "transparent",
+                              color: on ? "var(--gg-primary, #2563eb)" : "var(--gg-text, #374151)",
+                            }}>
+                            {t.name}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+                {/* Remove tags */}
+                <div>
+                  <p style={{ margin: "0 0 6px", fontSize: 12, color: "var(--gg-text-dim, #6b7280)", fontWeight: 600 }}>Remove from selected</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 150, overflowY: "auto" }}>
+                    {allTags
+                      .filter((t) => !tagAdd.includes(t.id))
+                      .map((t) => {
+                        const on = tagRemove.includes(t.id);
+                        return (
+                          <button key={t.id} type="button"
+                            onClick={() => setTagRemove((p) => on ? p.filter((x) => x !== t.id) : [...p, t.id])}
+                            style={{
+                              padding: "3px 10px", borderRadius: 9999, fontSize: 12, fontWeight: on ? 600 : 400,
+                              border: "1px solid", cursor: "pointer",
+                              borderColor: on ? "#dc2626" : "var(--gg-border, #e5e7eb)",
+                              background: on ? "#fef2f2" : "transparent",
+                              color: on ? "#dc2626" : "var(--gg-text, #374151)",
+                              textDecoration: on ? "line-through" : "none",
+                            }}>
+                            {t.name}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div style={{ marginTop: 20, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             {!confirmOpen ? (

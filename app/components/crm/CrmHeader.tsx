@@ -79,6 +79,9 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
     if (f("crm")) {
       settingsItems.push({ href: "/crm/settings/dispositions", label: "Dispositions" });
     }
+    if (f("crm")) {
+      settingsItems.push({ href: "/crm/settings/tags", label: "Tags" });
+    }
     if (f("crm_dispatch") || isSuperAdmin) {
       settingsItems.push({ href: "/crm/settings/dispatch", label: "Dispatch" });
     }

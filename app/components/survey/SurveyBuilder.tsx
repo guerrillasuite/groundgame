@@ -50,6 +50,8 @@ type LocalQuestion = {
   order_index: number;
   conditions: QuestionCondition;
   isNew: boolean;
+  tag_mapping_enabled: boolean;
+  tag_prefix: string;
 };
 
 type ViewType = "embedded" | "hosted" | "door" | "call" | "text";
@@ -103,6 +105,8 @@ function blankQuestion(order_index: number): LocalQuestion {
     order_index,
     conditions: null,
     isNew: true,
+    tag_mapping_enabled: false,
+    tag_prefix: "",
   };
 }
 
@@ -267,6 +271,8 @@ export default function SurveyBuilder({
           order_index: q.order_index,
           conditions: q.conditions ?? null,
           isNew: false,
+          tag_mapping_enabled: Boolean(q.tag_mapping_enabled),
+          tag_prefix: q.tag_prefix ?? "",
         }));
         setQuestions(qs);
         setRichDescQIds(new Set(qs.filter(q => q.description.trimStart().startsWith("<")).map(q => q.id)));
@@ -578,6 +584,8 @@ export default function SurveyBuilder({
           required: q.required,
           order_index: q.order_index,
           conditions: q.conditions ?? null,
+          tag_mapping_enabled: q.tag_mapping_enabled || false,
+          tag_prefix: q.tag_prefix?.trim() || null,
         };
 
         if (q.isNew) {
@@ -599,6 +607,18 @@ export default function SurveyBuilder({
         }
       }
       setQuestions(savedQuestions);
+
+      // Sync tags for tag-mapped questions
+      const tagMappedQs = savedQuestions
+        .filter((q) => q.tag_mapping_enabled && q.tag_prefix?.trim() && CHOICE_TYPES.includes(q.question_type))
+        .map((q) => ({ tag_prefix: q.tag_prefix.trim(), options: q.options.filter((o) => o.trim()) }));
+      if (tagMappedQs.length > 0) {
+        await fetch(`/api/crm/survey/${sid}/sync-tags`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questions: tagMappedQs }),
+        });
+      }
 
       // Save view configs
       await fetch(`/api/survey/${sid}/view-configs`, {
@@ -1565,6 +1585,36 @@ export default function SurveyBuilder({
                       {q.question_type === "email" && "Renders as an email input with validation"}
                       {q.question_type === "phone" && "Renders as a phone number input"}
                       {q.question_type === "date" && "Renders as a date picker"}
+                    </div>
+                  )}
+
+                  {/* Tag mapping (choice questions only) */}
+                  {(CHOICE_TYPES.includes(q.question_type) || q.question_type === "yes_no") && (
+                    <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", paddingTop: 12 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={q.tag_mapping_enabled}
+                          style={{ width: 14, height: 14 }}
+                          onChange={(e) => updateQuestion(q.id, { tag_mapping_enabled: e.target.checked })}
+                        />
+                        <span style={{ fontWeight: 600, opacity: 0.7 }}>Map answers to CRM tags</span>
+                      </label>
+                      {q.tag_mapping_enabled && (
+                        <div style={{ marginTop: 8 }}>
+                          <label style={{ ...labelStyle, display: "block", marginBottom: 4 }}>Tag prefix</label>
+                          <input
+                            type="text"
+                            value={q.tag_prefix}
+                            onChange={(e) => updateQuestion(q.id, { tag_prefix: e.target.value })}
+                            placeholder="e.g. issue or support-level"
+                            style={{ ...inputStyle, maxWidth: 280 }}
+                          />
+                          <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--gg-text-dim, #9ca3af)" }}>
+                            Each answer creates a tag like <em>{q.tag_prefix?.trim() || "prefix"}:Answer</em>
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
