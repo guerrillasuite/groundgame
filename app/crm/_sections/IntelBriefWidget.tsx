@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { S, card, sectionLabel, makeSb } from "./_helpers";
+import { S, makeSb } from "./_helpers";
 
 export async function IntelBriefWidget({ tenantId }: { tenantId: string }) {
   const sb = makeSb(tenantId);
@@ -25,41 +24,33 @@ export async function IntelBriefWidget({ tenantId }: { tenantId: string }) {
     return `${Math.floor(h / 24)}d`;
   }
 
+  if (topArticles.length === 0) {
+    return <p style={{ fontSize: 13, color: S.dim, fontStyle: "italic", margin: 0 }}>No articles yet — check back after the ingestion pipeline runs.</p>;
+  }
+
   return (
-    <div style={card}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <p style={{ ...sectionLabel, margin: 0 }}>📡 Intel Brief</p>
-        <Link href="/crm/intel-brief" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>Full feed →</Link>
-      </div>
-      {topArticles.length === 0
-        ? <p style={{ fontSize: 13, color: S.dim, fontStyle: "italic", margin: "4px 0" }}>No articles yet — check back after the ingestion pipeline runs.</p>
-        : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {topArticles.map((row: any, i: number) => {
-              const a = row.news_articles;
-              if (!a) return null;
-              const live = (Date.now() - new Date(a.published_at ?? 0).getTime()) < 7200000;
-              return (
-                <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="db-stop-row" style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "9px 10px", borderRadius: 7, textDecoration: "none", color: "inherit",
-                  borderTop: i > 0 ? `1px solid ${S.border}` : "none",
-                  transition: "background .12s ease",
-                }}>
-                  {live && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", flexShrink: 0 }} />}
-                  <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {a.title ?? "(No title)"}
-                  </span>
-                  <span style={{ fontSize: 11, color: S.dim, flexShrink: 0 }}>{newsTimeAgo(a.published_at)}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: row.final_score >= 8.5 ? "#16a34a" : "#b45309", flexShrink: 0 }}>
-                    {(row.final_score ?? 0).toFixed(1)}
-                  </span>
-                </a>
-              );
-            })}
-          </div>
-        )
-      }
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {topArticles.map((row: any, i: number) => {
+        const a = row.news_articles;
+        if (!a) return null;
+        const live = (Date.now() - new Date(a.published_at ?? 0).getTime()) < 7200000;
+        return (
+          <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="db-stop-row" style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "9px 10px", borderRadius: 7, textDecoration: "none", color: "inherit",
+            borderTop: i > 0 ? `1px solid ${S.border}` : "none",
+          }}>
+            {live && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", flexShrink: 0 }} />}
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {a.title ?? "(No title)"}
+            </span>
+            <span style={{ fontSize: 11, color: S.dim, flexShrink: 0 }}>{newsTimeAgo(a.published_at)}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: row.final_score >= 8.5 ? "#16a34a" : "#b45309", flexShrink: 0 }}>
+              {(row.final_score ?? 0).toFixed(1)}
+            </span>
+          </a>
+        );
+      })}
     </div>
   );
 }

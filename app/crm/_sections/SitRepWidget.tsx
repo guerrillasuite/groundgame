@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { getFamilyByKey, SYSTEM_TYPE_FAMILIES } from "@/lib/sitrep-colors";
 import SitRepWidgetCalendar from "@/app/crm/components/SitRepWidgetCalendar";
-import { S, card, sectionLabel, makeSb, isOverdue, sitrepEffectiveDate, fmtSitrepDate, groupItems } from "./_helpers";
+import { S, makeSb, isOverdue, sitrepEffectiveDate, fmtSitrepDate, groupItems } from "./_helpers";
+import Link from "next/link";
 
 export async function SitRepWidget({ tenantId, settings }: { tenantId: string; settings: any }) {
   const sb = makeSb(tenantId);
@@ -61,45 +61,46 @@ export async function SitRepWidget({ tenantId, settings }: { tenantId: string; s
 
   function renderRow(item: any) {
     const overdue = isOverdue(sitrepEffectiveDate(item));
-    const accent = shades(item)[2];
+    const sh = shades(item);
     const isConfirmed = item.status === "confirmed";
-    const bg = isConfirmed ? shades(item)[1] + "33" : shades(item)[3] + "55";
-    const textColor = isConfirmed ? S.text : "#0f172a";
+    // Match sitrep screen: active = light pastel bg + dark text; confirmed = dark bg + light text
+    const bg      = isConfirmed ? sh[1] : sh[3];
+    const accent  = isConfirmed ? sh[0] : sh[2];
+    const textCol = isConfirmed ? S.text : "#0f172a";
     return (
       <Link key={item.id} href={`/crm/sitrep/${item.id}`} className="db-sitrep-row" style={{
         display: "flex", alignItems: "center", gap: 8,
         padding: "7px 10px", borderRadius: 7, textDecoration: "none",
-        color: textColor, background: bg,
-        boxShadow: `inset 3px 0 0 0 ${accent}, 0 1px 3px rgba(0,0,0,.08)`,
+        color: textCol, background: bg,
+        boxShadow: `inset 3px 0 0 0 ${accent}, 0 1px 3px rgba(0,0,0,.12)`,
         "--accent": accent,
       } as React.CSSProperties}>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#991b1b" : "#64748b" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0, color: overdue ? "#ef4444" : isConfirmed ? "rgba(255,255,255,.55)" : "#475569" }}>
           {overdue ? "PAST DUE" : fmtSitrepDate(item)}
         </span>
       </Link>
     );
   }
 
-  return (
-    <div style={card}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <p style={{ ...sectionLabel, margin: 0 }}>📋 SitRep</p>
-        <Link href="/crm/sitrep" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>Full SitRep →</Link>
-      </div>
-      {wIsCalendar
-        ? <SitRepWidgetCalendar items={items} typeAccents={typeAccents} defaultView={wCfg.calendar_default_view as any} />
-        : items.length === 0
-          ? <p style={{ fontSize: 13, color: S.dim, fontStyle: "italic", margin: "4px 0" }}>All clear. Nothing on the board.</p>
-          : groups
-            ? groups.map(({ label, items: grp }) => (
-                <div key={label} style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: S.dim, marginBottom: 4, paddingLeft: 2 }}>{label}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>{grp.map(renderRow)}</div>
-                </div>
-              ))
-            : <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>{items.map(renderRow)}</div>
-      }
-    </div>
-  );
+  if (wIsCalendar) {
+    return <SitRepWidgetCalendar items={items} typeAccents={typeAccents} defaultView={wCfg.calendar_default_view as any} />;
+  }
+
+  if (items.length === 0) {
+    return <p style={{ fontSize: 13, color: S.dim, fontStyle: "italic", margin: 0 }}>All clear. Nothing on the board.</p>;
+  }
+
+  if (groups) {
+    return (
+      <>{groups.map(({ label, items: grp }) => (
+        <div key={label} style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: S.dim, marginBottom: 4, paddingLeft: 2 }}>{label}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>{grp.map(renderRow)}</div>
+        </div>
+      ))}</>
+    );
+  }
+
+  return <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>{items.map(renderRow)}</div>;
 }

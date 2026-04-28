@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { S, card, sectionLabel, makeSb, stageColor, fmtCurrency } from "./_helpers";
+import { S, makeSb, stageColor, fmtCurrency } from "./_helpers";
 
 export async function PipelineKanban({ tenantId }: { tenantId: string }) {
   const sb = makeSb(tenantId);
@@ -9,7 +9,9 @@ export async function PipelineKanban({ tenantId }: { tenantId: string }) {
     sb.from("opportunities").select("stage, amount_cents").eq("tenant_id", tenantId),
   ]);
 
-  const stageList = (stages ?? []).length > 0 ? (stages as any[]) : [
+  // Dedup by key (some tenants have duplicates)
+  const seen = new Set<string>();
+  const rawList = (stages ?? []).length > 0 ? (stages as any[]) : [
     { key: "new",       label: "New",       order_index: 0 },
     { key: "contacted", label: "Contacted", order_index: 1 },
     { key: "qualified", label: "Qualified", order_index: 2 },
@@ -17,6 +19,11 @@ export async function PipelineKanban({ tenantId }: { tenantId: string }) {
     { key: "won",       label: "Won",       order_index: 4 },
     { key: "lost",      label: "Lost",      order_index: 5 },
   ];
+  const stageList = rawList.filter((s: any) => {
+    if (seen.has(s.key)) return false;
+    seen.add(s.key);
+    return true;
+  });
 
   const oppByStage = new Map<string, { count: number; amount: number }>();
   let totalOpen = 0;
@@ -32,23 +39,15 @@ export async function PipelineKanban({ tenantId }: { tenantId: string }) {
     }
   }
 
-  if (stageList.length === 0) return null;
+  if (stageList.length === 0) return <p style={{ fontSize: 13, color: S.dim, fontStyle: "italic", margin: 0 }}>No pipeline stages configured.</p>;
 
   return (
-    <div style={card}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <p style={{ ...sectionLabel, margin: 0 }}>🎯 Opportunity Pipeline</p>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          {totalOpen > 0 && (
-            <span style={{ fontSize: 12, color: S.dimBright }}>
-              {fmtCurrency(totalOpenValue) || `${totalOpen} deal${totalOpen !== 1 ? "s" : ""}`} in play
-            </span>
-          )}
-          <Link href="/crm/opportunities" style={{ fontSize: 12, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>
-            View all →
-          </Link>
-        </div>
-      </div>
+    <>
+      {totalOpen > 0 && (
+        <p style={{ margin: "0 0 12px", fontSize: 13, color: S.dimBright }}>
+          {fmtCurrency(totalOpenValue) || `${totalOpen} deal${totalOpen !== 1 ? "s" : ""}`} in play
+        </p>
+      )}
       <div style={{ overflowX: "auto", paddingBottom: 8 }}>
         <div style={{ display: "flex", gap: 10, minWidth: "max-content" }}>
           {stageList.map((stage: any, i: number) => {
@@ -60,7 +59,7 @@ export async function PipelineKanban({ tenantId }: { tenantId: string }) {
                 href={`/crm/opportunities?stage=${stage.key}`}
                 className="db-stage-col"
                 style={{
-                  width: 160,
+                  width: 150,
                   flexShrink: 0,
                   background: "rgba(255,255,255,.02)",
                   border: `1px solid ${S.border}`,
@@ -88,6 +87,6 @@ export async function PipelineKanban({ tenantId }: { tenantId: string }) {
           })}
         </div>
       </div>
-    </div>
+    </>
   );
 }
