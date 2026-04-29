@@ -19,29 +19,31 @@ export async function ActiveLists({ tenantId }: { tenantId: string }) {
     );
   }
 
-  const listIds = lists.map((l: any) => l.id);
-  const [itemsRes, stopsRes] = await Promise.all([
-    sb.from("walklist_items").select("id, walklist_id").eq("tenant_id", tenantId).in("walklist_id", listIds),
-    sb.from("stops").select("walklist_item_id").eq("tenant_id", tenantId).in("walklist_id", listIds).not("walklist_item_id", "is", null),
-  ]);
-
-  const itemCounts = new Map<string, number>();
-  for (const r of (itemsRes.data ?? []) as any[]) itemCounts.set(r.walklist_id, (itemCounts.get(r.walklist_id) ?? 0) + 1);
-
-  // Build set of all item IDs per list so we can count distinct visited items
-  const itemListMap = new Map<string, string>();
-  for (const r of (itemsRes.data ?? []) as any[]) itemListMap.set(r.id, r.walklist_id);
-
-  const visitedItems = new Map<string, Set<string>>();
-  for (const r of (stopsRes.data ?? []) as any[]) {
-    const listId = itemListMap.get(r.walklist_item_id);
-    if (!listId) continue;
-    if (!visitedItems.has(listId)) visitedItems.set(listId, new Set());
-    visitedItems.get(listId)!.add(r.walklist_item_id);
-  }
-  const stopCounts = new Map<string, number>(
-    [...visitedItems.entries()].map(([k, v]) => [k, v.size])
+  // Per-list parallel queries avoid PostgREST's 1000-row cap on batch fetches.
+  // Stops are deduplicated by person_id/location_id since walklist_item_id isn't
+  // always set (calls/texts made outside the PWA walklist flow).
+  const progressData = await Promise.all(
+    (lists as any[]).map(async (list) => {
+      const [{ count: total }, { data: stopsData }] = await Promise.all([
+        sb.from("walklist_items")
+          .select("*", { count: "exact", head: true })
+          .eq("walklist_id", list.id)
+          .eq("tenant_id", tenantId),
+        sb.from("stops")
+          .select("person_id, location_id")
+          .eq("walklist_id", list.id)
+          .eq("tenant_id", tenantId)
+          .limit(2000),
+      ]);
+      const visited = new Set(
+        (stopsData ?? []).map((s: any) => s.person_id ?? s.location_id).filter(Boolean)
+      ).size;
+      return { id: list.id, total: total ?? 0, visited };
+    })
   );
+
+  const itemCounts = new Map(progressData.map(d => [d.id, d.total]));
+  const stopCounts = new Map(progressData.map(d => [d.id, d.visited]));
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
