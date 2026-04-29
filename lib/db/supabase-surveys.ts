@@ -450,20 +450,40 @@ export async function completeSession(params: {
 
 // ── Results ───────────────────────────────────────────────────────────────────
 
+async function fetchAllPages<T>(
+  query: () => PromiseLike<{ data: T[] | null }>,
+  pageSize = 1000
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data } = await (query() as any).range(from, from + pageSize - 1).order("created_at", { ascending: true });
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 export async function getSurveyResults(surveyId: string, tenantId: string) {
   const sb = getServiceClient(tenantId);
 
-  const [{ data: survey }, { data: sessions }, { data: questions }, { data: responses }] =
-    await Promise.all([
-      sb.from("surveys").select("id, title, description").eq("id", surveyId).single(),
-      sb.from("survey_sessions").select("completed_at").eq("survey_id", surveyId),
-      sb.from("questions").select("id, question_text, question_type, order_index").eq("survey_id", surveyId).order("order_index"),
-      sb.from("responses").select("question_id, answer_value, answer_text").eq("survey_id", surveyId),
-    ]);
+  const [{ data: survey }, { data: questions }] = await Promise.all([
+    sb.from("surveys").select("id, title, description").eq("id", surveyId).single(),
+    sb.from("questions").select("id, question_text, question_type, order_index").eq("survey_id", surveyId).order("order_index"),
+  ]);
 
   if (!survey) return null;
 
-  console.log(`[getSurveyResults] surveyId=${surveyId} tenantId=${tenantId} sessions=${sessions?.length ?? 0} questions=${questions?.length ?? 0} responses=${responses?.length ?? 0}`);
+  const sessions = await fetchAllPages<{ completed_at: string | null }>(() =>
+    sb.from("survey_sessions").select("completed_at").eq("survey_id", surveyId) as any
+  );
+  const responses = await fetchAllPages<{ question_id: string; answer_value: string; answer_text: string | null }>(() =>
+    sb.from("responses").select("question_id, answer_value, answer_text").eq("survey_id", surveyId) as any
+  );
+
+  console.log(`[getSurveyResults] surveyId=${surveyId} tenantId=${tenantId} sessions=${sessions.length} questions=${questions?.length ?? 0} responses=${responses.length}`);
 
   const totalStarted = sessions?.length ?? 0;
   const totalCompleted = sessions?.filter((s) => s.completed_at).length ?? 0;
