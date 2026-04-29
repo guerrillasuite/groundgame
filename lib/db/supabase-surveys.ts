@@ -463,6 +463,8 @@ export async function getSurveyResults(surveyId: string, tenantId: string) {
 
   if (!survey) return null;
 
+  console.log(`[getSurveyResults] surveyId=${surveyId} tenantId=${tenantId} sessions=${sessions?.length ?? 0} questions=${questions?.length ?? 0} responses=${responses?.length ?? 0}`);
+
   const totalStarted = sessions?.length ?? 0;
   const totalCompleted = sessions?.filter((s) => s.completed_at).length ?? 0;
 
