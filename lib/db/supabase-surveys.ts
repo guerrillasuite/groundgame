@@ -642,31 +642,21 @@ export async function getSurveyExportData(surveyId: string, tenantId: string) {
 
   if (!survey) return null;
 
-  const [
-    { data: sessions },
-    { data: questions },
-    { data: responses },
-  ] = await Promise.all([
-    sb.from("survey_sessions").select("*").eq("survey_id", surveyId),
-    sb.from("questions").select("*").eq("survey_id", surveyId).order("order_index"),
-    sb
-      .from("responses")
-      .select("crm_contact_id, question_id, answer_value, answer_text, created_at")
-      .eq("survey_id", surveyId),
+  const { data: questions } = await sb.from("questions").select("*").eq("survey_id", surveyId).order("order_index");
+
+  const [sessions, responses] = await Promise.all([
+    fetchAllPages<any>(() => sb.from("survey_sessions").select("*").eq("survey_id", surveyId) as any),
+    fetchAllPages<any>(() => sb.from("responses").select("crm_contact_id, question_id, answer_value, answer_text, created_at").eq("survey_id", surveyId) as any),
   ]);
 
   // Fetch post-submit survey questions + responses if linked
   let postSubmitQuestions: any[] = [];
   let postSubmitResponses: any[] = [];
   if (survey.post_submit_survey_id) {
-    const [{ data: psQs }, { data: psRs }] = await Promise.all([
-      sb.from("questions").select("*").eq("survey_id", survey.post_submit_survey_id).order("order_index"),
-      sb.from("responses")
-        .select("crm_contact_id, question_id, answer_value, answer_text, created_at")
-        .eq("survey_id", survey.post_submit_survey_id),
-    ]);
+    const { data: psQs } = await sb.from("questions").select("*").eq("survey_id", survey.post_submit_survey_id).order("order_index");
+    const psRs = await fetchAllPages<any>(() => sb.from("responses").select("crm_contact_id, question_id, answer_value, answer_text, created_at").eq("survey_id", survey.post_submit_survey_id) as any);
     postSubmitQuestions = psQs ?? [];
-    postSubmitResponses = psRs ?? [];
+    postSubmitResponses = psRs;
   }
 
   // Collect all unique person IDs across both surveys
@@ -687,9 +677,9 @@ export async function getSurveyExportData(surveyId: string, tenantId: string) {
 
   return {
     survey,
-    sessions: sessions ?? [],
+    sessions,
     questions: questions ?? [],
-    responses: responses ?? [],
+    responses,
     postSubmitQuestions,
     postSubmitResponses,
     contactMap,
