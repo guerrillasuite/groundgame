@@ -21,16 +21,27 @@ export async function ActiveLists({ tenantId }: { tenantId: string }) {
 
   const listIds = lists.map((l: any) => l.id);
   const [itemsRes, stopsRes] = await Promise.all([
-    sb.from("walklist_items").select("walklist_id").eq("tenant_id", tenantId).in("walklist_id", listIds),
-    sb.from("stops").select("walklist_id, stop_at").eq("tenant_id", tenantId).in("walklist_id", listIds).order("stop_at", { ascending: false }),
+    sb.from("walklist_items").select("id, walklist_id").eq("tenant_id", tenantId).in("walklist_id", listIds),
+    sb.from("stops").select("walklist_item_id").eq("tenant_id", tenantId).in("walklist_id", listIds).not("walklist_item_id", "is", null),
   ]);
 
   const itemCounts = new Map<string, number>();
-  const stopCounts = new Map<string, number>();
   for (const r of (itemsRes.data ?? []) as any[]) itemCounts.set(r.walklist_id, (itemCounts.get(r.walklist_id) ?? 0) + 1);
+
+  // Build set of all item IDs per list so we can count distinct visited items
+  const itemListMap = new Map<string, string>();
+  for (const r of (itemsRes.data ?? []) as any[]) itemListMap.set(r.id, r.walklist_id);
+
+  const visitedItems = new Map<string, Set<string>>();
   for (const r of (stopsRes.data ?? []) as any[]) {
-    stopCounts.set(r.walklist_id, (stopCounts.get(r.walklist_id) ?? 0) + 1);
+    const listId = itemListMap.get(r.walklist_item_id);
+    if (!listId) continue;
+    if (!visitedItems.has(listId)) visitedItems.set(listId, new Set());
+    visitedItems.get(listId)!.add(r.walklist_item_id);
   }
+  const stopCounts = new Map<string, number>(
+    [...visitedItems.entries()].map(([k, v]) => [k, v.size])
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -47,25 +58,25 @@ export async function ActiveLists({ tenantId }: { tenantId: string }) {
             className="db-list-row"
             style={{
               display: "flex", alignItems: "center", gap: 12,
-              padding: "10px 0",
+              padding: "10px 12px",
               borderTop: i > 0 ? `1px solid ${S.border}` : "none",
               textDecoration: "none", color: "inherit",
               boxShadow: `inset 3px 0 0 0 ${accentColor}`,
-              paddingLeft: 12,
+              minWidth: 0,
             }}
           >
             <span style={{ fontSize: 16, flexShrink: 0 }}>{isCall ? "📞" : "🚪"}</span>
             <span style={{
-              flex: 1, fontSize: 14, fontWeight: 500, color: S.text,
+              flex: 1, minWidth: 0, fontSize: 14, fontWeight: 500, color: S.text,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
               {list.name ?? "(Unnamed)"}
             </span>
-            <div style={{ width: 120, flexShrink: 0 }}>
+            <div style={{ width: 100, flexShrink: 0 }}>
               <ProgressBar pct={pct} color={accentColor} />
             </div>
             <span style={{
-              fontSize: 13, fontWeight: 700, flexShrink: 0, minWidth: 38, textAlign: "right",
+              fontSize: 13, fontWeight: 700, flexShrink: 0, minWidth: 34, textAlign: "right",
               color: pct >= 100 ? "#22c55e" : S.dimBright,
             }}>
               {total > 0 ? `${pct}%` : "—"}
