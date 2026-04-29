@@ -20,25 +20,48 @@ export async function ActiveLists({ tenantId }: { tenantId: string }) {
   }
 
   // Per-list parallel queries avoid PostgREST's 1000-row cap on batch fetches.
-  // Stops are deduplicated by person_id/location_id since walklist_item_id isn't
-  // always set (calls/texts made outside the PWA walklist flow).
+  // Stops don't reliably have walklist_id set (calls/texts made outside the PWA
+  // don't always populate it), so we join via person_id — same as list detail page.
   const progressData = await Promise.all(
     (lists as any[]).map(async (list) => {
-      const [{ count: total }, { data: stopsData }] = await Promise.all([
+      // Round 1: count total items + fetch person_ids in parallel
+      const [{ count: total }, { data: items }] = await Promise.all([
         sb.from("walklist_items")
           .select("*", { count: "exact", head: true })
           .eq("walklist_id", list.id)
           .eq("tenant_id", tenantId),
-        sb.from("stops")
+        sb.from("walklist_items")
           .select("person_id, location_id")
           .eq("walklist_id", list.id)
           .eq("tenant_id", tenantId)
-          .limit(2000),
+          .limit(200),
       ]);
-      const visited = new Set(
-        (stopsData ?? []).map((s: any) => s.person_id ?? s.location_id).filter(Boolean)
-      ).size;
-      return { id: list.id, total: total ?? 0, visited };
+
+      if (!total) return { id: list.id, total: 0, visited: 0 };
+
+      const personIds = [...new Set(
+        (items ?? []).map((r: any) => r.person_id).filter(Boolean)
+      )] as string[];
+
+      if (!personIds.length) {
+        // Location-based list: fall back to walklist_id on stops
+        const { data: stops } = await sb.from("stops")
+          .select("location_id")
+          .eq("walklist_id", list.id)
+          .eq("tenant_id", tenantId)
+          .limit(500);
+        const visited = new Set((stops ?? []).map((s: any) => s.location_id).filter(Boolean)).size;
+        return { id: list.id, total, visited };
+      }
+
+      // Round 2: count stops by person_id (tenant-wide, same as list detail page)
+      const { data: stops } = await sb.from("stops")
+        .select("person_id")
+        .eq("tenant_id", tenantId)
+        .in("person_id", personIds);
+
+      const visited = new Set((stops ?? []).map((s: any) => s.person_id)).size;
+      return { id: list.id, total, visited };
     })
   );
 
