@@ -679,7 +679,8 @@ export default function CallScreen({ params }: { params: { id: string; index: st
         {callCaptureMode === 'survey' && showSurvey && !surveyDone && surveyId && (
           <KnockSurvey
             surveyId={surveyId}
-            contactId={p.person_id}
+            contactId={p.person_id ?? ""}
+            viewType="call"
             onDone={() => { setShowSurvey(false); setSurveyDone(true); }}
           />
         )}

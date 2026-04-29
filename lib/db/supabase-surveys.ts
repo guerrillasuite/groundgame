@@ -384,7 +384,7 @@ export async function saveResponse(params: {
   answer_value: string;
   answer_text?: string | null;
 }): Promise<void> {
-  const sb = getClient();
+  const sb = getAdminClient();
 
   // Upsert response (one answer per contact per question)
   const { data: existing } = await sb
@@ -439,7 +439,7 @@ export async function completeSession(params: {
   crm_contact_id: string;
   survey_id: string;
 }): Promise<void> {
-  const sb = getClient();
+  const sb = getAdminClient();
   await sb
     .from("survey_sessions")
     .update({ completed_at: new Date().toISOString() })
