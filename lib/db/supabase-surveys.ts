@@ -457,7 +457,7 @@ async function fetchAllPages<T>(
   const all: T[] = [];
   let from = 0;
   while (true) {
-    const { data } = await (query() as any).range(from, from + pageSize - 1).order("created_at", { ascending: true });
+    const { data } = await (query() as any).order("id", { ascending: true }).range(from, from + pageSize - 1);
     if (!data || data.length === 0) break;
     all.push(...data);
     if (data.length < pageSize) break;
