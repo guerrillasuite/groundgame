@@ -438,7 +438,7 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
   const [createError,     setCreateError]     = useState("");
 
   const userMap    = new Map(users.map((u) => [u.id, u]));
-  const missionMap = new Map(missions.map((m) => [m.id, m]));
+  const missionMap = new Map((missions ?? []).map((m) => [m.id, m]));
 
   const S = {
     bg:       "rgb(10 13 20)",
@@ -552,6 +552,7 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
         mission_id: createMissionId || null,
         visibility: createType === "task" ? "assignee_only" : "team",
         created_by: currentUserId, created_at: new Date().toISOString(),
+        parent_item_id: null, depth: 0,
         sitrep_assignments: [],
       };
       setItems((prev) => [newItem, ...prev]);
@@ -1126,13 +1127,13 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
                 </div>
               )}
 
-              {hasMissions && missions.length > 0 && (
+              {hasMissions && (missions ?? []).length > 0 && (
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 5, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Mission</label>
                   <select value={createMissionId} onChange={(e) => setCreateMissionId(e.target.value)}
                     style={{ width: "100%", padding: "9px 12px", borderRadius: 9, background: "rgba(255,255,255,.05)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,.1)", color: S.text, fontSize: 13, outline: "none", boxSizing: "border-box" }}>
                     <option value="">— None —</option>
-                    {missions.filter((m) => m.status !== "done").map((m) => (
+                    {(missions ?? []).filter((m) => m.status !== "done").map((m) => (
                       <option key={m.id} value={m.id}>{m.title}</option>
                     ))}
                   </select>

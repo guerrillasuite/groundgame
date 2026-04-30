@@ -1,0 +1,101 @@
+table_name,column_name,data_type,is_nullable,column_default
+_pg_foreign_data_wrappers,oid,oid,YES,null
+_pg_foreign_data_wrappers,fdwowner,oid,YES,null
+_pg_foreign_data_wrappers,fdwoptions,ARRAY,YES,null
+_pg_foreign_data_wrappers,foreign_data_wrapper_catalog,name,YES,null
+_pg_foreign_data_wrappers,foreign_data_wrapper_name,name,YES,null
+_pg_foreign_data_wrappers,authorization_identifier,name,YES,null
+_pg_foreign_data_wrappers,foreign_data_wrapper_language,character varying,YES,null
+_pg_foreign_servers,oid,oid,YES,null
+_pg_foreign_servers,srvoptions,ARRAY,YES,null
+_pg_foreign_servers,foreign_server_catalog,name,YES,null
+_pg_foreign_servers,foreign_server_name,name,YES,null
+_pg_foreign_servers,foreign_data_wrapper_catalog,name,YES,null
+_pg_foreign_servers,foreign_data_wrapper_name,name,YES,null
+_pg_foreign_servers,foreign_server_type,character varying,YES,null
+_pg_foreign_servers,foreign_server_version,character varying,YES,null
+_pg_foreign_servers,authorization_identifier,name,YES,null
+_pg_foreign_table_columns,nspname,name,YES,null
+_pg_foreign_table_columns,relname,name,YES,null
+_pg_foreign_table_columns,attname,name,YES,null
+_pg_foreign_table_columns,attfdwoptions,ARRAY,YES,null
+_pg_foreign_tables,foreign_table_catalog,name,YES,null
+_pg_foreign_tables,foreign_table_schema,name,YES,null
+_pg_foreign_tables,foreign_table_name,name,YES,null
+_pg_foreign_tables,ftoptions,ARRAY,YES,null
+_pg_foreign_tables,foreign_server_catalog,name,YES,null
+_pg_foreign_tables,foreign_server_name,name,YES,null
+_pg_foreign_tables,authorization_identifier,name,YES,null
+_pg_user_mappings,oid,oid,YES,null
+_pg_user_mappings,umoptions,ARRAY,YES,null
+_pg_user_mappings,umuser,oid,YES,null
+_pg_user_mappings,authorization_identifier,name,YES,null
+_pg_user_mappings,foreign_server_catalog,name,YES,null
+_pg_user_mappings,foreign_server_name,name,YES,null
+_pg_user_mappings,srvowner,name,YES,null
+administrable_role_authorizations,grantee,name,YES,null
+administrable_role_authorizations,role_name,name,YES,null
+administrable_role_authorizations,is_grantable,character varying,YES,null
+api_call_lists,id,uuid,YES,null
+api_call_lists,name,text,YES,null
+api_call_lists,description,text,YES,null
+api_call_lists,list_mode,text,YES,null
+api_call_lists,total_targets,smallint,YES,null
+api_call_lists,updated_at,timestamp with time zone,YES,null
+api_walklists,id,uuid,YES,null
+api_walklists,name,text,YES,null
+api_walklists,description,text,YES,null
+api_walklists,list_mode,text,YES,null
+api_walklists,loop_style,text,YES,null
+api_walklists,loop_length,text,YES,null
+api_walklists,total_targets,smallint,YES,null
+api_walklists,updated_at,timestamp with time zone,YES,null
+applicable_roles,grantee,name,YES,null
+applicable_roles,role_name,name,YES,null
+applicable_roles,is_grantable,character varying,YES,null
+attributes,udt_catalog,name,YES,null
+attributes,udt_schema,name,YES,null
+attributes,udt_name,name,YES,null
+attributes,attribute_name,name,YES,null
+attributes,ordinal_position,integer,YES,null
+attributes,attribute_default,character varying,YES,null
+attributes,is_nullable,character varying,YES,null
+attributes,data_type,character varying,YES,null
+attributes,character_maximum_length,integer,YES,null
+attributes,character_octet_length,integer,YES,null
+attributes,character_set_catalog,name,YES,null
+attributes,character_set_schema,name,YES,null
+attributes,character_set_name,name,YES,null
+attributes,collation_catalog,name,YES,null
+attributes,collation_schema,name,YES,null
+attributes,collation_name,name,YES,null
+attributes,numeric_precision,integer,YES,null
+attributes,numeric_precision_radix,integer,YES,null
+attributes,numeric_scale,integer,YES,null
+attributes,datetime_precision,integer,YES,null
+attributes,interval_type,character varying,YES,null
+attributes,interval_precision,integer,YES,null
+attributes,attribute_udt_catalog,name,YES,null
+attributes,attribute_udt_schema,name,YES,null
+attributes,attribute_udt_name,name,YES,null
+attributes,scope_catalog,name,YES,null
+attributes,scope_schema,name,YES,null
+attributes,scope_name,name,YES,null
+attributes,maximum_cardinality,integer,YES,null
+attributes,dtd_identifier,name,YES,null
+attributes,is_derived_reference_attribute,character varying,YES,null
+audit_log_entries,instance_id,uuid,YES,null
+audit_log_entries,id,uuid,NO,null
+audit_log_entries,payload,json,YES,null
+audit_log_entries,created_at,timestamp with time zone,YES,null
+audit_log_entries,ip_address,character varying,NO,''::character varying
+buckets,id,text,NO,null
+buckets,name,text,NO,null
+buckets,owner,uuid,YES,null
+buckets,created_at,timestamp with time zone,YES,now()
+buckets,updated_at,timestamp with time zone,YES,now()
+buckets,public,boolean,YES,false
+buckets,avif_autodetection,boolean,YES,false
+buckets,file_size_limit,bigint,YES,null
+buckets,allowed_mime_types,ARRAY,YES,null
+buckets,owner_id,text,YES,null

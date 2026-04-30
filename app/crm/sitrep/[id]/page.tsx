@@ -25,7 +25,7 @@ export default async function SitRepItemPage({ params }: Ctx) {
 
   const sb = makeSb(tenant.id);
 
-  const [itemRes, missionsRes] = await Promise.all([
+  const [itemRes, typesRes] = await Promise.all([
     sb
       .from("sitrep_items")
       .select("*, sitrep_assignments(user_id, role), sitrep_links(id, record_type, record_id, display_label)")
@@ -33,11 +33,9 @@ export default async function SitRepItemPage({ params }: Ctx) {
       .eq("tenant_id", tenant.id)
       .single(),
     sb
-      .from("sitrep_missions")
-      .select("id, title, status")
-      .eq("tenant_id", tenant.id)
-      .neq("status", "archived")
-      .order("created_at", { ascending: false }),
+      .from("sitrep_item_types")
+      .select("slug, name, color, stages, is_mission_type, show_in_kanban, booking_enabled")
+      .eq("tenant_id", tenant.id),
   ]);
 
   if (!itemRes.data) redirect("/crm/sitrep");
@@ -51,22 +49,83 @@ export default async function SitRepItemPage({ params }: Ctx) {
     if (!isAssigned && item.created_by !== crmUser.userId) redirect("/crm/sitrep");
   }
 
-  // Fetch users for assignee display/picker
+  // Build type map
+  const rawTypes = (typesRes.data ?? []) as any[];
+  const SYSTEM_TYPE_DEFAULTS: any[] = [
+    {
+      slug: "task", name: "Task", color: "blue", is_mission_type: true,
+      stages: [
+        { slug: "open", name: "Open", color: "blue", is_terminal: false, sort_order: 0 },
+        { slug: "in_progress", name: "In Progress", color: "amber", is_terminal: false, sort_order: 1 },
+        { slug: "done", name: "Done", color: "green", is_terminal: true, sort_order: 2 },
+        { slug: "cancelled", name: "Cancelled", color: "slate", is_terminal: true, sort_order: 3 },
+      ],
+    },
+    {
+      slug: "event", name: "Event", color: "violet", is_mission_type: false,
+      stages: [
+        { slug: "open", name: "Open", color: "violet", is_terminal: false, sort_order: 0 },
+        { slug: "confirmed", name: "Confirmed", color: "blue", is_terminal: false, sort_order: 1 },
+        { slug: "done", name: "Done", color: "green", is_terminal: true, sort_order: 2 },
+        { slug: "cancelled", name: "Cancelled", color: "slate", is_terminal: true, sort_order: 3 },
+      ],
+    },
+    {
+      slug: "meeting", name: "Meeting", color: "teal", is_mission_type: false,
+      stages: [
+        { slug: "open", name: "Open", color: "teal", is_terminal: false, sort_order: 0 },
+        { slug: "confirmed", name: "Confirmed", color: "blue", is_terminal: false, sort_order: 1 },
+        { slug: "done", name: "Done", color: "green", is_terminal: true, sort_order: 2 },
+        { slug: "cancelled", name: "Cancelled", color: "slate", is_terminal: true, sort_order: 3 },
+      ],
+    },
+  ];
+
+  const existingSlugs = new Set(rawTypes.map((t: any) => t.slug));
+  const allTypes = [
+    ...SYSTEM_TYPE_DEFAULTS.filter((t) => !existingSlugs.has(t.slug)),
+    ...rawTypes,
+  ];
+
+  const typeDefs: Record<string, any> = {};
+  for (const t of allTypes) {
+    typeDefs[t.slug] = t;
+  }
+
+  // Fetch parent item title if item has a parent
+  let parentItem: { id: string; title: string; item_type: string } | null = null;
+  if (item.parent_item_id) {
+    const { data: parentData } = await sb
+      .from("sitrep_items")
+      .select("id, title, item_type")
+      .eq("id", item.parent_item_id)
+      .eq("tenant_id", tenant.id)
+      .single();
+    if (parentData) parentItem = parentData as any;
+  }
+
+  // Fetch tenant users
   let users: { id: string; name: string; email: string }[] = [];
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (serviceKey && supabaseUrl) {
     try {
-      const res = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=200`, {
-        headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        users = (json.users ?? []).map((u: any) => ({
-          id: u.id,
-          email: u.email ?? "",
-          name: u.user_metadata?.name ?? u.user_metadata?.full_name ?? u.email ?? "",
-        }));
+      const [authRes, membersRes] = await Promise.all([
+        fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=200`, {
+          headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+        }),
+        sb.from("user_tenants").select("user_id").eq("tenant_id", tenant.id).in("status", ["active", "invited"]),
+      ]);
+      if (authRes.ok) {
+        const json = await authRes.json();
+        const tenantUserIds = new Set((membersRes.data ?? []).map((m: any) => m.user_id));
+        users = (json.users ?? [])
+          .filter((u: any) => tenantUserIds.has(u.id))
+          .map((u: any) => ({
+            id: u.id,
+            email: u.email ?? "",
+            name: u.user_metadata?.name ?? u.user_metadata?.full_name ?? u.email ?? "",
+          }));
       }
     } catch {
       // best-effort
@@ -76,7 +135,8 @@ export default async function SitRepItemPage({ params }: Ctx) {
   return (
     <SitRepItemClient
       item={item}
-      missions={(missionsRes.data ?? []) as any[]}
+      typeDefs={typeDefs}
+      parentItem={parentItem}
       users={users}
       currentUserId={crmUser.userId}
     />

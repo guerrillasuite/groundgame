@@ -1,9 +1,119 @@
 # SitRep — GuerrillaSuite Task, Event & Calendar Layer
 ## Planning & Architecture Document
-**Status:** Pre-development planning (v1 spec)
+**Status:** v1 SHIPPED (2026-04-16) — v2 planning
 **Suite:** GuerrillaSuite
 **Lives in:** GroundGame (v1) → Standalone product (v3)
 **Stack:** Next.js · Supabase (PostgreSQL) · Railway · GitHub
+
+---
+
+## Current Build Status
+
+### ✅ Shipped in v1 (2026-04-16)
+
+| Area | What shipped |
+|---|---|
+| **Database** | All 8 tables created via migration `create_sitrep_tables_v1`: `sitrep_missions`, `sitrep_items`, `sitrep_assignments`, `sitrep_links`, `sitrep_visibility_grants`, `sitrep_recurring_rules`, `sitrep_item_notifications`, `sitrep_notification_prefs` |
+| **Feature flags** | `sitrep_core`, `sitrep_calendar`, `sitrep_team`, `sitrep_missions` — all on all tiers (Scout Kit / Field Pack / War Chest) |
+| **API — Items** | `GET/POST /api/crm/sitrep/items` · `GET/PATCH/DELETE /api/crm/sitrep/items/[id]` — full CRUD, visibility filter, assignee add/remove via PATCH |
+| **API — Missions** | `GET/POST /api/crm/sitrep/missions` · `GET/PATCH/DELETE /api/crm/sitrep/missions/[id]` — full CRUD, progress calculation, visibility filter |
+| **Dashboard widget** | Both `AdminDashboard` and `FieldDashboard` in `app/crm/page.tsx` — replaced old Reminders widget with SitRep widget (icon, title, date, overdue highlighting) |
+| **Board page** | `/crm/sitrep/` — grouped sections (Overdue → Today → Tomorrow → This Week → Later → No Date → Done → Cancelled), quick-add task bar, Mine/All + type + status filters, status dot toggle for tasks, + New dropdown (Task/Event/Meeting/Mission), full create modal with type switcher, assignee picker, mission link, visibility |
+| **Item detail** | `/crm/sitrep/[id]/` — auto-save on all fields (700ms debounce), status pills, priority pills, date fields, all-day toggle, meeting agenda + notes, mission selector, visibility selector, assignee chips (add/remove), linked records display (read-only), delete with confirm |
+| **Missions list** | `/crm/sitrep/missions/` — status tabs (All/Planning/Active/Complete), mission cards with colored left-border, progress bars, item count badges, create modal |
+| **Mission detail** | `/crm/sitrep/missions/[id]/` — editable title/desc/status/due-date/visibility with auto-save, animated progress bar, quick-add item bar (task/event/meeting), grouped item list with task toggle, all items link to their detail page, delete with confirm |
+| **Nav** | CrmHeader: "SitRep" flat link when only `sitrep_core`; becomes "SitRep ▾" dropdown (Board / Missions) when `sitrep_missions` also on |
+| **RBAC** | `requireDirectorPage()` on all Director-only CRM pages; `requireDirectorApi()` on all destructive API routes including cleanup, dedupe merge, import, bulk-edit, settings |
+| **Brand colors** | All pages use `var(--gg-primary, #2563eb)` — inherits tenant brand color injected at layout level |
+
+### 🔄 Intentional deviations from original v1 spec
+
+- **Reminders migration skipped** — the one live reminder record was manually deleted by the user, making a migration script unnecessary. The old `reminders` table, `app/crm/reminders/`, and `app/api/crm/reminders/` routes still exist as dead code. Clean up when confirmed safe.
+- **Board uses grouped sections, not a flat filtered list** — Overdue/Today/Tomorrow/This Week/Later grouping provides better at-a-glance scanning than a flat list with date filter. Better than spec.
+- **Shift items deferred** — Shifts require a GroundGame shift table that doesn't exist yet. Schema columns (`source_product`, `source_record_type`, `source_record_id`) are in place for when it ships.
+
+---
+
+## What's Left for v2 (Next Build Cycle)
+
+Priority order — roughly top to bottom.
+
+### High Priority
+
+**1. Notification system**
+The schema is fully built. Nothing sends yet.
+- Railway cron route that polls `sitrep_item_notifications WHERE notify_enabled = true AND sent_at IS NULL`
+- Uses Resend (`lib/email/resend.ts`) — already configured
+- Triggers: task due soon, task overdue, task assigned to you, meeting added, meeting starting soon, event starting soon, mission deadline
+- `/crm/settings/sitrep/` — user-level notification preferences page (reads/writes `sitrep_notification_prefs`)
+
+**2. Calendar view — `/crm/sitrep/calendar/`**
+- Week/month toggle, default week
+- Events and Meetings as time blocks; Tasks as due-date pills; Mission deadlines as pills
+- Color-code by type (Tasks: slate, Events: blue, Meetings: purple)
+- Shifts as green `[GG]` blocks when GroundGame shift table exists
+- Past Due items: red border regardless of type
+- Clicking opens item detail (slide-over or navigate)
+- Gated on `sitrep_calendar` flag (already in features.ts)
+
+**3. Linked records UI in create modal and item detail**
+- `sitrep_links` table exists and detail page renders links (read-only)
+- Need: add/remove links from item detail — record type picker + search (Person/Household/Opportunity/Company/Location)
+- Resolve and cache `display_label` at link time
+
+**4. Recurring rules UI**
+- `sitrep_recurring_rules` table and `sitrep_items.recurring_rule_id` FK are in place
+- Need: "Repeat" toggle in create/edit modal → frequency/interval/end picker
+- Need: server logic to spawn next occurrence on item completion
+
+### Medium Priority
+
+**5. Custom visibility grants UI**
+- `sitrep_visibility_grants` table exists; `visibility = 'custom'` option is already in the selector
+- Need: when user picks "Custom", show a user picker to define the grant list
+- Currently selecting "Custom" saves the visibility value but grants nothing — items become effectively invisible to everyone except creator
+
+**6. Filter enhancements on board page**
+- Date range picker
+- "Assigned to" user picker (Support + Directors only)
+- Paperclip indicator on list rows when `sitrep_links` exist
+- Bell indicator on list rows when a per-item notification is set
+
+**7. Per-item notify toggle in create modal**
+- "Notify me" section in create/edit modal: toggle + value + unit picker
+- Writes to `sitrep_item_notifications` on save
+
+**8. Mission ownership transfer**
+- Allow creator to reassign a mission to another user
+- Currently `created_by` is immutable after creation
+
+**9. `reminders` table cleanup**
+- Delete `app/crm/reminders/page.tsx` and `app/crm/reminders/[id]/` if they exist
+- Delete `app/api/crm/reminders/route.ts` and `app/api/crm/reminders/[id]/route.ts`
+- Drop `reminders` table from Supabase (confirm no other code references it first)
+- Remove `RemindersSection` component from people/household/opportunity detail pages — replace with sitrep_links query filtered by record_type + record_id
+
+### Lower Priority / v2 Infrastructure
+
+**10. Cross-product item ingestion (requires LedgerLine)**
+- DB trigger or API endpoint to push LedgerLine bill due dates, payroll runs → `sitrep_items` with `source_product = 'ledgerline'`
+- Read-only in SitRep; edits navigate back to LedgerLine
+- `source_product`, `source_record_type`, `source_record_id` columns already in schema
+
+**11. External meeting invites**
+- Emailed invite link for non-GuerrillaSuite users
+- Accept/decline → `.ics` download on accept
+- `sitrep_assignments.accepted` column already in schema (currently always NULL)
+
+**12. iCal export**
+- Per-user iCal URL (`.ics` feed) subscribed to by Google/Apple/Outlook
+- Read-only; no two-way sync until v3
+
+**13. In-app notification center**
+- Notification bell in CrmHeader
+- All SitRep triggers surface here in addition to email
+
+---
 
 ---
 

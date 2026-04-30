@@ -13,6 +13,10 @@ function makeSb(tenantId: string) {
   );
 }
 
+const PATCHABLE_FIELDS = [
+  "name", "color", "is_public", "show_in_kanban", "booking_enabled", "custom_roles",
+] as const;
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -23,12 +27,27 @@ export async function PATCH(
   const tenant = await getTenant();
   const { id } = await params;
   const body = await req.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+
   const sb = makeSb(tenant.id);
 
   const updates: Record<string, unknown> = {};
-  if (body?.name !== undefined) updates.name = body.name.trim();
-  if (body?.color !== undefined) updates.color = body.color;
-  if (body?.is_public !== undefined) updates.is_public = body.is_public;
+  for (const key of PATCHABLE_FIELDS) {
+    if (key in body) updates[key] = body[key];
+  }
+
+  // stages: array-typed, accept separately
+  if (body.stages !== undefined) {
+    if (!Array.isArray(body.stages)) {
+      return NextResponse.json({ error: "stages must be an array" }, { status: 400 });
+    }
+    updates.stages = body.stages;
+  }
+
+  // is_mission_type: only non-system types, or system types explicitly allowed
+  if (body.is_mission_type !== undefined) {
+    updates.is_mission_type = Boolean(body.is_mission_type);
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });

@@ -4,6 +4,7 @@ import { useState, useTransition, useRef, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
+import { SitRepViewToggle } from "./_components/SitRepViewToggle";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -23,24 +24,27 @@ export type SitRepItem = {
   end_at: string | null;
   is_all_day: boolean | null;
   mission_id: string | null;
+  parent_item_id: string | null;
+  depth: number;
   visibility: string;
   created_by: string;
   created_at: string;
   sitrep_assignments: Assignment[];
 };
 
-type Mission = { id: string; title: string; status: string };
-type User   = { id: string; name: string; email: string };
+type User       = { id: string; name: string; email: string };
 type CreateType = string;
 
 export type Props = {
   initialItems: SitRepItem[];
-  missions: Mission[];
   users: User[];
   currentUserId: string;
   hasMissions?: boolean;
   typeColors?: Record<string, string>;
   typeNames?:  Record<string, string>;
+  typeDefs?:   Record<string, any>;
+  // legacy — still accepted but ignored
+  missions?: any[];
 };
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
@@ -292,9 +296,7 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function SitRepPanel({ initialItems, missions, users, currentUserId, hasMissions, typeColors, typeNames }: Props) {
-  const pathname     = usePathname();
-  const isCalendar   = !!pathname?.includes("/calendar");
+export default function SitRepPanel({ initialItems, users, currentUserId, hasMissions, typeColors, typeNames, typeDefs, missions }: Props) {
   const searchParams = useSearchParams();
   const router       = useRouter();
 
@@ -302,14 +304,15 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
   const [scope, setScope]               = useState<"mine" | "all">(
     (searchParams.get("scope") as "mine" | "all") || "mine"
   );
-  const [typeFilter, setTypeFilter]     = useState<"all" | "task" | "event" | "meeting">(
-    (searchParams.get("type") as "all" | "task" | "event" | "meeting") || "all"
+  const [typeFilter, setTypeFilter]     = useState<string>(
+    searchParams.get("type") ?? "all"
   );
   const [statusFilter, setStatusFilter] = useState<"active" | "done" | "all">(
     (searchParams.get("status") as "active" | "done" | "all") || "active"
   );
+  const [missionFilter, setMissionFilter] = useState(searchParams.get("filter") === "missions");
 
-  function pushFilters(newScope: "mine" | "all", newType: "all" | "task" | "event" | "meeting", newStatus: "active" | "done" | "all") {
+  function pushFilters(newScope: "mine" | "all", newType: string, newStatus: "active" | "done" | "all") {
     const p = new URLSearchParams(searchParams.toString());
     newScope === "mine" ? p.delete("scope") : p.set("scope", newScope);
     newType === "all" ? p.delete("type") : p.set("type", newType);
@@ -335,7 +338,6 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
   const [createMissionId,  setCreateMissionId]  = useState("");
   const [createVisibility, setCreateVisibility] = useState("assignee_only");
   const [createAssignees,  setCreateAssignees]  = useState<string[]>([]);
-  const [createStatus,     setCreateStatus]     = useState("planning");
   const [creating,         setCreating]         = useState(false);
   const [createError,      setCreateError]      = useState("");
 
@@ -353,14 +355,19 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
     return () => document.removeEventListener("mousedown", handler);
   }, [showNewMenu]);
 
-  const SYSTEM_SLUGS = new Set(["task", "event", "meeting", "mission"]);
-  const customTypeSlugs = Object.keys(typeColors ?? {}).filter((s) => !SYSTEM_SLUGS.has(s));
+  const customTypeSlugs = Object.keys(typeNames ?? {}).filter((s) => !["task","event","meeting"].includes(s));
 
   const openItems    = items.filter((i) => i.status !== "done" && i.status !== "cancelled");
   const overdueItems = items.filter((i) => isOverdue(i));
 
-  const userMap    = new Map(users.map((u) => [u.id, u]));
-  const missionMap = new Map(missions.map((m) => [m.id, m]));
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  // Mission-type slugs for the "Missions" filter
+  const missionTypeSlugs = new Set(
+    Object.entries(typeDefs ?? {})
+      .filter(([, t]) => (t as any).is_mission_type)
+      .map(([slug]) => slug)
+  );
 
   let filtered = items;
   if (scope === "mine") {
@@ -369,6 +376,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
     );
   }
   if (typeFilter !== "all") filtered = filtered.filter((i) => i.item_type === typeFilter);
+  if (missionFilter) filtered = filtered.filter((i) => missionTypeSlugs.has(i.item_type));
   if (statusFilter === "active") filtered = filtered.filter((i) => i.status !== "done" && i.status !== "cancelled");
   else if (statusFilter === "done") filtered = filtered.filter((i) => i.status === "done");
 
@@ -407,7 +415,8 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
           id, item_type: "task", title, status: "open", priority: "normal",
           description: null, location: null, location_address: null,
           due_date: dueDate, start_at: null, end_at: null, is_all_day: false,
-          mission_id: null, visibility: "assignee_only",
+          mission_id: null, parent_item_id: null, depth: 0,
+          visibility: "assignee_only",
           created_by: currentUserId, created_at: new Date().toISOString(),
           sitrep_assignments: [],
         };
@@ -422,7 +431,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
     setCreateDueDate(""); setCreateStartAt(""); setCreateEndAt("");
     setCreateIsAllDay(false); setCreateAgenda(""); setCreateMissionId("");
     setCreateVisibility(type === "task" ? "assignee_only" : "team");
-    setCreateAssignees([]); setCreateStatus("planning");
+    setCreateAssignees([]);
     setCreateError("");
     setShowCreate(true); setShowNewMenu(false);
   }
@@ -432,33 +441,26 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
     if (!createTitle.trim()) { setCreateError("Title is required."); return; }
     setCreating(true); setCreateError("");
 
-    const endpoint = createType === "mission" ? "/api/crm/sitrep/missions" : "/api/crm/sitrep/items";
     const body: Record<string, any> = {
-      title: createTitle.trim(),
+      item_type:   createType,
+      title:       createTitle.trim(),
       description: createDesc || null,
-      visibility: createVisibility,
+      visibility:  createVisibility,
+      mission_id:  createMissionId || null,
     };
-
-    if (createType === "mission") {
-      body.status   = createStatus;
+    if (createAssignees.length) body.assignee_ids = createAssignees;
+    if (createType === "task" || (typeDefs?.[createType]?.is_mission_type)) {
+      body.priority = createPriority;
       body.due_date = createDueDate || null;
+      body.status   = "open";
     } else {
-      body.item_type  = createType;
-      body.mission_id = createMissionId || null;
-      if (createAssignees.length) body.assignee_ids = createAssignees;
-      if (createType === "task") {
-        body.priority = createPriority;
-        body.due_date = createDueDate || null;
-        body.status   = "open";
-      } else {
-        body.start_at   = createStartAt || null;
-        body.end_at     = createEndAt   || null;
-        body.is_all_day = createIsAllDay;
-        if (createType === "meeting") body.agenda = createAgenda || null;
-      }
+      body.start_at   = createStartAt || null;
+      body.end_at     = createEndAt   || null;
+      body.is_all_day = createIsAllDay;
+      if (createType === "meeting") body.agenda = createAgenda || null;
     }
 
-    const res = await fetch(endpoint, {
+    const res = await fetch("/api/crm/sitrep/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -466,22 +468,22 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
 
     if (res.ok) {
       const data = await res.json();
-      if (createType !== "mission") {
-        const newItem: SitRepItem = {
-          id: data.id, item_type: createType as any,
-          title: createTitle.trim(), status: createType === "task" ? "open" : null,
-          priority: createType === "task" ? createPriority : null,
-          description: createDesc || null, location: null, location_address: null,
-          due_date:  createType === "task" ? (createDueDate || null) : null,
-          start_at:  createType !== "task" ? (createStartAt || null) : null,
-          end_at:    createType !== "task" ? (createEndAt   || null) : null,
-          is_all_day: createIsAllDay, mission_id: createMissionId || null,
-          visibility: createVisibility, created_by: currentUserId,
-          created_at: new Date().toISOString(),
-          sitrep_assignments: createAssignees.map((uid) => ({ user_id: uid, role: "assignee" })),
-        };
-        setItems((prev) => [newItem, ...prev]);
-      }
+      const newItem: SitRepItem = {
+        id: data.id, item_type: createType,
+        title: createTitle.trim(),
+        status: (createType === "task" || typeDefs?.[createType]?.is_mission_type) ? "open" : null,
+        priority: (createType === "task" || typeDefs?.[createType]?.is_mission_type) ? createPriority : null,
+        description: createDesc || null, location: null, location_address: null,
+        due_date:   (createType === "task" || typeDefs?.[createType]?.is_mission_type) ? (createDueDate || null) : null,
+        start_at:   (createType !== "task" && !typeDefs?.[createType]?.is_mission_type) ? (createStartAt || null) : null,
+        end_at:     (createType !== "task" && !typeDefs?.[createType]?.is_mission_type) ? (createEndAt   || null) : null,
+        is_all_day: createIsAllDay, mission_id: createMissionId || null,
+        parent_item_id: null, depth: 0,
+        visibility: createVisibility, created_by: currentUserId,
+        created_at: new Date().toISOString(),
+        sitrep_assignments: createAssignees.map((uid) => ({ user_id: uid, role: "assignee" })),
+      };
+      setItems((prev) => [newItem, ...prev]);
       setShowCreate(false);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -545,18 +547,22 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {hasMissions && (
-            <Link href="/crm/sitrep/missions" style={{
-              padding: "7px 15px", fontSize: 13, borderRadius: 10,
-              border: "1px solid rgba(99,102,241,.35)",
-              background: "rgba(99,102,241,.1)",
-              boxShadow: "0 0 16px rgba(99,102,241,.18), inset 0 1px 0 rgba(255,255,255,.07)",
-              color: "#a5b4fc", textDecoration: "none",
-              display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600,
-              transition: "all .15s ease",
-            }}>
+          {missionTypeSlugs.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setMissionFilter((v) => !v)}
+              style={{
+                padding: "7px 15px", fontSize: 13, borderRadius: 10,
+                border: missionFilter ? "1px solid rgba(99,102,241,.5)" : "1px solid rgba(99,102,241,.25)",
+                background: missionFilter ? "rgba(99,102,241,.18)" : "rgba(99,102,241,.07)",
+                boxShadow: missionFilter ? "0 0 16px rgba(99,102,241,.28)" : "none",
+                color: "#a5b4fc", cursor: "pointer",
+                display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600,
+                transition: "all .15s ease",
+              }}
+            >
               <span>⬡</span> Missions
-            </Link>
+            </button>
           )}
           <div style={{ position: "relative" }}>
             <button
@@ -591,12 +597,11 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                 boxShadow: "0 16px 48px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04), inset 0 1px 0 rgba(255,255,255,.06)",
               }}>
                 {([
-                  { type: "task",    icon: "○", label: "Task",    hoverBg: "rgba(59,130,246,.14)"  },
-                  { type: "event",   icon: "◆", label: "Event",   hoverBg: "rgba(139,92,246,.14)"  },
-                  { type: "meeting", icon: "◉", label: "Meeting", hoverBg: "rgba(16,185,129,.14)"  },
-                  { type: "mission", icon: "⬡", label: "Mission", hoverBg: "rgba(99,102,241,.14)"  },
+                  { type: "task",    icon: "○", label: typeNames?.["task"]    ?? "Task",    hoverBg: "rgba(59,130,246,.14)"  },
+                  { type: "event",   icon: "◆", label: typeNames?.["event"]   ?? "Event",   hoverBg: "rgba(139,92,246,.14)"  },
+                  { type: "meeting", icon: "◉", label: typeNames?.["meeting"] ?? "Meeting", hoverBg: "rgba(16,185,129,.14)"  },
                   ...customTypeSlugs.map((slug) => ({
-                    type: slug, icon: "◈",
+                    type: slug, icon: missionTypeSlugs.has(slug) ? "⬡" : "◈",
                     label: typeNames?.[slug] ?? slug,
                     hoverBg: "rgba(99,102,241,.14)",
                   })),
@@ -677,12 +682,23 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
           <FilterPill active={scope === "all"}  onClick={() => { setScope("all");  pushFilters("all",  typeFilter, statusFilter); }}>All</FilterPill>
         </div>
         <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
-        <div style={{ display: "flex", gap: 3 }}>
-          {(["all","task","event","meeting"] as const).map((t) => (
+        <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+          <FilterPill active={typeFilter === "all"} onClick={() => { setTypeFilter("all"); pushFilters(scope, "all", statusFilter); }}>
+            All Types
+          </FilterPill>
+          {["task","event","meeting"].map((t) => (
             <FilterPill key={t} active={typeFilter === t} onClick={() => { setTypeFilter(t); pushFilters(scope, t, statusFilter); }}>
-              {t === "all" ? "All Types" : t === "task" ? "Tasks" : t === "event" ? "Events" : "Meetings"}
+              {typeNames?.[t] ?? (t === "task" ? "Tasks" : t === "event" ? "Events" : "Meetings")}
             </FilterPill>
           ))}
+          {Object.keys(typeNames ?? {})
+            .filter((s) => !["task","event","meeting"].includes(s))
+            .map((slug) => (
+              <FilterPill key={slug} active={typeFilter === slug} onClick={() => { setTypeFilter(slug); pushFilters(scope, slug, statusFilter); }}>
+                {typeNames?.[slug] ?? slug}
+              </FilterPill>
+            ))
+          }
         </div>
         <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
         <div style={{ display: "flex", gap: 3 }}>
@@ -691,26 +707,8 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
           <FilterPill active={statusFilter === "all"}    onClick={() => { setStatusFilter("all");    pushFilters(scope, typeFilter, "all");    }}>All</FilterPill>
         </div>
 
-        {/* List / Calendar toggle */}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 2, padding: 3, borderRadius: 11, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)" }}>
-          <Link href="/crm/sitrep" style={{
-            padding: "5px 14px", fontSize: 12, fontWeight: 600, borderRadius: 8,
-            background: !isCalendar ? "color-mix(in srgb, var(--gg-primary, #2563eb) 22%, rgb(20 25 38))" : "transparent",
-            color: !isCalendar ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)" : S.dim,
-            textDecoration: "none", display: "flex", alignItems: "center", gap: 5,
-            border: !isCalendar ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 35%, transparent)" : "1px solid transparent",
-            boxShadow: !isCalendar ? "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)" : "none",
-            transition: "all .12s",
-          }}>☰ List</Link>
-          <Link href="/crm/sitrep/calendar" style={{
-            padding: "5px 14px", fontSize: 12, fontWeight: 600, borderRadius: 8,
-            background: isCalendar ? "color-mix(in srgb, var(--gg-primary, #2563eb) 22%, rgb(20 25 38))" : "transparent",
-            color: isCalendar ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)" : S.dim,
-            textDecoration: "none", display: "flex", alignItems: "center", gap: 5,
-            border: isCalendar ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 35%, transparent)" : "1px solid transparent",
-            boxShadow: isCalendar ? "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)" : "none",
-            transition: "all .12s",
-          }}>◫ Cal</Link>
+        <div style={{ marginLeft: "auto" }}>
+          <SitRepViewToggle />
         </div>
       </div>
 
@@ -763,7 +761,8 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                   const isConfirmed = item.status === "confirmed";
                   const urgent      = isUrgentOrOverdue(item);
                   const family      = getItemFamily(item, typeColors);
-                  const mission     = item.mission_id ? missionMap.get(item.mission_id) : undefined;
+                  const isMissionItem = missionTypeSlugs.has(item.item_type);
+                  const hasParent   = !!item.parent_item_id;
                   const dateLabel   = fmtDate(item);
                   const assignees   = item.sitrep_assignments
                     .slice(0, 4)
@@ -829,14 +828,25 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                             {item.title}
                           </Link>
                         </div>
-                        {mission && (
-                          <div style={{ marginTop: 4 }}>
-                            <span style={{
-                              fontSize: 11, fontWeight: 500,
-                              background: isDone ? "rgba(255,255,255,.16)" : `${family.shades[1]}22`,
-                              color: isDone ? "rgba(255,255,255,.82)" : family.shades[1],
-                              borderRadius: 5, padding: "1px 8px",
-                            }}>⬡ {mission.title}</span>
+                        {(hasParent || isMissionItem) && (
+                          <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                            {hasParent && (
+                              <span style={{
+                                fontSize: 11, fontWeight: 500,
+                                background: isDone ? "rgba(255,255,255,.10)" : "rgba(255,255,255,.07)",
+                                color: isDone ? "rgba(255,255,255,.6)" : "rgb(148 163 184)",
+                                borderRadius: 5, padding: "1px 8px",
+                              }}>↳ sub-item</span>
+                            )}
+                            {isMissionItem && !hasParent && (
+                              <span style={{
+                                fontSize: 11, fontWeight: 600,
+                                background: isDone ? "rgba(16,185,129,.15)" : "rgba(16,185,129,.12)",
+                                color: isDone ? "rgba(255,255,255,.7)" : "#34d399",
+                                borderRadius: 5, padding: "1px 8px",
+                                border: "1px solid rgba(16,185,129,.2)",
+                              }}>⬡ mission</span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -902,7 +912,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
             }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em" }}>
-                  {createType === "task" ? "New Task" : createType === "event" ? "New Event" : createType === "meeting" ? "New Meeting" : createType === "mission" ? "New Mission" : `New ${typeNames?.[createType] ?? createType}`}
+                  New {typeNames?.[createType] ?? createType.charAt(0).toUpperCase() + createType.slice(1)}
                 </h2>
                 <button onClick={() => setShowCreate(false)} style={{
                   background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.1)",
@@ -914,8 +924,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                 >✕</button>
               </div>
 
-              {createType !== "mission" && (
-                <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.04)", borderRadius: 11, padding: 3, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,.04)", borderRadius: 11, padding: 3, flexWrap: "wrap" }}>
                   {(["task", "event", "meeting", ...customTypeSlugs]).map((t) => {
                     const fam    = getItemFamily({ item_type: t } as any, typeColors ?? {});
                     const active = createType === t;
@@ -934,7 +943,6 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                     );
                   })}
                 </div>
-              )}
             </div>
 
             <div style={{ overflowY: "auto", flex: 1 }}>
@@ -945,7 +953,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                     Title <span style={{ color: "rgb(239 68 68)" }}>*</span>
                   </label>
                   <input type="text" value={createTitle} onChange={(e) => setCreateTitle(e.target.value)}
-                    placeholder={createType === "task" ? "What needs to be done?" : createType === "event" ? "Event name…" : createType === "meeting" ? "Meeting subject…" : createType === "mission" ? "Mission title…" : `${typeNames?.[createType] ?? createType} title…`}
+                    placeholder={createType === "task" ? "What needs to be done?" : createType === "event" ? "Event name…" : createType === "meeting" ? "Meeting subject…" : `${typeNames?.[createType] ?? createType} title…`}
                     autoFocus style={inputStyle} onFocus={focusInput} onBlur={blurInput} />
                 </div>
 
@@ -1008,21 +1016,6 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                   </>
                 )}
 
-                {createType === "mission" && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Status</label>
-                      <select value={createStatus} onChange={(e) => setCreateStatus(e.target.value)} style={inputStyle} onFocus={focusInput} onBlur={blurInput}>
-                        <option value="planning">Planning</option><option value="active">Active</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Due Date</label>
-                      <input type="date" value={createDueDate} onChange={(e) => setCreateDueDate(e.target.value)} style={inputStyle} onFocus={focusInput} onBlur={blurInput} />
-                    </div>
-                  </div>
-                )}
-
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Description</label>
                   <textarea value={createDesc} onChange={(e) => setCreateDesc(e.target.value)}
@@ -1030,17 +1023,7 @@ export default function SitRepPanel({ initialItems, missions, users, currentUser
                     style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} onFocus={focusInput} onBlur={blurInput} />
                 </div>
 
-                {createType !== "mission" && missions.length > 0 && (
-                  <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Mission (optional)</label>
-                    <select value={createMissionId} onChange={(e) => setCreateMissionId(e.target.value)} style={inputStyle} onFocus={focusInput} onBlur={blurInput}>
-                      <option value="">— None —</option>
-                      {missions.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                {createType !== "mission" && users.length > 1 && (
+                {users.length > 1 && (
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 8, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>
                       {createType === "task" ? "Assignees" : createType === "event" ? "Attendees" : "Participants"}

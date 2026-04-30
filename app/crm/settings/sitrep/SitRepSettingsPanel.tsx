@@ -1,8 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { ColorFamilyPicker } from "@/app/components/ColorFamilyPicker";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Stage = {
+  slug: string;
+  name: string;
+  color: string;
+  is_terminal: boolean;
+  sort_order: number;
+};
+
+type CustomRole = {
+  slug: string;
+  name: string;
+  max: number;
+};
 
 type ItemType = {
   id: string;
@@ -11,6 +27,12 @@ type ItemType = {
   color: string;
   is_system: boolean;
   is_public: boolean;
+  sort_order: number;
+  stages: Stage[];
+  is_mission_type: boolean;
+  show_in_kanban: boolean;
+  booking_enabled: boolean;
+  custom_roles: CustomRole[];
 };
 
 type WidgetSettings = {
@@ -45,6 +67,8 @@ type PublicCalendar = {
   default_view: "day" | "week" | "month";
 };
 
+// ── Style constants ───────────────────────────────────────────────────────────
+
 const S = {
   surface: "rgb(18 23 33)",
   card:    "rgb(28 36 48)",
@@ -65,66 +89,446 @@ const ALL_VIEWS = [
   { key: "show_month", label: "Month" },
 ];
 
-function MakePublicBtn({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+const COLOR_FAMILIES = ["blue", "violet", "teal", "amber", "green", "red", "orange", "pink", "cyan", "indigo", "slate", "emerald"];
+
+// ── OS-style pill toggle ──────────────────────────────────────────────────────
+
+function OsPill({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
       type="button"
-      onClick={onToggle}
+      onClick={() => onChange(!value)}
       style={{
-        padding: "4px 12px", fontSize: 12, borderRadius: 7, fontWeight: 500,
-        border: active ? "1px solid rgba(99,102,241,.5)" : `1px solid ${S.border}`,
-        background: active ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.03)",
-        color: active ? "#a5b4fc" : S.dim, cursor: "pointer", flexShrink: 0,
+        position: "relative",
+        width: 38,
+        height: 21,
+        borderRadius: 999,
+        border: "none",
+        cursor: "pointer",
+        flexShrink: 0,
+        padding: 0,
+        background: value
+          ? "var(--gg-primary, rgb(99 102 241))"
+          : "rgba(255,255,255,.12)",
+        boxShadow: value ? "0 0 8px rgba(99,102,241,.5)" : "none",
+        transition: "background .15s, box-shadow .15s",
       }}
     >
-      {active ? "Public ✓" : "Make Public"}
+      <span style={{
+        position: "absolute",
+        top: 2.5,
+        left: value ? 19 : 2.5,
+        width: 16,
+        height: 16,
+        borderRadius: "50%",
+        background: "#fff",
+        transition: "left .15s",
+      }} />
     </button>
   );
 }
 
-function TypeRow({ t, savedId, onColorChange, onDelete, onTogglePublic }: {
-  t: ItemType;
-  savedId: string | null;
-  onColorChange: (id: string, color: string) => void;
-  onDelete: (id: string, name: string) => void;
-  onTogglePublic: (id: string, val: boolean) => void;
+// ── Stage row (inside type editor) ───────────────────────────────────────────
+
+function StageRow({
+  stage,
+  isSystem,
+  onChange,
+  onDelete,
+  dragHandleProps,
+}: {
+  stage: Stage;
+  isSystem: boolean;
+  onChange: (s: Stage) => void;
+  onDelete: () => void;
+  dragHandleProps?: React.HTMLAttributes<HTMLSpanElement>;
 }) {
   return (
     <div style={{
-      background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12,
-      display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
+      display: "flex", alignItems: "center", gap: 8,
+      background: "rgba(255,255,255,.03)", borderRadius: 8,
+      padding: "7px 10px", border: `1px solid ${S.border}`,
     }}>
-      <ColorFamilyPicker
-        value={t.color}
-        onChange={(key) => onColorChange(t.id, key)}
-        size={28}
+      <span
+        {...dragHandleProps}
+        style={{ cursor: "grab", color: S.dim, fontSize: 14, userSelect: "none", flexShrink: 0 }}
+      >⠿</span>
+      <input
+        type="text"
+        value={stage.name}
+        onChange={(e) => onChange({ ...stage, name: e.target.value })}
+        style={{
+          flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none",
+          color: S.text, fontSize: 13,
+        }}
       />
-      <span style={{ fontSize: 14, fontWeight: 500, flex: 1, color: S.text }}>{t.name}</span>
-      <span style={{
-        fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
-        borderRadius: 4, padding: "2px 8px", flexShrink: 0,
-        background: t.is_system ? "rgba(255,255,255,.06)" : "rgba(99,102,241,.12)",
-        color: t.is_system ? S.dim : "#a5b4fc",
-      }}>
-        {t.is_system ? "SYSTEM" : "CUSTOM"}
-      </span>
-      {savedId === t.id && (
-        <span style={{ fontSize: 11, color: "#4ade80", fontWeight: 600, flexShrink: 0 }}>Saved ✓</span>
-      )}
-      <MakePublicBtn active={t.is_public} onToggle={() => onTogglePublic(t.id, !t.is_public)} />
-      {!t.is_system && (
+      <select
+        value={stage.color}
+        onChange={(e) => onChange({ ...stage, color: e.target.value })}
+        style={{
+          background: S.surface, border: `1px solid ${S.border}`, color: S.dim,
+          fontSize: 11, borderRadius: 6, padding: "2px 6px", flexShrink: 0,
+        }}
+      >
+        {COLOR_FAMILIES.map((c) => (
+          <option key={c} value={c}>{c}</option>
+        ))}
+      </select>
+      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: S.dim, flexShrink: 0, cursor: "pointer" }}>
+        <input
+          type="checkbox"
+          checked={stage.is_terminal}
+          onChange={(e) => onChange({ ...stage, is_terminal: e.target.checked })}
+          style={{ accentColor: "rgba(99,102,241,.8)" }}
+        />
+        terminal
+      </label>
+      {!isSystem && (
         <button
           type="button"
-          onClick={() => onDelete(t.id, t.name)}
+          onClick={onDelete}
           style={{
-            padding: "4px 10px", fontSize: 12, borderRadius: 7, fontWeight: 500,
-            border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)",
+            padding: "2px 8px", fontSize: 11, borderRadius: 5,
+            border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.07)",
             color: "#fca5a5", cursor: "pointer", flexShrink: 0,
           }}
-        >
-          Delete
-        </button>
+        >✕</button>
       )}
+    </div>
+  );
+}
+
+// ── Type editor slide-in ──────────────────────────────────────────────────────
+
+function TypeEditorPanel({
+  type: initialType,
+  onClose,
+  onSaved,
+}: {
+  type: ItemType;
+  onClose: () => void;
+  onSaved: (updated: ItemType) => void;
+}) {
+  const [t, setT] = useState<ItemType>({ ...initialType, stages: [...(initialType.stages ?? [])] });
+  const [saving, setSaving] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+  const [err, setErr] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [newRoleName, setNewRoleName] = useState("");
+
+  function updateStage(idx: number, updated: Stage) {
+    setT((prev) => {
+      const stages = [...prev.stages];
+      stages[idx] = updated;
+      return { ...prev, stages };
+    });
+  }
+
+  function deleteStage(idx: number) {
+    setT((prev) => ({ ...prev, stages: prev.stages.filter((_, i) => i !== idx) }));
+  }
+
+  function addStage() {
+    const newStage: Stage = {
+      slug: `stage_${Date.now()}`,
+      name: "New Stage",
+      color: t.color,
+      is_terminal: false,
+      sort_order: t.stages.length,
+    };
+    setT((prev) => ({ ...prev, stages: [...prev.stages, newStage] }));
+  }
+
+  function addRole() {
+    const name = newRoleName.trim();
+    if (!name) return;
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    setT((prev) => ({
+      ...prev,
+      custom_roles: [...(prev.custom_roles ?? []), { slug, name, max: 1 }],
+    }));
+    setNewRoleName("");
+  }
+
+  function updateRoleMax(idx: number, max: number) {
+    setT((prev) => {
+      const roles = [...(prev.custom_roles ?? [])];
+      roles[idx] = { ...roles[idx], max };
+      return { ...prev, custom_roles: roles };
+    });
+  }
+
+  function deleteRole(idx: number) {
+    setT((prev) => ({ ...prev, custom_roles: (prev.custom_roles ?? []).filter((_, i) => i !== idx) }));
+  }
+
+  async function handleSave() {
+    setSaving(true); setErr("");
+    const res = await fetch(`/api/crm/sitrep/types/${t.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name:            t.name,
+        color:           t.color,
+        is_public:       t.is_public,
+        is_mission_type: t.is_mission_type,
+        show_in_kanban:  t.show_in_kanban,
+        booking_enabled: t.booking_enabled,
+        stages:          t.stages.map((s, i) => ({ ...s, sort_order: i })),
+        custom_roles:    t.custom_roles ?? [],
+      }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 2000);
+      onSaved(t);
+    } else {
+      const e = await res.json().catch(() => ({}));
+      setErr(e.error ?? "Save failed.");
+    }
+  }
+
+  const ROW: React.CSSProperties = {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: 12, padding: "10px 0",
+  };
+  const LABEL: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: S.text };
+  const SUB: React.CSSProperties = { fontSize: 11, color: S.dim, marginTop: 1 };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 60,
+      display: "flex", justifyContent: "flex-end",
+    }}>
+      {/* Backdrop */}
+      <div
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)" }}
+        onClick={onClose}
+      />
+      {/* Panel */}
+      <div style={{
+        position: "relative", zIndex: 1,
+        width: 420, maxWidth: "100vw",
+        background: S.card, borderLeft: `1px solid ${S.border}`,
+        display: "flex", flexDirection: "column",
+        overflowY: "auto",
+      }}>
+        {/* Header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "18px 20px 14px", borderBottom: `1px solid ${S.border}`,
+          position: "sticky", top: 0, background: S.card, zIndex: 2,
+        }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>{t.name}</div>
+            <div style={{ fontSize: 11, color: S.dim }}>
+              {t.is_system ? "System type" : "Custom type"}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={{
+            background: "none", border: "none", color: S.dim, fontSize: 18,
+            cursor: "pointer", padding: "4px 8px",
+          }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "20px", flex: 1, display: "grid", gap: 0 }}>
+
+          {/* Name */}
+          <div style={{ paddingBottom: 16, borderBottom: `1px solid ${S.border}` }}>
+            <label style={{ ...LABEL, display: "block", marginBottom: 6 }}>Name</label>
+            <input
+              type="text"
+              value={t.name}
+              onChange={(e) => setT((prev) => ({ ...prev, name: e.target.value }))}
+              disabled={t.is_system}
+              style={{
+                width: "100%", padding: "8px 11px", borderRadius: 8,
+                background: S.surface, border: `1px solid ${S.border}`,
+                color: t.is_system ? S.dim : S.text, fontSize: 14,
+                opacity: t.is_system ? 0.6 : 1, boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* Color */}
+          <div style={{ ...ROW, borderBottom: `1px solid ${S.border}` }}>
+            <div>
+              <div style={LABEL}>Color</div>
+            </div>
+            <ColorFamilyPicker value={t.color} onChange={(c) => setT((prev) => ({ ...prev, color: c }))} size={28} />
+          </div>
+
+          {/* Make Public */}
+          <div style={{ ...ROW, borderBottom: `1px solid ${S.border}` }}>
+            <div>
+              <div style={LABEL}>Make Public</div>
+              <div style={SUB}>Enable in embeddable calendars</div>
+            </div>
+            <OsPill value={t.is_public} onChange={(v) => setT((prev) => ({ ...prev, is_public: v }))} />
+          </div>
+
+          {/* Mission Type */}
+          <div style={{ ...ROW, borderBottom: `1px solid ${S.border}` }}>
+            <div>
+              <div style={LABEL}>Mission Type</div>
+              <div style={SUB}>Allow sub-items and progress tracking</div>
+            </div>
+            <OsPill value={t.is_mission_type} onChange={(v) => setT((prev) => ({ ...prev, is_mission_type: v }))} />
+          </div>
+
+          {/* Show in Kanban */}
+          <div style={{ ...ROW, borderBottom: `1px solid ${S.border}` }}>
+            <div>
+              <div style={LABEL}>Show in Kanban</div>
+              <div style={SUB}>Appear as a row in Kanban view</div>
+            </div>
+            <OsPill value={t.show_in_kanban} onChange={(v) => setT((prev) => ({ ...prev, show_in_kanban: v }))} />
+          </div>
+
+          {/* Booking */}
+          <div style={{ ...ROW, borderBottom: `1px solid ${S.border}` }}>
+            <div>
+              <div style={LABEL}>Enable Booking</div>
+              <div style={SUB}>Allow public booking pages for this type</div>
+            </div>
+            <OsPill value={t.booking_enabled} onChange={(v) => setT((prev) => ({ ...prev, booking_enabled: v }))} />
+          </div>
+
+          {/* Stages */}
+          <div style={{ paddingTop: 18, paddingBottom: 18, borderBottom: `1px solid ${S.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div>
+                <div style={LABEL}>Stages</div>
+                <div style={SUB}>Pipeline stages for Kanban columns</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {(t.stages ?? []).map((stage, idx) => (
+                <StageRow
+                  key={stage.slug + idx}
+                  stage={stage}
+                  isSystem={false}
+                  onChange={(updated) => updateStage(idx, updated)}
+                  onDelete={() => deleteStage(idx)}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addStage}
+              style={{
+                marginTop: 8, padding: "5px 14px", fontSize: 12, borderRadius: 7,
+                border: `1px dashed ${S.border}`, background: "rgba(255,255,255,.03)",
+                color: S.dim, cursor: "pointer", width: "100%",
+              }}
+            >+ Add Stage</button>
+          </div>
+
+          {/* Advanced Settings (custom roles) */}
+          <div style={{ paddingTop: 14 }}>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: S.dim, fontSize: 12, fontWeight: 600, padding: 0,
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <span style={{ transition: "transform .15s", display: "inline-block", transform: showAdvanced ? "rotate(90deg)" : "none" }}>▶</span>
+              Advanced Settings
+            </button>
+
+            {showAdvanced && (
+              <div style={{ marginTop: 14 }}>
+                <div style={LABEL}>Custom Roles</div>
+                <div style={{ ...SUB, marginBottom: 10 }}>Define named assignee roles per item</div>
+                <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+                  {(t.custom_roles ?? []).map((role, idx) => (
+                    <div key={role.slug + idx} style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      background: "rgba(255,255,255,.03)", borderRadius: 8,
+                      padding: "7px 10px", border: `1px solid ${S.border}`,
+                    }}>
+                      <span style={{ flex: 1, fontSize: 13, color: S.text }}>{role.name}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, color: S.dim }}>max</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={role.max}
+                          onChange={(e) => updateRoleMax(idx, parseInt(e.target.value) || 1)}
+                          style={{
+                            width: 40, padding: "2px 6px", borderRadius: 6,
+                            background: S.surface, border: `1px solid ${S.border}`,
+                            color: S.text, fontSize: 12, textAlign: "center",
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => deleteRole(idx)}
+                        style={{
+                          padding: "2px 8px", fontSize: 11, borderRadius: 5,
+                          border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.07)",
+                          color: "#fca5a5", cursor: "pointer", flexShrink: 0,
+                        }}
+                      >✕</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    type="text"
+                    value={newRoleName}
+                    onChange={(e) => setNewRoleName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") addRole(); }}
+                    placeholder="Role name…"
+                    style={{
+                      flex: 1, padding: "6px 10px", borderRadius: 7,
+                      background: S.surface, border: `1px solid ${S.border}`,
+                      color: S.text, fontSize: 13,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={addRole}
+                    disabled={!newRoleName.trim()}
+                    style={{
+                      padding: "6px 14px", fontSize: 12, borderRadius: 7,
+                      border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)",
+                      color: S.text, cursor: "pointer",
+                    }}
+                  >Add</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "14px 20px", borderTop: `1px solid ${S.border}`,
+          display: "flex", alignItems: "center", gap: 12,
+          background: S.card,
+          position: "sticky", bottom: 0,
+        }}>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="btn"
+            style={{ padding: "8px 22px", fontSize: 13, borderRadius: 8 }}
+          >
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+          {savedOk && <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>Saved ✓</span>}
+          {err && <span style={{ fontSize: 12, color: "#fca5a5" }}>{err}</span>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -224,7 +628,7 @@ function CalendarForm({
         </div>
       ) : (
         <p style={{ fontSize: 13, color: "rgb(251 191 36)", margin: 0 }}>
-          ⚠ No types are marked public yet. Use "Make Public" above on any type to enable it here.
+          ⚠ No types are marked public yet. Use the type editor to enable.
         </p>
       )}
 
@@ -370,7 +774,6 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
         >Delete</button>
       </div>
 
-      {/* Display options */}
       <div>
         <div style={{ fontSize: 11, color: S.dim, marginBottom: 6 }}>Embed options</div>
         <div style={{ display: "flex", gap: 6 }}>
@@ -383,7 +786,6 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
         </div>
       </div>
 
-      {/* Iframe embed code */}
       <div>
         <div style={{ fontSize: 11, color: S.dim, marginBottom: 4 }}>Embed code</div>
         <div style={{
@@ -402,7 +804,6 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
         </button>
       </div>
 
-      {/* Auto-resize script (separate so WordPress/page builders don't choke) */}
       <div>
         <div style={{ fontSize: 11, color: S.dim, marginBottom: 4 }}>
           Auto-resize script{" "}
@@ -415,9 +816,6 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
         }}>
           {resizeScript}
         </div>
-        <p style={{ fontSize: 11, color: S.dim, margin: "5px 0 0" }}>
-          In WordPress, add this via a Custom HTML block or your theme's footer. Without it, the iframe stays at 700px tall.
-        </p>
         <button type="button" onClick={handleCopyScript} style={{
           marginTop: 6, padding: "5px 14px", fontSize: 12, borderRadius: 7, fontWeight: 600,
           border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)",
@@ -435,7 +833,7 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
 export default function SitRepSettingsPanel() {
   const [types, setTypes] = useState<ItemType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savedId, setSavedId] = useState<string | null>(null);
+  const [editingType, setEditingType] = useState<ItemType | null>(null);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState("blue");
   const [adding, setAdding] = useState(false);
@@ -481,32 +879,13 @@ export default function SitRepSettingsPanel() {
     setTimeout(() => setWidgetSaved(false), 2000);
   }
 
-  async function handleColorChange(id: string, color: string) {
-    setTypes((prev) => prev.map((t) => (t.id === id ? { ...t, color } : t)));
-    await fetch(`/api/crm/sitrep/types/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ color }),
-    });
-    setSavedId(id);
-    setTimeout(() => setSavedId((cur) => (cur === id ? null : cur)), 2000);
-  }
-
-  async function handleTogglePublic(id: string, val: boolean) {
-    setTypes((prev) => prev.map((t) => (t.id === id ? { ...t, is_public: val } : t)));
-    await fetch(`/api/crm/sitrep/types/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_public: val }),
-    });
-    setSavedId(id);
-    setTimeout(() => setSavedId((cur) => (cur === id ? null : cur)), 2000);
-  }
-
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
     const res = await fetch(`/api/crm/sitrep/types/${id}`, { method: "DELETE" });
-    if (res.ok) setTypes((prev) => prev.filter((t) => t.id !== id));
+    if (res.ok) {
+      setTypes((prev) => prev.filter((t) => t.id !== id));
+      if (editingType?.id === id) setEditingType(null);
+    }
   }
 
   async function handleAdd() {
@@ -530,324 +909,351 @@ export default function SitRepSettingsPanel() {
 
   const publicTypes = types.filter((t) => t.is_public);
 
+  const TAG: React.CSSProperties = {
+    padding: "4px 10px", borderRadius: 16, fontSize: 12, fontWeight: 500,
+    cursor: "pointer", border: `1px solid ${S.border}`, transition: "all .1s",
+  };
+
   return (
-    <div className="stack" style={{ maxWidth: 680 }}>
+    <>
+      <div className="stack" style={{ maxWidth: 680 }}>
 
-      {/* Breadcrumb + title */}
-      <div>
-        <div style={{ fontSize: 12, color: S.dim, marginBottom: 6 }}>
-          <Link href="/crm/settings" style={{ color: S.dim, textDecoration: "none" }}>Settings</Link>
-          {" / SitRep"}
-        </div>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>SitRep Settings</h1>
-      </div>
-
-      {/* Item Types card */}
-      <div style={{
-        background: S.card, border: `1px solid ${S.border}`,
-        borderRadius: 16, padding: 24, display: "grid", gap: 20,
-      }}>
+        {/* Breadcrumb + title */}
         <div>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Item Types</h2>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
-            Click the color circle to pick a color family. "Make Public" enables the type for embedded calendars.
-          </p>
+          <div style={{ fontSize: 12, color: S.dim, marginBottom: 6 }}>
+            <Link href="/crm/settings" style={{ color: S.dim, textDecoration: "none" }}>Settings</Link>
+            {" / SitRep"}
+          </div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>SitRep Settings</h1>
         </div>
 
-        {loading ? (
-          <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
-        ) : (
-          <div style={{ display: "grid", gap: 6 }}>
-            {types.map((t) => (
-              <TypeRow
-                key={t.id}
-                t={t}
-                savedId={savedId}
-                onColorChange={handleColorChange}
-                onDelete={handleDelete}
-                onTogglePublic={handleTogglePublic}
-              />
-            ))}
+        {/* Item Types card */}
+        <div style={{
+          background: S.card, border: `1px solid ${S.border}`,
+          borderRadius: 16, padding: 24, display: "grid", gap: 20,
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Item Types</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+              Click a type to configure its stages, flags, and roles.
+            </p>
           </div>
-        )}
 
-        {/* Add new type */}
-        <div>
-          <div style={{
-            fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
-            color: S.dim, textTransform: "uppercase", marginBottom: 8,
-          }}>
-            Add Custom Type
-          </div>
-          <div style={{
-            background: S.surface, border: `1px dashed ${S.border}`, borderRadius: 12,
-            display: "flex", gap: 10, alignItems: "center", padding: "10px 14px",
-          }}>
-            <ColorFamilyPicker value={newColor} onChange={setNewColor} size={28} />
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-              placeholder="Type name…"
-              style={{
-                flex: 1, background: "transparent", border: "none", outline: "none",
-                color: S.text, fontSize: 14, minWidth: 0,
-              }}
-            />
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={!newName.trim() || adding}
-              className="btn"
-              style={{ padding: "6px 16px", fontSize: 13, borderRadius: 8, flexShrink: 0 }}
-            >
-              {adding ? "Adding…" : "+ Add"}
-            </button>
-          </div>
-          {addError && (
-            <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgb(220 38 38)" }}>{addError}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Public Calendars card */}
-      <div style={{
-        background: S.card, border: `1px solid ${S.border}`,
-        borderRadius: 16, padding: 24, display: "grid", gap: 24,
-      }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Public Calendars</h2>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
-            Create shareable, embeddable calendars. Only items visible to "Team" and types marked Public are shown.
-          </p>
-        </div>
-
-        {/* Existing calendars */}
-        {calsLoading ? (
-          <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
-        ) : calendars.length > 0 ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            {calendars.map((cal) => (
-              <CalendarCard
-                key={cal.id}
-                cal={cal}
-                onDelete={(id) => setCalendars((prev) => prev.filter((c) => c.id !== id))}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {/* Create form */}
-        <div>
-          <div style={{
-            fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
-            color: S.dim, textTransform: "uppercase", marginBottom: 14,
-          }}>
-            New Public Calendar
-          </div>
-          <CalendarForm
-            publicTypes={publicTypes}
-            onCreated={(cal) => setCalendars((prev) => [...prev, cal])}
-          />
-        </div>
-      </div>
-
-      {/* Dashboard Widget card */}
-      <div style={{
-        background: S.card, border: `1px solid ${S.border}`,
-        borderRadius: 16, padding: 24, display: "grid", gap: 24,
-      }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Dashboard Widget</h2>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
-            Configure which items appear on the CRM dashboard and how they're sorted.
-          </p>
-        </div>
-
-        {widgetLoading ? (
-          <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
-        ) : (
-          <div style={{ display: "grid", gap: 20 }}>
-
-            {/* View mode */}
-            <div>
-              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>View Mode</label>
-              <div style={{ display: "flex", gap: 6 }}>
-                {([
-                  { key: "list",     label: "📋 List" },
-                  { key: "calendar", label: "📅 Calendar" },
-                ] as const).map(({ key, label }) => {
-                  const sel = widget.widget_view === key;
-                  return (
-                    <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, widget_view: key }))} style={{
-                      padding: "6px 16px", borderRadius: 16, fontSize: 12, fontWeight: 600,
-                      cursor: "pointer", transition: "all .1s",
-                      border: sel ? "1px solid rgba(99,102,241,.5)" : `1px solid ${S.border}`,
-                      background: sel ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.04)",
-                      color: sel ? "#a5b4fc" : S.dim,
-                    }}>{label}</button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Calendar default view — only shown when Calendar is selected */}
-            {widget.widget_view === "calendar" && (
-              <div>
-                <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Calendar Default View</label>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {(["day", "week", "month"] as const).map((v) => {
-                    const sel = widget.calendar_default_view === v;
-                    return (
-                      <button key={v} type="button" onClick={() => setWidget((w) => ({ ...w, calendar_default_view: v }))} style={{
-                        padding: "4px 14px", borderRadius: 16, fontSize: 12, fontWeight: 500,
-                        cursor: "pointer", transition: "all .1s",
-                        border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
-                        background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
-                        color: sel ? S.text : S.dim,
-                      }}>{v.charAt(0).toUpperCase() + v.slice(1)}</button>
-                    );
-                  })}
-                </div>
-                <p style={{ margin: "6px 0 0", fontSize: 12, color: S.dim }}>
-                  Users can still switch between Day / Week / Month on the dashboard.
-                </p>
-              </div>
-            )}
-
-            {/* Type filter */}
-            <div>
-              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>
-                Show Types
-              </label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {types.map((t) => {
-                  const sel = widget.show_types.includes(t.slug);
-                  return (
+          {loading ? (
+            <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
+          ) : (
+            <div style={{ display: "grid", gap: 6 }}>
+              {types.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setEditingType(t)}
+                  style={{
+                    background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12,
+                    display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
+                    cursor: "pointer", textAlign: "left", width: "100%",
+                  }}
+                >
+                  <span style={{
+                    width: 12, height: 12, borderRadius: "50%", flexShrink: 0,
+                    background: `var(--sitrep-${t.color}-500, rgb(99 102 241))`,
+                    opacity: 0.8,
+                  }} />
+                  <span style={{ fontSize: 14, fontWeight: 500, flex: 1, color: S.text }}>{t.name}</span>
+                  {t.is_mission_type && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+                      borderRadius: 4, padding: "2px 7px", flexShrink: 0,
+                      background: "rgba(16 185 129 / .12)", color: "#6ee7b7",
+                    }}>MISSION</span>
+                  )}
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
+                    borderRadius: 4, padding: "2px 8px", flexShrink: 0,
+                    background: t.is_system ? "rgba(255,255,255,.06)" : "rgba(99,102,241,.12)",
+                    color: t.is_system ? S.dim : "#a5b4fc",
+                  }}>
+                    {t.is_system ? "SYSTEM" : "CUSTOM"}
+                  </span>
+                  <span style={{ fontSize: 11, color: S.dim, flexShrink: 0 }}>{(t.stages ?? []).length} stages →</span>
+                  {!t.is_system && (
                     <button
-                      key={t.slug}
                       type="button"
-                      onClick={() => setWidget((w) => ({
-                        ...w,
-                        show_types: sel
-                          ? w.show_types.filter((s) => s !== t.slug)
-                          : [...w.show_types, t.slug],
-                      }))}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(t.id, t.name); }}
                       style={{
-                        padding: "4px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500,
-                        cursor: "pointer", transition: "all .1s",
-                        border: sel ? "1px solid rgba(99,102,241,.5)" : `1px solid ${S.border}`,
-                        background: sel ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.04)",
-                        color: sel ? "#a5b4fc" : S.dim,
+                        padding: "3px 8px", fontSize: 11, borderRadius: 5, fontWeight: 500,
+                        border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)",
+                        color: "#fca5a5", cursor: "pointer", flexShrink: 0,
                       }}
-                    >{t.name}</button>
-                  );
-                })}
-              </div>
-              {widget.show_types.length === 0 && (
-                <p style={{ fontSize: 12, color: S.dim, margin: "4px 0 0" }}>All types shown when none selected.</p>
-              )}
+                    >Delete</button>
+                  )}
+                </button>
+              ))}
             </div>
+          )}
 
-            {/* Sort by */}
-            <div>
-              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Sort By</label>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {([
-                  { key: "due_date",   label: "Due Date" },
-                  { key: "start_at",   label: "Start At" },
-                  { key: "priority",   label: "Priority" },
-                  { key: "created_at", label: "Created" },
-                ] as const).map(({ key, label }) => {
-                  const sel = widget.sort_by === key;
-                  return (
-                    <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, sort_by: key }))} style={{
-                      padding: "4px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500,
-                      cursor: "pointer", transition: "all .1s",
-                      border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
-                      background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
-                      color: sel ? S.text : S.dim,
-                    }}>{label}</button>
-                  );
-                })}
-                <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
-                  {(["asc", "desc"] as const).map((dir) => {
-                    const sel = widget.sort_dir === dir;
-                    return (
-                      <button key={dir} type="button" onClick={() => setWidget((w) => ({ ...w, sort_dir: dir }))} style={{
-                        padding: "4px 10px", borderRadius: 16, fontSize: 12, fontWeight: 500,
-                        cursor: "pointer", transition: "all .1s",
-                        border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
-                        background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
-                        color: sel ? S.text : S.dim,
-                      }}>{dir === "asc" ? "↑ Asc" : "↓ Desc"}</button>
-                    );
-                  })}
-                </div>
-              </div>
+          {/* Add new type */}
+          <div>
+            <div style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
+              color: S.dim, textTransform: "uppercase", marginBottom: 8,
+            }}>
+              Add Custom Type
             </div>
-
-            {/* Group by */}
-            <div>
-              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Group By</label>
-              <div style={{ display: "flex", gap: 6 }}>
-                {([
-                  { key: "none",     label: "None" },
-                  { key: "type",     label: "Type" },
-                  { key: "status",   label: "Status" },
-                  { key: "priority", label: "Priority" },
-                ] as const).map(({ key, label }) => {
-                  const sel = widget.group_by === key;
-                  return (
-                    <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, group_by: key }))} style={{
-                      padding: "4px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500,
-                      cursor: "pointer", transition: "all .1s",
-                      border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
-                      background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
-                      color: sel ? S.text : S.dim,
-                    }}>{label}</button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Max items */}
-            <div>
-              <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Max Items</label>
-              <div style={{ display: "flex", gap: 6 }}>
-                {[5, 8, 10, 15, 20].map((n) => {
-                  const sel = widget.max_items === n;
-                  return (
-                    <button key={n} type="button" onClick={() => setWidget((w) => ({ ...w, max_items: n }))} style={{
-                      padding: "4px 12px", borderRadius: 16, fontSize: 12, fontWeight: 500,
-                      cursor: "pointer", transition: "all .1s",
-                      border: sel ? "1px solid rgba(255,255,255,.3)" : `1px solid ${S.border}`,
-                      background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
-                      color: sel ? S.text : S.dim,
-                    }}>{n}</button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Save */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              background: S.surface, border: `1px dashed ${S.border}`, borderRadius: 12,
+              display: "flex", gap: 10, alignItems: "center", padding: "10px 14px",
+            }}>
+              <ColorFamilyPicker value={newColor} onChange={setNewColor} size={28} />
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+                placeholder="Type name…"
+                style={{
+                  flex: 1, background: "transparent", border: "none", outline: "none",
+                  color: S.text, fontSize: 14, minWidth: 0,
+                }}
+              />
               <button
                 type="button"
-                onClick={saveWidget}
-                disabled={widgetSaving}
+                onClick={handleAdd}
+                disabled={!newName.trim() || adding}
                 className="btn"
-                style={{ padding: "8px 20px", fontSize: 13, borderRadius: 8 }}
+                style={{ padding: "6px 16px", fontSize: 13, borderRadius: 8, flexShrink: 0 }}
               >
-                {widgetSaving ? "Saving…" : "Save Widget Settings"}
+                {adding ? "Adding…" : "+ Add"}
               </button>
-              {widgetSaved && <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>Saved ✓</span>}
             </div>
+            {addError && (
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgb(220 38 38)" }}>{addError}</p>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Public Calendars card */}
+        <div style={{
+          background: S.card, border: `1px solid ${S.border}`,
+          borderRadius: 16, padding: 24, display: "grid", gap: 24,
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Public Calendars</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+              Create shareable, embeddable calendars. Only items visible to "Team" and types marked Public are shown.
+            </p>
+          </div>
+
+          {calsLoading ? (
+            <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
+          ) : calendars.length > 0 ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {calendars.map((cal) => (
+                <CalendarCard
+                  key={cal.id}
+                  cal={cal}
+                  onDelete={(id) => setCalendars((prev) => prev.filter((c) => c.id !== id))}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          <div>
+            <div style={{
+              fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
+              color: S.dim, textTransform: "uppercase", marginBottom: 14,
+            }}>
+              New Public Calendar
+            </div>
+            <CalendarForm
+              publicTypes={publicTypes}
+              onCreated={(cal) => setCalendars((prev) => [...prev, cal])}
+            />
+          </div>
+        </div>
+
+        {/* Dashboard Widget card */}
+        <div style={{
+          background: S.card, border: `1px solid ${S.border}`,
+          borderRadius: 16, padding: 24, display: "grid", gap: 24,
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Dashboard Widget</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+              Configure which items appear on the CRM dashboard and how they're sorted.
+            </p>
+          </div>
+
+          {widgetLoading ? (
+            <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
+          ) : (
+            <div style={{ display: "grid", gap: 20 }}>
+
+              <div>
+                <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>View Mode</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([
+                    { key: "list",     label: "📋 List" },
+                    { key: "calendar", label: "📅 Calendar" },
+                  ] as const).map(({ key, label }) => {
+                    const sel = widget.widget_view === key;
+                    return (
+                      <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, widget_view: key }))} style={{
+                        ...TAG,
+                        background: sel ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.04)",
+                        borderColor: sel ? "rgba(99,102,241,.5)" : S.border,
+                        color: sel ? "#a5b4fc" : S.dim,
+                      }}>{label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {widget.widget_view === "calendar" && (
+                <div>
+                  <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Calendar Default View</label>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {(["day", "week", "month"] as const).map((v) => {
+                      const sel = widget.calendar_default_view === v;
+                      return (
+                        <button key={v} type="button" onClick={() => setWidget((w) => ({ ...w, calendar_default_view: v }))} style={{
+                          ...TAG,
+                          background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                          borderColor: sel ? "rgba(255,255,255,.3)" : S.border,
+                          color: sel ? S.text : S.dim,
+                        }}>{v.charAt(0).toUpperCase() + v.slice(1)}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Show Types</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {types.map((t) => {
+                    const sel = widget.show_types.includes(t.slug);
+                    return (
+                      <button key={t.slug} type="button" onClick={() => setWidget((w) => ({
+                        ...w,
+                        show_types: sel ? w.show_types.filter((s) => s !== t.slug) : [...w.show_types, t.slug],
+                      }))} style={{
+                        ...TAG,
+                        background: sel ? "rgba(99,102,241,.14)" : "rgba(255,255,255,.04)",
+                        borderColor: sel ? "rgba(99,102,241,.5)" : S.border,
+                        color: sel ? "#a5b4fc" : S.dim,
+                      }}>{t.name}</button>
+                    );
+                  })}
+                </div>
+                {widget.show_types.length === 0 && (
+                  <p style={{ fontSize: 12, color: S.dim, margin: "4px 0 0" }}>All types shown when none selected.</p>
+                )}
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Sort By</label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {([
+                    { key: "due_date",   label: "Due Date" },
+                    { key: "start_at",   label: "Start At" },
+                    { key: "priority",   label: "Priority" },
+                    { key: "created_at", label: "Created" },
+                  ] as const).map(({ key, label }) => {
+                    const sel = widget.sort_by === key;
+                    return (
+                      <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, sort_by: key }))} style={{
+                        ...TAG,
+                        background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                        borderColor: sel ? "rgba(255,255,255,.3)" : S.border,
+                        color: sel ? S.text : S.dim,
+                      }}>{label}</button>
+                    );
+                  })}
+                  <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
+                    {(["asc", "desc"] as const).map((dir) => {
+                      const sel = widget.sort_dir === dir;
+                      return (
+                        <button key={dir} type="button" onClick={() => setWidget((w) => ({ ...w, sort_dir: dir }))} style={{
+                          ...TAG,
+                          background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                          borderColor: sel ? "rgba(255,255,255,.3)" : S.border,
+                          color: sel ? S.text : S.dim,
+                        }}>{dir === "asc" ? "↑ Asc" : "↓ Desc"}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Group By</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([
+                    { key: "none",     label: "None" },
+                    { key: "type",     label: "Type" },
+                    { key: "status",   label: "Status" },
+                    { key: "priority", label: "Priority" },
+                  ] as const).map(({ key, label }) => {
+                    const sel = widget.group_by === key;
+                    return (
+                      <button key={key} type="button" onClick={() => setWidget((w) => ({ ...w, group_by: key }))} style={{
+                        ...TAG,
+                        background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                        borderColor: sel ? "rgba(255,255,255,.3)" : S.border,
+                        color: sel ? S.text : S.dim,
+                      }}>{label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, color: S.dim, display: "block", marginBottom: 6, fontWeight: 600 }}>Max Items</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[5, 8, 10, 15, 20].map((n) => {
+                    const sel = widget.max_items === n;
+                    return (
+                      <button key={n} type="button" onClick={() => setWidget((w) => ({ ...w, max_items: n }))} style={{
+                        ...TAG,
+                        background: sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)",
+                        borderColor: sel ? "rgba(255,255,255,.3)" : S.border,
+                        color: sel ? S.text : S.dim,
+                      }}>{n}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button
+                  type="button"
+                  onClick={saveWidget}
+                  disabled={widgetSaving}
+                  className="btn"
+                  style={{ padding: "8px 20px", fontSize: 13, borderRadius: 8 }}
+                >
+                  {widgetSaving ? "Saving…" : "Save Widget Settings"}
+                </button>
+                {widgetSaved && <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>Saved ✓</span>}
+              </div>
+            </div>
+          )}
+        </div>
+
       </div>
 
-    </div>
+      {/* Type editor slide-in */}
+      {editingType && (
+        <TypeEditorPanel
+          type={editingType}
+          onClose={() => setEditingType(null)}
+          onSaved={(updated) => {
+            setTypes((prev) => prev.map((t) => t.id === updated.id ? updated : t));
+            setEditingType(null);
+          }}
+        />
+      )}
+    </>
   );
 }

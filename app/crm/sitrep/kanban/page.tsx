@@ -1,4 +1,3 @@
-// app/crm/sitrep/page.tsx
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
@@ -7,7 +6,7 @@ import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
 import { hasFeature } from "@/lib/features";
 import { redirect } from "next/navigation";
-import SitRepPanel from "./SitRepPanel";
+import SitRepKanban from "./SitRepKanban";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -17,7 +16,7 @@ function makeSb(tenantId: string) {
   );
 }
 
-export default async function SitRepPage() {
+export default async function KanbanPage() {
   const tenant = await getTenant();
   if (!hasFeature(tenant.features, "sitrep_core")) redirect("/crm");
 
@@ -30,7 +29,7 @@ export default async function SitRepPage() {
     sb
       .from("sitrep_items")
       .select(
-        "id, item_type, title, description, location, location_address, status, priority, due_date, start_at, end_at, is_all_day, mission_id, parent_item_id, depth, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
+        "id, item_type, title, status, priority, due_date, start_at, parent_item_id, depth, visibility, created_by, sitrep_assignments(user_id, role)"
       )
       .eq("tenant_id", tenant.id)
       .order("due_date", { ascending: true, nullsFirst: false })
@@ -38,40 +37,12 @@ export default async function SitRepPage() {
       .limit(500),
     sb
       .from("sitrep_item_types")
-      .select("slug, color, name, stages, is_mission_type, show_in_kanban, booking_enabled")
+      .select("id, slug, name, color, sort_order, show_in_kanban, stages, is_mission_type")
       .eq("tenant_id", tenant.id)
       .order("sort_order"),
   ]);
 
-  // Fetch CRM users scoped to this tenant
-  let users: { id: string; name: string; email: string }[] = [];
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (serviceKey && supabaseUrl) {
-    try {
-      const [authRes, membersRes] = await Promise.all([
-        fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=1000`, {
-          headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-        }),
-        sb.from("user_tenants").select("user_id").eq("tenant_id", tenant.id).in("status", ["active", "invited"]),
-      ]);
-      if (authRes.ok) {
-        const json = await authRes.json();
-        const tenantUserIds = new Set((membersRes.data ?? []).map((m: any) => m.user_id));
-        users = (json.users ?? [])
-          .filter((u: any) => tenantUserIds.has(u.id))
-          .map((u: any) => ({
-            id: u.id,
-            email: u.email ?? "",
-            name: u.user_metadata?.name ?? u.user_metadata?.full_name ?? u.email ?? "",
-          }));
-      }
-    } catch {
-      // ok — users list is best-effort for name display
-    }
-  }
-
-  // Apply visibility filter server-side
+  // Apply visibility filter
   const allItems = (itemsRes.data ?? []) as any[];
   const items = allItems.filter((item) => {
     if (item.visibility === "private") return item.created_by === crmUser.userId;
@@ -84,13 +55,13 @@ export default async function SitRepPage() {
     return true;
   });
 
+  // Seed system types if missing
   const rawTypes = (typesRes.data ?? []) as any[];
-
-  // Seed system type defaults if missing from DB
-  const existingSlugs = new Set(rawTypes.map((t: any) => t.slug));
-  const SYSTEM_DEFAULTS: any[] = [
+  const existingSlugs = new Set(rawTypes.map((t) => t.slug));
+  const SYSTEM_DEFAULTS = [
     {
-      slug: "task", name: "Task", color: "blue", is_mission_type: true,
+      slug: "task", name: "Task", color: "blue", sort_order: 0,
+      show_in_kanban: true, is_mission_type: true,
       stages: [
         { slug: "open", name: "Open", color: "blue", is_terminal: false, sort_order: 0 },
         { slug: "in_progress", name: "In Progress", color: "amber", is_terminal: false, sort_order: 1 },
@@ -99,7 +70,8 @@ export default async function SitRepPage() {
       ],
     },
     {
-      slug: "event", name: "Event", color: "violet", is_mission_type: false,
+      slug: "event", name: "Event", color: "violet", sort_order: 1,
+      show_in_kanban: true, is_mission_type: false,
       stages: [
         { slug: "open", name: "Open", color: "violet", is_terminal: false, sort_order: 0 },
         { slug: "confirmed", name: "Confirmed", color: "blue", is_terminal: false, sort_order: 1 },
@@ -108,7 +80,8 @@ export default async function SitRepPage() {
       ],
     },
     {
-      slug: "meeting", name: "Meeting", color: "teal", is_mission_type: false,
+      slug: "meeting", name: "Meeting", color: "teal", sort_order: 2,
+      show_in_kanban: true, is_mission_type: false,
       stages: [
         { slug: "open", name: "Open", color: "teal", is_terminal: false, sort_order: 0 },
         { slug: "confirmed", name: "Confirmed", color: "blue", is_terminal: false, sort_order: 1 },
@@ -117,31 +90,17 @@ export default async function SitRepPage() {
       ],
     },
   ];
-
-  const allTypes = [
+  const types = [
     ...SYSTEM_DEFAULTS.filter((t) => !existingSlugs.has(t.slug)),
     ...rawTypes,
-  ];
-
-  const typeColors: Record<string, string> = {};
-  const typeNames:  Record<string, string> = {};
-  const typeDefs:   Record<string, any>    = {};
-  for (const t of allTypes) {
-    if (t.slug && t.color) typeColors[t.slug] = t.color;
-    if (t.slug && t.name)  typeNames[t.slug]  = t.name;
-    typeDefs[t.slug] = t;
-  }
+  ].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <Suspense>
-      <SitRepPanel
+      <SitRepKanban
         initialItems={items}
-        users={users}
+        types={types}
         currentUserId={crmUser.userId}
-        hasMissions={hasFeature(tenant.features, "sitrep_missions")}
-        typeColors={typeColors}
-        typeNames={typeNames}
-        typeDefs={typeDefs}
       />
     </Suspense>
   );

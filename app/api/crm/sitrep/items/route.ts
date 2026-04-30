@@ -15,11 +15,13 @@ function makeSb(tenantId: string) {
 
 // GET /api/crm/sitrep/items
 // Query params:
-//   type        — 'task' | 'event' | 'meeting' (omit for all)
-//   status      — 'open' | 'in_progress' | 'done' | 'cancelled'
-//   mine        — 'true' → items where current user is creator or assignee
-//   mission_id  — filter by mission
-//   limit       — default 100
+//   type          — 'task' | 'event' | 'meeting' (omit for all)
+//   status        — filter by stage slug
+//   mine          — 'true' → items where current user is creator or assignee
+//   mission_id    — filter by legacy mission FK
+//   parent_id     — filter by parent_item_id (pass 'root' for top-level only)
+//   limit         — default 100
+//   include_children — 'true' to include child counts
 export async function GET(req: NextRequest) {
   const tenant = await getTenant();
   const crmUser = await getCrmUser();
@@ -28,11 +30,12 @@ export async function GET(req: NextRequest) {
   const sb = makeSb(tenant.id);
   const { searchParams } = new URL(req.url);
 
-  const type      = searchParams.get("type");
-  const status    = searchParams.get("status");
-  const mine      = searchParams.get("mine") === "true";
-  const missionId = searchParams.get("mission_id");
-  const limit     = Math.min(parseInt(searchParams.get("limit") ?? "100"), 500);
+  const type             = searchParams.get("type");
+  const status           = searchParams.get("status");
+  const mine             = searchParams.get("mine") === "true";
+  const missionId        = searchParams.get("mission_id");
+  const parentId         = searchParams.get("parent_id");
+  const limit            = Math.min(parseInt(searchParams.get("limit") ?? "100"), 500);
 
   let query = sb
     .from("sitrep_items")
@@ -41,7 +44,8 @@ export async function GET(req: NextRequest) {
       status, priority, due_date,
       start_at, end_at, is_all_day,
       agenda, meeting_notes,
-      mission_id, visibility,
+      mission_id, parent_item_id, depth,
+      visibility, owner_user_id,
       is_recurring,
       source_product, source_record_type, source_record_id,
       created_by, created_at, updated_at, completed_at, cancelled_at,
@@ -55,11 +59,15 @@ export async function GET(req: NextRequest) {
   if (type)      query = query.eq("item_type", type);
   if (status)    query = query.eq("status", status);
   if (missionId) query = query.eq("mission_id", missionId);
+  if (parentId === "root") {
+    query = query.is("parent_item_id", null);
+  } else if (parentId) {
+    query = query.eq("parent_item_id", parentId);
+  }
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Filter to items the current user can see
   let items = (data ?? []) as any[];
 
   if (mine) {
@@ -68,7 +76,6 @@ export async function GET(req: NextRequest) {
       return item.sitrep_assignments?.some((a: any) => a.user_id === crmUser.userId);
     });
   } else {
-    // Apply visibility rules: exclude private items not created by current user
     items = items.filter((item) => {
       if (item.visibility === "private") return item.created_by === crmUser.userId;
       if (item.visibility === "assignee_only") {
@@ -77,7 +84,6 @@ export async function GET(req: NextRequest) {
           item.sitrep_assignments?.some((a: any) => a.user_id === crmUser.userId)
         );
       }
-      // team and custom: visible (custom full enforcement requires visibility_grants lookup)
       return true;
     });
   }
@@ -111,29 +117,47 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Resolve depth from parent
+  let depth = 0;
+  let resolvedParentId: string | null = body.parent_item_id ?? null;
+
+  if (resolvedParentId) {
+    const { data: parent } = await sb
+      .from("sitrep_items")
+      .select("id, depth")
+      .eq("id", resolvedParentId)
+      .eq("tenant_id", tenant.id)
+      .single();
+
+    if (!parent) {
+      return NextResponse.json({ error: "Parent item not found" }, { status: 404 });
+    }
+    depth = (parent as any).depth + 1;
+    if (depth > 3) {
+      return NextResponse.json({ error: "Maximum nesting depth of 3 exceeded" }, { status: 400 });
+    }
+  }
+
   const { data: item, error } = await sb
     .from("sitrep_items")
     .insert({
-      tenant_id:   tenant.id,
-      item_type:   body.item_type,
-      title:       body.title.trim(),
-      description: body.description ?? null,
-      // Task fields
-      status:   body.item_type === "task" ? (body.status ?? "open") : null,
-      priority: body.item_type === "task" ? (body.priority ?? "normal") : null,
-      due_date: body.item_type === "task" ? (body.due_date ?? null) : null,
-      // Event/Meeting fields
-      start_at:   body.start_at   ?? null,
-      end_at:     body.end_at     ?? null,
-      is_all_day: body.is_all_day ?? false,
-      // Meeting fields
-      agenda:        body.item_type === "meeting" ? (body.agenda ?? null) : null,
-      meeting_notes: null,
-      // Relationships
-      mission_id: body.mission_id ?? null,
-      visibility: body.visibility ?? "assignee_only",
-      // Authorship
-      created_by: crmUser.userId,
+      tenant_id:      tenant.id,
+      item_type:      body.item_type,
+      title:          body.title.trim(),
+      description:    body.description ?? null,
+      status:         body.status ?? (body.item_type === "task" ? "open" : null),
+      priority:       body.item_type === "task" ? (body.priority ?? "normal") : null,
+      due_date:       body.item_type === "task" ? (body.due_date ?? null) : null,
+      start_at:       body.start_at   ?? null,
+      end_at:         body.end_at     ?? null,
+      is_all_day:     body.is_all_day ?? false,
+      agenda:         body.item_type === "meeting" ? (body.agenda ?? null) : null,
+      meeting_notes:  null,
+      mission_id:     body.mission_id ?? null,
+      parent_item_id: resolvedParentId,
+      depth,
+      visibility:     body.visibility ?? "assignee_only",
+      created_by:     crmUser.userId,
     })
     .select("id")
     .single();
@@ -142,7 +166,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error?.message ?? "Failed to create item" }, { status: 500 });
   }
 
-  // Insert assignments if provided
+  const itemId = (item as any).id;
+
+  // Insert assignments
   const assigneeIds: string[] = body.assignee_ids ?? [];
   if (assigneeIds.length > 0) {
     const roles: Record<string, string> = {
@@ -151,24 +177,26 @@ export async function POST(req: NextRequest) {
       meeting: "participant",
     };
     const assignmentRole = roles[body.item_type] ?? "assignee";
-
     await sb.from("sitrep_assignments").insert(
-      assigneeIds.map((userId) => ({
-        item_id: (item as any).id,
-        user_id: userId,
-        role:    assignmentRole,
-      }))
+      assigneeIds.map((userId) => ({ item_id: itemId, user_id: userId, role: assignmentRole }))
     );
   }
 
-  // Creator is organizer for meetings
   if (body.item_type === "meeting") {
-    await sb.from("sitrep_assignments").upsert({
-      item_id: (item as any).id,
-      user_id: crmUser.userId,
-      role:    "organizer",
-    }, { onConflict: "item_id,user_id" });
+    await sb.from("sitrep_assignments").upsert(
+      { item_id: itemId, user_id: crmUser.userId, role: "organizer" },
+      { onConflict: "item_id,user_id" }
+    );
   }
 
-  return NextResponse.json({ id: (item as any).id, created: true });
+  // Write activity log
+  await sb.from("sitrep_activity").insert({
+    tenant_id:  tenant.id,
+    item_id:    itemId,
+    actor_id:   crmUser.userId,
+    event_type: "created",
+    new_value:  body.title.trim(),
+  });
+
+  return NextResponse.json({ id: itemId, created: true });
 }
