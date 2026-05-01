@@ -206,6 +206,7 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
   const [activity,     setActivity]     = useState<any[]>([]);
   const [deps,         setDeps]         = useState<{ outgoing: any[]; incoming: any[] }>({ outgoing: [], incoming: [] });
   const [newChildTitle,   setNewChildTitle]   = useState("");
+  const [newChildType,    setNewChildType]    = useState(item.item_type);
   const [addingChild,     setAddingChild]     = useState(false);
   const [newComment,      setNewComment]      = useState("");
   const [submittingCmt,   setSubmittingCmt]   = useState(false);
@@ -222,11 +223,9 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
   // fetch secondary data
   useEffect(() => {
     const base = `/api/crm/sitrep/items/${item.id}`;
-    if (isMissionType) {
-      fetch(`${base}/children`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
-        setChildren(Array.isArray(d) ? d : []);
-      }).catch(() => {});
-    }
+    fetch(`${base}/children`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
+      setChildren(Array.isArray(d) ? d : []);
+    }).catch(() => {});
     fetch(`${base}/comments`).then(r => r.ok ? r.json() : []).then((d: any[]) => {
       setComments(Array.isArray(d) ? d : []);
     }).catch(() => {});
@@ -305,16 +304,17 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
     if (!newChildTitle.trim()) return;
     setAddingChild(true);
     try {
-      const firstStage = stages.find(s => !s.is_terminal)?.slug ?? "open";
+      const childTypeDef = typeDefs[newChildType];
+      const childStages  = ((childTypeDef?.stages ?? []) as Stage[]).filter(s => !s.is_terminal).sort((a, b) => a.sort_order - b.sort_order);
+      const firstStage   = childStages[0]?.slug ?? "open";
       const res = await fetch("/api/crm/sitrep/items", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newChildTitle.trim(), item_type: item.item_type, parent_item_id: item.id, status: firstStage }),
+        body: JSON.stringify({ title: newChildTitle.trim(), item_type: newChildType, parent_item_id: item.id, status: firstStage }),
       });
       if (res.ok) {
         const data = await res.json();
-        const firstStage = stages.find(s => !s.is_terminal)?.slug ?? "open";
         setChildren(p => [...p, {
-          id: data.id, title: newChildTitle.trim(), item_type: item.item_type,
+          id: data.id, title: newChildTitle.trim(), item_type: newChildType,
           status: firstStage, priority: null, depth: (item.depth ?? 0) + 1,
           parent_item_id: item.id, child_count: 0,
         }]);
@@ -434,59 +434,59 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
 
       {/* ── Hero banner ── */}
       <div style={{
-        padding: "22px 24px 20px",
+        padding: "28px 28px 24px",
         background: `linear-gradient(150deg, ${typeHero.bg} 0%, rgba(14,18,28,0) 70%)`,
         border: `1px solid ${typeHero.color}28`,
         borderRadius: 16,
         boxShadow: `0 4px 28px rgba(0,0,0,.35), 0 0 40px ${typeHero.color}0d`,
       }}>
         {/* Top row */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <Link href="/crm/sitrep" style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            color: S.dimBright, fontSize: 12, fontWeight: 600,
-            background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.09)",
-            padding: "4px 10px", borderRadius: 8, textDecoration: "none",
+            display: "inline-flex", alignItems: "center", gap: 7,
+            color: S.dimBright, fontSize: 13, fontWeight: 600,
+            background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.11)",
+            padding: "6px 13px", borderRadius: 9, textDecoration: "none",
           }}>
             ← SitRep
           </Link>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {saveState === "saving" && <span style={{ fontSize: 11, color: S.dim }}>Saving…</span>}
-            {saveState === "saved"  && <span style={{ fontSize: 11, fontWeight: 700, color: "#4ade80", background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)", padding: "3px 9px", borderRadius: 20 }}>✓ Saved</span>}
-            {saveState === "error"  && <span style={{ fontSize: 11, fontWeight: 700, color: "#f87171", background: "rgba(239,68,68,.1)",  border: "1px solid rgba(239,68,68,.25)",  padding: "3px 9px", borderRadius: 20 }}>✕ Error</span>}
+            {saveState === "saving" && <span style={{ fontSize: 12, color: S.dim }}>Saving…</span>}
+            {saveState === "saved"  && <span style={{ fontSize: 12, fontWeight: 700, color: "#4ade80", background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)", padding: "4px 10px", borderRadius: 20 }}>✓ Saved</span>}
+            {saveState === "error"  && <span style={{ fontSize: 12, fontWeight: 700, color: "#f87171", background: "rgba(239,68,68,.1)",  border: "1px solid rgba(239,68,68,.25)",  padding: "4px 10px", borderRadius: 20 }}>✕ Error</span>}
           </div>
         </div>
 
         {/* Parent breadcrumb */}
         {parentItem && (
           <Link href={`/crm/sitrep/${parentItem.id}`} style={{
-            display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 8,
-            fontSize: 11, color: S.dim, textDecoration: "none",
-            background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)",
-            padding: "3px 9px", borderRadius: 6,
+            display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14,
+            fontSize: 12, color: S.dim, textDecoration: "none",
+            background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.09)",
+            padding: "5px 11px", borderRadius: 7,
           }}>
             <span style={{ opacity: 0.6 }}>↑</span>
-            <span>{(typeDefs[parentItem.item_type]?.name ?? parentItem.item_type).toUpperCase()}</span>
+            <span style={{ fontWeight: 700, letterSpacing: "0.06em" }}>{(typeDefs[parentItem.item_type]?.name ?? parentItem.item_type).toUpperCase()}</span>
             <span style={{ color: S.dimBright, fontWeight: 500 }}>{parentItem.title}</span>
           </Link>
         )}
 
         {/* Type badge row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <span style={{
-            fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
-            padding: "3px 9px", borderRadius: 6,
+            fontSize: 11, fontWeight: 800, letterSpacing: "0.1em",
+            padding: "4px 11px", borderRadius: 7,
             background: typeHero.bg, color: typeHero.color, border: `1px solid ${typeHero.color}40`,
             boxShadow: `0 0 10px ${typeHero.color}22`,
           }}>
             {typeName}
           </span>
           {isMissionType && (
-            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", padding: "3px 8px", borderRadius: 6, background: "rgba(255,255,255,.07)", color: S.dim, border: "1px solid rgba(255,255,255,.1)" }}>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", padding: "4px 10px", borderRadius: 7, background: "rgba(255,255,255,.07)", color: S.dim, border: "1px solid rgba(255,255,255,.1)" }}>
               ⬡ MISSION
             </span>
           )}
-          <span style={{ fontSize: 11, color: S.dim }}>{fmtDate(item.created_at)}</span>
+          <span style={{ fontSize: 12, color: S.dim }}>{fmtDate(item.created_at)}</span>
         </div>
 
         {/* Editable title */}
@@ -494,7 +494,7 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
           type="text" value={title}
           onChange={(e) => { setTitle(e.target.value); patchDebounced({ title: e.target.value }); }}
           placeholder="Untitled"
-          style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: S.text, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", padding: 0, lineHeight: 1.25 }}
+          style={{ width: "100%", background: "transparent", border: "none", outline: "none", color: S.text, fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", padding: 0, lineHeight: 1.25 }}
         />
       </div>
 
@@ -722,8 +722,8 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
         </div>
       </div>
 
-      {/* ── Sub-items (mission types) ── */}
-      {isMissionType && (
+      {/* ── Sub-items ── */}
+      {item.depth < 3 && (
         <div style={sectionCard}>
           <div style={{ padding: "14px 18px", borderBottom: `1px solid ${S.border}` }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: children.length > 0 ? 10 : 0 }}>
@@ -757,12 +757,17 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
               })}
             </div>
           )}
-          <div style={{ padding: "10px 18px", display: "flex", gap: 8 }}>
+          <div style={{ padding: "10px 18px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <select value={newChildType} onChange={(e) => setNewChildType(e.target.value)} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField}>
+              {Object.entries(typeDefs).map(([slug, t]: [string, any]) => (
+                <option key={slug} value={slug}>{t.name ?? slug}</option>
+              ))}
+            </select>
             <input
-              type="text" value={newChildTitle} placeholder="Add sub-item…"
+              type="text" value={newChildTitle} placeholder="Sub-item title…"
               onChange={(e) => setNewChildTitle(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddChild()}
-              style={{ ...fieldStyle, flex: 1 }} onFocus={focusField} onBlur={blurField}
+              style={{ ...fieldStyle, flex: 1, minWidth: 140 }} onFocus={focusField} onBlur={blurField}
             />
             <button onClick={handleAddChild} disabled={addingChild || !newChildTitle.trim()} style={{ padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", background: "var(--gg-primary, #2563eb)", color: "#fff", cursor: "pointer", opacity: newChildTitle.trim() ? 1 : 0.4 }}>
               {addingChild ? "…" : "Add"}
