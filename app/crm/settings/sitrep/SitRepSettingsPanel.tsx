@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ColorFamilyPicker } from "@/app/components/ColorFamilyPicker";
+import { getFamilyByKey } from "@/lib/sitrep-colors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -958,8 +959,7 @@ export default function SitRepSettingsPanel() {
                 >
                   <span style={{
                     width: 12, height: 12, borderRadius: "50%", flexShrink: 0,
-                    background: `var(--sitrep-${t.color}-500, rgb(99 102 241))`,
-                    opacity: 0.8,
+                    background: getFamilyByKey(t.color)?.shades[2] ?? "rgb(99 102 241)",
                   }} />
                   <span style={{ fontSize: 14, fontWeight: 500, flex: 1, color: S.text }}>{t.name}</span>
                   {t.is_mission_type && (
