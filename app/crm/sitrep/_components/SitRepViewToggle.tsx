@@ -1,22 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 
 const VIEWS = [
   { key: "list",     label: "List",     href: "/crm/sitrep" },
-  { key: "kanban",   label: "Kanban",   href: "/crm/sitrep?view=kanban" },
+  { key: "kanban",   label: "Kanban",   href: "/crm/sitrep/kanban" },
+  { key: "timeline", label: "Timeline", href: "/crm/sitrep/timeline" },
   { key: "calendar", label: "Calendar", href: "/crm/sitrep/calendar" },
 ] as const;
 
 function ToggleInner() {
-  const pathname     = usePathname();
-  const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   const active =
     pathname.startsWith("/crm/sitrep/calendar") ? "calendar" :
-    pathname === "/crm/sitrep" && searchParams.get("view") === "kanban" ? "kanban" :
+    pathname.startsWith("/crm/sitrep/timeline") ? "timeline" :
+    pathname.startsWith("/crm/sitrep/kanban")   ? "kanban"   :
     "list";
 
   return (
