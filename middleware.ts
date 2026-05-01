@@ -104,10 +104,12 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/account/auth") &&
     !pathname.startsWith("/account/set-password");
 
-  // Public booking pages and APIs — no auth, no tenant check
+  // Public booking + calendar invite pages — no auth, no tenant check
   const isPublicBooking =
     pathname.startsWith("/book/") ||
-    pathname.startsWith("/api/booking/");
+    pathname.startsWith("/api/booking/") ||
+    pathname.startsWith("/calendar-invite/") ||
+    pathname.startsWith("/api/calendar-invite/");
 
   // Protect PWA API routes
   // /api/survey/panel-submit and /api/survey/response are called by public hosted
