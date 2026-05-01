@@ -137,41 +137,58 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 // ── Item pill (used in month and week views) ───────────────────────────────────
 
 function ItemPill({
-  item, typeColors, onClick,
-}: { item: SitRepItem; typeColors?: Record<string, string>; onClick: () => void }) {
+  item, typeColors, onClick, onDragStart, onDragEnd,
+}: {
+  item: SitRepItem; typeColors?: Record<string, string>;
+  onClick: () => void; onDragStart?: () => void; onDragEnd?: () => void;
+}) {
   const family = getItemFamily(item, typeColors);
   const isDone = item.status === "done";
   const bg = isDone ? family.shades[1] : family.shades[3];
   const color = isDone ? "#fff" : "#0f172a";
   const time = item.item_type !== "task" && hasExplicitTime(item.start_at) && !item.is_all_day
     ? fmtTime(item.start_at!) + " " : "";
-
+  const today = todayStr();
+  const ed = effectiveDate(item);
+  const isPastDue = !!ed && ed.split("T")[0] < today && !isDone && item.status !== "cancelled";
   const accentCol = isDone ? family.shades[0] : family.shades[2];
+
   return (
     <button
+      draggable
+      onDragStart={(e) => { e.stopPropagation(); onDragStart?.(); }}
+      onDragEnd={() => onDragEnd?.()}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       title={item.title}
       style={{
-        display: "block", width: "100%", textAlign: "left",
+        display: "flex", alignItems: "center", gap: 3,
+        width: "100%", textAlign: "left",
         padding: "3px 7px", borderRadius: 5, fontSize: 11, fontWeight: 600,
         background: bg, color,
-        border: "none", cursor: "pointer",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        border: "none", cursor: "grab",
+        overflow: "hidden",
         textDecoration: isDone ? "line-through" : "none",
-        opacity: isDone ? 0.75 : 1,
-        boxShadow: `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2), 0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 30%, transparent)`,
-        transition: "all .12s ease",
+        opacity: isPastDue ? 0.5 : isDone ? 0.75 : 1,
+        boxShadow: `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2)`,
+        transition: "opacity .15s, box-shadow .12s, transform .12s",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 3px 10px rgba(0,0,0,.3), 0 0 10px ${accentCol}22, 0 0 0 2px color-mix(in srgb, var(--gg-primary, #2563eb) 60%, transparent), 0 0 14px color-mix(in srgb, var(--gg-primary, #2563eb) 38%, transparent)`;
+        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 3px 10px rgba(0,0,0,.3)`;
         e.currentTarget.style.transform = "translateY(-1px)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2), 0 0 10px color-mix(in srgb, var(--gg-primary, #2563eb) 30%, transparent)`;
+        e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2)`;
         e.currentTarget.style.transform = "";
       }}
     >
-      {time}{item.title}
+      {(item.priority === "urgent" || item.priority === "high") && (
+        <span style={{ fontSize: 9, fontWeight: 900, flexShrink: 0, lineHeight: 1 }}>
+          {item.priority === "urgent" ? "!!" : "!"}
+        </span>
+      )}
+      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {time}{item.title}
+      </span>
     </button>
   );
 }
@@ -428,6 +445,9 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
   const [items, setItems] = useState<SitRepItem[]>(initialItems);
   const [modalItem, setModalItem] = useState<SitRepItem | null>(null);
   const [togglePending, setTogglePending] = useState<Record<string, boolean>>({});
+  const [draggingItem, setDraggingItem] = useState<SitRepItem | null>(null);
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
   const [showCreate,      setShowCreate]      = useState(false);
   const [createType,      setCreateType]      = useState<"task"|"event"|"meeting">("task");
@@ -511,6 +531,35 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
       body: JSON.stringify({ status: newStatus }),
     });
     setTogglePending((p) => ({ ...p, [item.id]: false }));
+  }
+
+  async function handleDropOnDate(targetDate: string) {
+    if (!draggingItem) return;
+    const item = draggingItem;
+    setDraggingItem(null);
+    setDragOverDate(null);
+    const curDs = effectiveDate(item)?.split("T")[0];
+    if (curDs === targetDate) return;
+
+    const patch: Record<string, string | null> = {};
+    if (item.item_type === "task") {
+      patch.due_date = targetDate;
+    } else if (item.start_at && hasExplicitTime(item.start_at)) {
+      const t = item.start_at.split("T")[1].slice(0, 5);
+      patch.start_at = `${targetDate}T${t}`;
+      if (item.end_at && hasExplicitTime(item.end_at)) {
+        const dur = new Date(item.end_at).getTime() - new Date(item.start_at).getTime();
+        patch.end_at = new Date(new Date(patch.start_at!).getTime() + dur).toISOString().slice(0, 16);
+      }
+    } else {
+      patch.start_at = targetDate;
+    }
+
+    setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, ...patch } : i));
+    const res = await fetch(`/api/crm/sitrep/items/${item.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+    });
+    if (!res.ok) setItems((prev) => prev.map((i) => i.id === item.id ? item : i));
   }
 
   function openCalCreate() {
@@ -629,42 +678,49 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
         {/* Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
           {grid.map((ds) => {
-            const isToday = ds === today;
-            const inMonth = ds.startsWith(curMonth);
-            const dayItems = dateMap.get(ds) ?? [];
-            const visible = dayItems.slice(0, MAX_PILLS);
-            const overflow = dayItems.length - MAX_PILLS;
+            const isToday    = ds === today;
+            const inMonth    = ds.startsWith(curMonth);
+            const dayItems   = dateMap.get(ds) ?? [];
+            const isExpanded = expandedDays.has(ds);
+            const visible    = isExpanded ? dayItems : dayItems.slice(0, MAX_PILLS);
+            const overflow   = isExpanded ? 0 : dayItems.length - MAX_PILLS;
+            const isDragOver = dragOverDate === ds && !!draggingItem;
 
             return (
               <div
                 key={ds}
-                onClick={() => navigate("day", ds)}
+                onClick={() => !draggingItem && navigate("day", ds)}
+                onDragOver={(e) => { e.preventDefault(); setDragOverDate(ds); }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverDate(null); }}
+                onDrop={(e) => { e.preventDefault(); handleDropOnDate(ds); }}
                 style={{
                   minHeight: 90, padding: "6px 5px",
-                  background: isToday
-                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)"
-                    : inMonth ? S.surface : "rgba(255,255,255,.015)",
-                  border: isToday
-                    ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
-                    : `1px solid ${S.border}`,
-                  borderRadius: 8, cursor: "pointer",
-                  boxShadow: isToday
+                  background: isDragOver
+                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 12%, transparent)"
+                    : isToday
+                      ? "color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)"
+                      : inMonth ? S.surface : "rgba(255,255,255,.015)",
+                  border: isDragOver
+                    ? "1px dashed color-mix(in srgb, var(--gg-primary, #2563eb) 70%, transparent)"
+                    : isToday
+                      ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
+                      : `1px solid ${S.border}`,
+                  borderRadius: 8, cursor: draggingItem ? "copy" : "pointer",
+                  boxShadow: isToday && !isDragOver
                     ? "0 0 18px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent), inset 0 0 18px color-mix(in srgb, var(--gg-primary, #2563eb) 5%, transparent)"
                     : "none",
-                  transition: "all .12s ease",
+                  transition: "background .1s, border .1s, box-shadow .12s",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isToday) {
+                  if (!isToday && !isDragOver) {
                     e.currentTarget.style.background = "rgba(255,255,255,.06)";
                     e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,.28)";
-                    e.currentTarget.style.transform = "translateY(-1px)";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (!isToday) {
+                  if (!isToday && !isDragOver) {
                     e.currentTarget.style.background = inMonth ? S.surface : "rgba(255,255,255,.015)";
                     e.currentTarget.style.boxShadow = "none";
-                    e.currentTarget.style.transform = "";
                   }
                 }}
               >
@@ -691,18 +747,31 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
                 <div style={{ display: "grid", gap: 2 }}>
                   {visible.map((item) => (
                     <ItemPill key={item.id} item={item} typeColors={typeColors}
-                      onClick={() => setModalItem(item)} />
+                      onClick={() => setModalItem(item)}
+                      onDragStart={() => setDraggingItem(item)}
+                      onDragEnd={() => { setDraggingItem(null); setDragOverDate(null); }}
+                    />
                   ))}
                   {overflow > 0 && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); navigate("day", ds); }}
-                      style={{
-                        fontSize: 10, fontWeight: 600, color: S.dim,
-                        background: "none", border: "none", cursor: "pointer",
-                        textAlign: "left", padding: "1px 4px",
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedDays((p) => { const n = new Set(p); n.add(ds); return n; });
                       }}
+                      style={{ fontSize: 10, fontWeight: 600, color: S.dim, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "1px 4px" }}
                     >
                       +{overflow} more
+                    </button>
+                  )}
+                  {isExpanded && dayItems.length > MAX_PILLS && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedDays((p) => { const n = new Set(p); n.delete(ds); return n; });
+                      }}
+                      style={{ fontSize: 10, fontWeight: 600, color: S.dim, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "1px 4px" }}
+                    >
+                      ▲ less
                     </button>
                   )}
                 </div>
@@ -725,25 +794,35 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
         {days.map((ds) => {
-          const isToday = ds === today;
-          const dayItems = dateMap.get(ds) ?? [];
-          const visible = dayItems.slice(0, MAX_PILLS);
-          const overflow = dayItems.length - MAX_PILLS;
+          const isToday    = ds === today;
+          const dayItems   = dateMap.get(ds) ?? [];
+          const visible    = dayItems.slice(0, MAX_PILLS);
+          const overflow   = dayItems.length - MAX_PILLS;
+          const isDragOver = dragOverDate === ds && !!draggingItem;
           const d = new Date(ds + "T00:00:00");
 
           return (
-            <div key={ds} style={{
-              background: isToday
-                ? "color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent)"
-                : S.surface,
-              border: isToday
-                ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent)"
-                : `1px solid ${S.border}`,
-              borderRadius: 10, padding: "10px 8px", minHeight: 200,
-              boxShadow: isToday
-                ? "0 0 16px color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)"
-                : "none",
-            }}>
+            <div key={ds}
+              onDragOver={(e) => { e.preventDefault(); setDragOverDate(ds); }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverDate(null); }}
+              onDrop={(e) => { e.preventDefault(); handleDropOnDate(ds); }}
+              style={{
+                background: isDragOver
+                  ? "color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)"
+                  : isToday
+                    ? "color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent)"
+                    : S.surface,
+                border: isDragOver
+                  ? "1px dashed color-mix(in srgb, var(--gg-primary, #2563eb) 70%, transparent)"
+                  : isToday
+                    ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent)"
+                    : `1px solid ${S.border}`,
+                borderRadius: 10, padding: "10px 8px", minHeight: 200,
+                boxShadow: isToday && !isDragOver
+                  ? "0 0 16px color-mix(in srgb, var(--gg-primary, #2563eb) 10%, transparent)"
+                  : "none",
+                transition: "background .1s, border .1s",
+              }}>
               <div style={{ marginBottom: 8, textAlign: "center" }}>
                 <div style={{
                   fontSize: 10, fontWeight: 700, textTransform: "uppercase",
@@ -772,16 +851,15 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
               <div style={{ display: "grid", gap: 3 }}>
                 {visible.map((item) => (
                   <ItemPill key={item.id} item={item} typeColors={typeColors}
-                    onClick={() => setModalItem(item)} />
+                    onClick={() => setModalItem(item)}
+                    onDragStart={() => setDraggingItem(item)}
+                    onDragEnd={() => { setDraggingItem(null); setDragOverDate(null); }}
+                  />
                 ))}
                 {overflow > 0 && (
                   <button
                     onClick={() => navigate("day", ds)}
-                    style={{
-                      fontSize: 10, fontWeight: 600, color: S.dim,
-                      background: "none", border: "none", cursor: "pointer",
-                      textAlign: "left", padding: "2px 4px",
-                    }}
+                    style={{ fontSize: 10, fontWeight: 600, color: S.dim, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "2px 4px" }}
                   >+{overflow} more</button>
                 )}
               </div>
