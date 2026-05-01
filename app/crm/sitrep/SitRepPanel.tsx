@@ -842,28 +842,24 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
                           >
                             {item.title}
                           </Link>
+                          {isMissionItem && !hasParent && (
+                            <span style={{
+                              fontSize: 11, fontWeight: 600, flexShrink: 0,
+                              background: isDone ? "rgba(16,185,129,.15)" : "rgba(16,185,129,.12)",
+                              color: isDone ? "rgba(255,255,255,.7)" : "#34d399",
+                              borderRadius: 5, padding: "1px 8px",
+                              border: "1px solid rgba(16,185,129,.2)",
+                            }}>⬡ mission</span>
+                          )}
+                          {hasParent && (
+                            <span style={{
+                              fontSize: 11, fontWeight: 500, flexShrink: 0,
+                              background: isDone ? "rgba(255,255,255,.10)" : "rgba(255,255,255,.07)",
+                              color: isDone ? "rgba(255,255,255,.6)" : "rgb(148 163 184)",
+                              borderRadius: 5, padding: "1px 8px",
+                            }}>↳ sub-item</span>
+                          )}
                         </div>
-                        {(hasParent || isMissionItem) && (
-                          <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                            {hasParent && (
-                              <span style={{
-                                fontSize: 11, fontWeight: 500,
-                                background: isDone ? "rgba(255,255,255,.10)" : "rgba(255,255,255,.07)",
-                                color: isDone ? "rgba(255,255,255,.6)" : "rgb(148 163 184)",
-                                borderRadius: 5, padding: "1px 8px",
-                              }}>↳ sub-item</span>
-                            )}
-                            {isMissionItem && !hasParent && (
-                              <span style={{
-                                fontSize: 11, fontWeight: 600,
-                                background: isDone ? "rgba(16,185,129,.15)" : "rgba(16,185,129,.12)",
-                                color: isDone ? "rgba(255,255,255,.7)" : "#34d399",
-                                borderRadius: 5, padding: "1px 8px",
-                                border: "1px solid rgba(16,185,129,.2)",
-                              }}>⬡ mission</span>
-                            )}
-                          </div>
-                        )}
                       </div>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
