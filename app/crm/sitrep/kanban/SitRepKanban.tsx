@@ -44,6 +44,7 @@ type Props = {
   initialItems: KanbanItem[];
   types: KanbanType[];
   currentUserId: string;
+  noHeader?: boolean;
 };
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -322,7 +323,7 @@ function TypeRow({
 
 // ── Main Board ────────────────────────────────────────────────────────────────
 
-export default function SitRepKanban({ initialItems, types, currentUserId }: Props) {
+export default function SitRepKanban({ initialItems, types, currentUserId, noHeader }: Props) {
   const [items, setItems] = useState<KanbanItem[]>(initialItems);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingType, setDraggingType] = useState<string | null>(null);
@@ -391,10 +392,65 @@ export default function SitRepKanban({ initialItems, types, currentUserId }: Pro
     cursor: "pointer", border: "1px solid rgba(255,255,255,.08)", transition: "all .1s",
   };
 
+  const board = (
+    <>
+      {/* Compact filter bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => setMineOnly((v) => !v)}
+          style={{
+            ...PILL,
+            background: mineOnly ? "rgba(99,102,241,.18)" : "rgba(255,255,255,.05)",
+            borderColor: mineOnly ? "rgba(99,102,241,.4)" : "rgba(255,255,255,.08)",
+            color: mineOnly ? "#a5b4fc" : S.dim,
+          }}
+        >
+          {mineOnly ? "✓ Mine only" : "Mine only"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowTerminal((v) => !v)}
+          style={{
+            ...PILL,
+            background: showTerminal ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.05)",
+            borderColor: showTerminal ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.08)",
+            color: showTerminal ? S.text : S.dim,
+          }}
+        >
+          {showTerminal ? "✓ Show Completed" : "Show Completed"}
+        </button>
+      </div>
+
+      {/* Type rows */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {kanbanTypes.map((type) => (
+          <TypeRow
+            key={type.slug}
+            type={type}
+            items={filterItems(type.slug)}
+            showTerminal={showTerminal}
+            draggingId={draggingId}
+            onDragStart={handleDragStart}
+            onDrop={handleDrop}
+          />
+        ))}
+        {kanbanTypes.length === 0 && (
+          <div style={{ textAlign: "center", padding: 60, color: S.dim, fontSize: 14 }}>
+            No item types with Kanban enabled. Enable "Show in Kanban" in{" "}
+            <a href="/crm/settings/sitrep" style={{ color: "#a5b4fc" }}>SitRep Settings</a>.
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  if (noHeader) {
+    return <div style={{ paddingTop: 8 }}>{board}</div>;
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: S.surface, padding: "24px 24px 60px" }}>
-
-      {/* Header */}
       <div style={{ maxWidth: 1400, margin: "0 auto" }}>
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -404,57 +460,9 @@ export default function SitRepKanban({ initialItems, types, currentUserId }: Pro
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: S.text }}>SitRep</h1>
             <p style={{ margin: "2px 0 0", fontSize: 13, color: S.dim }}>Kanban Board</p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            {/* Mine filter */}
-            <button
-              type="button"
-              onClick={() => setMineOnly((v) => !v)}
-              style={{
-                ...PILL,
-                background: mineOnly ? "rgba(99,102,241,.18)" : "rgba(255,255,255,.05)",
-                borderColor: mineOnly ? "rgba(99,102,241,.4)" : "rgba(255,255,255,.08)",
-                color: mineOnly ? "#a5b4fc" : S.dim,
-              }}
-            >
-              {mineOnly ? "✓ Mine" : "Mine"}
-            </button>
-            {/* Terminal toggle */}
-            <button
-              type="button"
-              onClick={() => setShowTerminal((v) => !v)}
-              style={{
-                ...PILL,
-                background: showTerminal ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.05)",
-                borderColor: showTerminal ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.08)",
-                color: showTerminal ? S.text : S.dim,
-              }}
-            >
-              {showTerminal ? "✓ Show Completed" : "Show Completed"}
-            </button>
-            <SitRepViewToggle />
-          </div>
+          <SitRepViewToggle />
         </div>
-
-        {/* Type rows */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {kanbanTypes.map((type) => (
-            <TypeRow
-              key={type.slug}
-              type={type}
-              items={filterItems(type.slug)}
-              showTerminal={showTerminal}
-              draggingId={draggingId}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-            />
-          ))}
-          {kanbanTypes.length === 0 && (
-            <div style={{ textAlign: "center", padding: 60, color: S.dim, fontSize: 14 }}>
-              No item types with Kanban enabled. Enable "Show in Kanban" in{" "}
-              <a href="/crm/settings/sitrep" style={{ color: "#a5b4fc" }}>SitRep Settings</a>.
-            </div>
-          )}
-        </div>
+        {board}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
 import type { SitRepItem, Props } from "../SitRepPanel";
+import { SitRepViewToggle } from "../_components/SitRepViewToggle";
 
 type View = "month" | "week" | "day";
 
@@ -917,30 +918,7 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
             onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 14px color-mix(in srgb, var(--gg-primary, #2563eb) 42%, transparent)"; }}
           >+ New</button>
 
-        {/* List / Calendar toggle */}
-        <div style={{
-          display: "flex", borderRadius: 10, overflow: "hidden",
-          border: `1px solid ${S.border}`, flexShrink: 0,
-        }}>
-          <Link href="/crm/sitrep" style={{
-            padding: "8px 16px", fontSize: 13, fontWeight: 600,
-            background: "transparent", color: S.dim,
-            textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
-            transition: "all .12s",
-          }}>
-            ☰ List
-          </Link>
-          <Link href="/crm/sitrep/calendar" style={{
-            padding: "8px 16px", fontSize: 13, fontWeight: 600,
-            background: "color-mix(in srgb, var(--gg-primary, #2563eb) 16%, transparent)",
-            color: "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)",
-            textDecoration: "none", display: "flex", alignItems: "center", gap: 6,
-            borderLeft: "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 40%, transparent)",
-            transition: "all .12s",
-          }}>
-            ◫ Calendar
-          </Link>
-        </div>
+        <SitRepViewToggle />
         </div>
       </div>
 

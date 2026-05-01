@@ -1,6 +1,7 @@
 // app/crm/sitrep/calendar/page.tsx
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
@@ -29,7 +30,7 @@ export default async function SitRepCalendarPage() {
     sb
       .from("sitrep_items")
       .select(
-        "id, item_type, title, description, location, location_address, status, priority, due_date, start_at, end_at, is_all_day, mission_id, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
+        "id, item_type, title, description, location, location_address, status, priority, due_date, start_at, end_at, is_all_day, mission_id, parent_item_id, depth, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
       )
       .eq("tenant_id", tenant.id)
       .order("start_at", { ascending: true, nullsFirst: false })
@@ -94,13 +95,15 @@ export default async function SitRepCalendarPage() {
   }
 
   return (
-    <SitRepCalendar
-      initialItems={items}
-      missions={missions}
-      users={users}
-      currentUserId={crmUser.userId}
-      hasMissions={hasFeature(tenant.features, "sitrep_missions")}
-      typeColors={typeColors}
-    />
+    <Suspense>
+      <SitRepCalendar
+        initialItems={items}
+        missions={missions}
+        users={users}
+        currentUserId={crmUser.userId}
+        hasMissions={hasFeature(tenant.features, "sitrep_missions")}
+        typeColors={typeColors}
+      />
+    </Suspense>
   );
 }

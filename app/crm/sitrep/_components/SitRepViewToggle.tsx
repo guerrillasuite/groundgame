@@ -1,21 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 const VIEWS = [
   { key: "list",     label: "List",     href: "/crm/sitrep" },
-  { key: "kanban",   label: "Kanban",   href: "/crm/sitrep/kanban" },
+  { key: "kanban",   label: "Kanban",   href: "/crm/sitrep?view=kanban" },
   { key: "calendar", label: "Calendar", href: "/crm/sitrep/calendar" },
 ] as const;
 
-export function SitRepViewToggle() {
-  const pathname = usePathname();
+function ToggleInner() {
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
 
-  const active = VIEWS.find((v) => {
-    if (v.key === "list") return pathname === "/crm/sitrep";
-    return pathname.startsWith(v.href);
-  })?.key ?? "list";
+  const active =
+    pathname.startsWith("/crm/sitrep/calendar") ? "calendar" :
+    pathname === "/crm/sitrep" && searchParams.get("view") === "kanban" ? "kanban" :
+    "list";
 
   return (
     <div style={{
@@ -45,5 +47,13 @@ export function SitRepViewToggle() {
         </Link>
       ))}
     </div>
+  );
+}
+
+export function SitRepViewToggle() {
+  return (
+    <Suspense fallback={<div style={{ width: 176, height: 32 }} />}>
+      <ToggleInner />
+    </Suspense>
   );
 }

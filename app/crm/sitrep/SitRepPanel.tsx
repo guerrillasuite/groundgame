@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
 import { SitRepViewToggle } from "./_components/SitRepViewToggle";
+import SitRepKanban from "./kanban/SitRepKanban";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -310,7 +311,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   const [statusFilter, setStatusFilter] = useState<"active" | "done" | "all">(
     (searchParams.get("status") as "active" | "done" | "all") || "active"
   );
-  const [missionFilter, setMissionFilter] = useState(searchParams.get("filter") === "missions");
+  const view = searchParams.get("view") ?? "list";
 
   function pushFilters(newScope: "mine" | "all", newType: string, newStatus: "active" | "done" | "all") {
     const p = new URLSearchParams(searchParams.toString());
@@ -376,7 +377,6 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
     );
   }
   if (typeFilter !== "all") filtered = filtered.filter((i) => i.item_type === typeFilter);
-  if (missionFilter) filtered = filtered.filter((i) => missionTypeSlugs.has(i.item_type));
   if (statusFilter === "active") filtered = filtered.filter((i) => i.status !== "done" && i.status !== "cancelled");
   else if (statusFilter === "done") filtered = filtered.filter((i) => i.status === "done");
 
@@ -547,23 +547,6 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {missionTypeSlugs.size > 0 && (
-            <button
-              type="button"
-              onClick={() => setMissionFilter((v) => !v)}
-              style={{
-                padding: "7px 15px", fontSize: 13, borderRadius: 10,
-                border: missionFilter ? "1px solid rgba(99,102,241,.5)" : "1px solid rgba(99,102,241,.25)",
-                background: missionFilter ? "rgba(99,102,241,.18)" : "rgba(99,102,241,.07)",
-                boxShadow: missionFilter ? "0 0 16px rgba(99,102,241,.28)" : "none",
-                color: "#a5b4fc", cursor: "pointer",
-                display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600,
-                transition: "all .15s ease",
-              }}
-            >
-              <span>⬡</span> Missions
-            </button>
-          )}
           <div style={{ position: "relative" }}>
             <button
               ref={newBtnRef}
@@ -712,8 +695,29 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
         </div>
       </div>
 
+      {/* ── Kanban view ── */}
+      {view === "kanban" && (() => {
+        const kanbanTypes = Object.entries(typeDefs ?? {}).map(([slug, t]: [string, any]) => ({
+          slug,
+          name: t.name ?? slug,
+          color: t.color ?? "blue",
+          sort_order: t.sort_order ?? 0,
+          show_in_kanban: t.show_in_kanban !== false,
+          is_mission_type: t.is_mission_type ?? false,
+          stages: t.stages ?? [],
+        })).sort((a, b) => a.sort_order - b.sort_order);
+        return (
+          <SitRepKanban
+            noHeader
+            initialItems={items}
+            types={kanbanTypes}
+            currentUserId={currentUserId}
+          />
+        );
+      })()}
+
       {/* ── Item list ── */}
-      {groups.length === 0 ? (
+      {view !== "kanban" && (groups.length === 0 ? (
         <div style={{
           padding: "64px 0", textAlign: "center",
           background: "radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--gg-primary, #2563eb) 8%, transparent) 0%, transparent 70%)",
@@ -880,7 +884,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {/* ── Create modal ── */}
       {showCreate && (

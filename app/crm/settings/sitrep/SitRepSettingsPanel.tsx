@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ColorFamilyPicker } from "@/app/components/ColorFamilyPicker";
 
@@ -296,7 +297,7 @@ function TypeEditorPanel({
   const LABEL: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: S.text };
   const SUB: React.CSSProperties = { fontSize: 11, color: S.dim, marginTop: 1 };
 
-  return (
+  const panel = (
     <div style={{
       position: "fixed", inset: 0, zIndex: 60,
       display: "flex", justifyContent: "flex-end",
@@ -309,7 +310,7 @@ function TypeEditorPanel({
       {/* Panel */}
       <div style={{
         position: "relative", zIndex: 1,
-        width: 420, maxWidth: "100vw",
+        width: 480, maxWidth: "100vw",
         background: S.card, borderLeft: `1px solid ${S.border}`,
         display: "flex", flexDirection: "column",
         overflowY: "auto",
@@ -531,6 +532,7 @@ function TypeEditorPanel({
       </div>
     </div>
   );
+  return typeof window !== "undefined" ? createPortal(panel, document.body) : null;
 }
 
 // ── Public Calendar Form ───────────────────────────────────────────────────────
