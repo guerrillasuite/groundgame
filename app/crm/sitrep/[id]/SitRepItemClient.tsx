@@ -450,26 +450,24 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
           }}>
             ← SitRep
           </Link>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {parentItem && (
+              <Link href={`/crm/sitrep/${parentItem.id}`} style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                fontSize: 12, color: S.dim, textDecoration: "none",
+                background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.09)",
+                padding: "5px 11px", borderRadius: 7,
+              }}>
+                <span style={{ opacity: 0.6 }}>↑</span>
+                <span style={{ fontWeight: 700, letterSpacing: "0.06em" }}>{(typeDefs[parentItem.item_type]?.name ?? parentItem.item_type).toUpperCase()}</span>
+                <span style={{ color: S.dimBright, fontWeight: 500 }}>{parentItem.title}</span>
+              </Link>
+            )}
             {saveState === "saving" && <span style={{ fontSize: 12, color: S.dim }}>Saving…</span>}
             {saveState === "saved"  && <span style={{ fontSize: 12, fontWeight: 700, color: "#4ade80", background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)", padding: "4px 10px", borderRadius: 20 }}>✓ Saved</span>}
             {saveState === "error"  && <span style={{ fontSize: 12, fontWeight: 700, color: "#f87171", background: "rgba(239,68,68,.1)",  border: "1px solid rgba(239,68,68,.25)",  padding: "4px 10px", borderRadius: 20 }}>✕ Error</span>}
           </div>
         </div>
-
-        {/* Parent breadcrumb */}
-        {parentItem && (
-          <Link href={`/crm/sitrep/${parentItem.id}`} style={{
-            display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14,
-            fontSize: 12, color: S.dim, textDecoration: "none",
-            background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.09)",
-            padding: "5px 11px", borderRadius: 7,
-          }}>
-            <span style={{ opacity: 0.6 }}>↑</span>
-            <span style={{ fontWeight: 700, letterSpacing: "0.06em" }}>{(typeDefs[parentItem.item_type]?.name ?? parentItem.item_type).toUpperCase()}</span>
-            <span style={{ color: S.dimBright, fontWeight: 500 }}>{parentItem.title}</span>
-          </Link>
-        )}
 
         {/* Type badge row */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>

@@ -45,6 +45,8 @@ type Props = {
   types: KanbanType[];
   currentUserId: string;
   noHeader?: boolean;
+  mineOnly?: boolean;
+  showTerminal?: boolean;
 };
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -323,12 +325,15 @@ function TypeRow({
 
 // ── Main Board ────────────────────────────────────────────────────────────────
 
-export default function SitRepKanban({ initialItems, types, currentUserId, noHeader }: Props) {
+export default function SitRepKanban({ initialItems, types, currentUserId, noHeader, mineOnly: mineOnlyProp, showTerminal: showTerminalProp }: Props) {
   const [items, setItems] = useState<KanbanItem[]>(initialItems);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingType, setDraggingType] = useState<string | null>(null);
-  const [showTerminal, setShowTerminal] = useState(false);
-  const [mineOnly, setMineOnly] = useState(false);
+  const [localShowTerminal, setLocalShowTerminal] = useState(false);
+  const [localMineOnly, setLocalMineOnly] = useState(false);
+
+  const showTerminal = noHeader ? (showTerminalProp ?? false) : localShowTerminal;
+  const mineOnly     = noHeader ? (mineOnlyProp    ?? false) : localMineOnly;
 
   const kanbanTypes = types.filter((t) => t.show_in_kanban);
 
@@ -394,33 +399,35 @@ export default function SitRepKanban({ initialItems, types, currentUserId, noHea
 
   const board = (
     <>
-      {/* Compact filter bar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={() => setMineOnly((v) => !v)}
-          style={{
-            ...PILL,
-            background: mineOnly ? "rgba(99,102,241,.18)" : "rgba(255,255,255,.05)",
-            borderColor: mineOnly ? "rgba(99,102,241,.4)" : "rgba(255,255,255,.08)",
-            color: mineOnly ? "#a5b4fc" : S.dim,
-          }}
-        >
-          {mineOnly ? "✓ Mine only" : "Mine only"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowTerminal((v) => !v)}
-          style={{
-            ...PILL,
-            background: showTerminal ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.05)",
-            borderColor: showTerminal ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.08)",
-            color: showTerminal ? S.text : S.dim,
-          }}
-        >
-          {showTerminal ? "✓ Show Completed" : "Show Completed"}
-        </button>
-      </div>
+      {/* Compact filter bar — only shown on standalone page, not inline */}
+      {!noHeader && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setLocalMineOnly((v) => !v)}
+            style={{
+              ...PILL,
+              background: localMineOnly ? "rgba(99,102,241,.18)" : "rgba(255,255,255,.05)",
+              borderColor: localMineOnly ? "rgba(99,102,241,.4)" : "rgba(255,255,255,.08)",
+              color: localMineOnly ? "#a5b4fc" : S.dim,
+            }}
+          >
+            {localMineOnly ? "✓ Mine only" : "Mine only"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setLocalShowTerminal((v) => !v)}
+            style={{
+              ...PILL,
+              background: localShowTerminal ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.05)",
+              borderColor: localShowTerminal ? "rgba(255,255,255,.25)" : "rgba(255,255,255,.08)",
+              color: localShowTerminal ? S.text : S.dim,
+            }}
+          >
+            {localShowTerminal ? "✓ Show Completed" : "Show Completed"}
+          </button>
+        </div>
+      )}
 
       {/* Type rows */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

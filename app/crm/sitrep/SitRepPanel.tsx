@@ -312,6 +312,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
     (searchParams.get("status") as "active" | "done" | "all") || "active"
   );
   const view = searchParams.get("view") ?? "list";
+  const [kanbanShowTerminal, setKanbanShowTerminal] = useState(false);
 
   function pushFilters(newScope: "mine" | "all", newType: string, newStatus: "active" | "done" | "all") {
     const p = new URLSearchParams(searchParams.toString());
@@ -664,31 +665,39 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
           <FilterPill active={scope === "mine"} onClick={() => { setScope("mine"); pushFilters("mine", typeFilter, statusFilter); }}>Mine</FilterPill>
           <FilterPill active={scope === "all"}  onClick={() => { setScope("all");  pushFilters("all",  typeFilter, statusFilter); }}>All</FilterPill>
         </div>
-        <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
-        <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-          <FilterPill active={typeFilter === "all"} onClick={() => { setTypeFilter("all"); pushFilters(scope, "all", statusFilter); }}>
-            All Types
-          </FilterPill>
-          {["task","event","meeting"].map((t) => (
-            <FilterPill key={t} active={typeFilter === t} onClick={() => { setTypeFilter(t); pushFilters(scope, t, statusFilter); }}>
-              {typeNames?.[t] ?? (t === "task" ? "Tasks" : t === "event" ? "Events" : "Meetings")}
+        {view !== "kanban" && (<>
+          <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <FilterPill active={typeFilter === "all"} onClick={() => { setTypeFilter("all"); pushFilters(scope, "all", statusFilter); }}>
+              All Types
             </FilterPill>
-          ))}
-          {Object.keys(typeNames ?? {})
-            .filter((s) => !["task","event","meeting"].includes(s))
-            .map((slug) => (
-              <FilterPill key={slug} active={typeFilter === slug} onClick={() => { setTypeFilter(slug); pushFilters(scope, slug, statusFilter); }}>
-                {typeNames?.[slug] ?? slug}
+            {["task","event","meeting"].map((t) => (
+              <FilterPill key={t} active={typeFilter === t} onClick={() => { setTypeFilter(t); pushFilters(scope, t, statusFilter); }}>
+                {typeNames?.[t] ?? (t === "task" ? "Tasks" : t === "event" ? "Events" : "Meetings")}
               </FilterPill>
-            ))
-          }
-        </div>
-        <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
-        <div style={{ display: "flex", gap: 3 }}>
-          <FilterPill active={statusFilter === "active"} onClick={() => { setStatusFilter("active"); pushFilters(scope, typeFilter, "active"); }}>Active</FilterPill>
-          <FilterPill active={statusFilter === "done"}   onClick={() => { setStatusFilter("done");   pushFilters(scope, typeFilter, "done");   }}>Done</FilterPill>
-          <FilterPill active={statusFilter === "all"}    onClick={() => { setStatusFilter("all");    pushFilters(scope, typeFilter, "all");    }}>All</FilterPill>
-        </div>
+            ))}
+            {Object.keys(typeNames ?? {})
+              .filter((s) => !["task","event","meeting"].includes(s))
+              .map((slug) => (
+                <FilterPill key={slug} active={typeFilter === slug} onClick={() => { setTypeFilter(slug); pushFilters(scope, slug, statusFilter); }}>
+                  {typeNames?.[slug] ?? slug}
+                </FilterPill>
+              ))
+            }
+          </div>
+          <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
+          <div style={{ display: "flex", gap: 3 }}>
+            <FilterPill active={statusFilter === "active"} onClick={() => { setStatusFilter("active"); pushFilters(scope, typeFilter, "active"); }}>Active</FilterPill>
+            <FilterPill active={statusFilter === "done"}   onClick={() => { setStatusFilter("done");   pushFilters(scope, typeFilter, "done");   }}>Done</FilterPill>
+            <FilterPill active={statusFilter === "all"}    onClick={() => { setStatusFilter("all");    pushFilters(scope, typeFilter, "all");    }}>All</FilterPill>
+          </div>
+        </>)}
+        {view === "kanban" && (<>
+          <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
+          <FilterPill active={kanbanShowTerminal} onClick={() => setKanbanShowTerminal(v => !v)}>
+            {kanbanShowTerminal ? "✓ Show Completed" : "Show Completed"}
+          </FilterPill>
+        </>)}
 
         <div style={{ marginLeft: "auto" }}>
           <SitRepViewToggle />
@@ -712,6 +721,8 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
             initialItems={items}
             types={kanbanTypes}
             currentUserId={currentUserId}
+            mineOnly={scope === "mine"}
+            showTerminal={kanbanShowTerminal}
           />
         );
       })()}
