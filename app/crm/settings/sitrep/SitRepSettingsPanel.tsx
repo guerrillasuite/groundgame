@@ -1617,6 +1617,55 @@ export default function SitRepSettingsPanel() {
           )}
         </div>
 
+        {/* Automations card — coming soon */}
+        <div style={{
+          background: S.card, border: `1px solid ${S.border}`,
+          borderRadius: 16, padding: 24, display: "grid", gap: 16,
+          opacity: 0.7,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Automations</h2>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+                Trigger actions automatically based on item changes. Coming in the next release.
+              </p>
+            </div>
+            <span style={{
+              marginLeft: "auto", fontSize: 10, fontWeight: 800, letterSpacing: "0.1em",
+              borderRadius: 6, padding: "3px 9px", flexShrink: 0,
+              background: "rgba(251,191,36,.12)", color: "rgb(251 191 36)",
+              border: "1px solid rgba(251,191,36,.2)",
+            }}>SOON</span>
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            {[
+              { trigger: "Status changes to Done", action: "Notify assignees by email" },
+              { trigger: "Due date is tomorrow", action: "Send reminder to owner" },
+              { trigger: "Item created in type Meeting", action: "Assign to calendar automatically" },
+              { trigger: "Booking confirmed", action: "Create sub-task for prep work" },
+            ].map((rule, i) => (
+              <div key={i} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                background: S.surface, border: `1px solid ${S.border}`,
+                borderRadius: 10, padding: "10px 14px",
+                opacity: 0.6,
+              }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, flexShrink: 0,
+                  background: "rgba(99,102,241,.12)", color: "#a5b4fc",
+                }}>WHEN</div>
+                <span style={{ fontSize: 13, color: S.text, flex: 1 }}>{rule.trigger}</span>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, flexShrink: 0,
+                  background: "rgba(16,185,129,.12)", color: "#6ee7b7",
+                }}>THEN</div>
+                <span style={{ fontSize: 13, color: S.dim }}>{rule.action}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
       </div>
 
       {/* Type editor slide-in */}
