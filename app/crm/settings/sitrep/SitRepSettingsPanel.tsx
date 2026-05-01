@@ -57,6 +57,23 @@ const DEFAULT_WIDGET: WidgetSettings = {
   calendar_default_view: "week",
 };
 
+type BookingType = {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  duration_minutes: number;
+  buffer_before: number;
+  buffer_after: number;
+  available_days: number[];
+  available_start: string;
+  available_end: string;
+  timezone: string;
+  sitrep_item_type: string;
+  confirmation_msg: string | null;
+  is_active: boolean;
+};
+
 type PublicCalendar = {
   id: string;
   name: string;
@@ -536,6 +553,255 @@ function TypeEditorPanel({
   return typeof window !== "undefined" ? createPortal(panel, document.body) : null;
 }
 
+// ── Booking page editor ────────────────────────────────────────────────────────
+
+const DAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
+const TIMEZONES = [
+  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Phoenix", "America/Anchorage", "Pacific/Honolulu",
+  "Europe/London", "Europe/Paris", "Europe/Berlin", "Asia/Tokyo",
+  "Australia/Sydney",
+];
+
+function BookingPagePanel({
+  initial,
+  types,
+  onClose,
+  onSaved,
+}: {
+  initial: BookingType | null;
+  types: ItemType[];
+  onClose: () => void;
+  onSaved: (bt: BookingType) => void;
+}) {
+  const blank: BookingType = {
+    id: "", title: "", slug: "", description: null, duration_minutes: 30,
+    buffer_before: 0, buffer_after: 0, available_days: [1,2,3,4,5],
+    available_start: "09:00", available_end: "17:00",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+    sitrep_item_type: "meeting", confirmation_msg: null, is_active: true,
+  };
+  const [bt, setBt] = useState<BookingType>(initial ?? blank);
+  const [saving, setSaving] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+  const [err, setErr] = useState("");
+  const [customDuration, setCustomDuration] = useState(!DURATION_PRESETS.includes(bt.duration_minutes));
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const publicUrl = bt.slug ? `${origin}/book/${bt.slug}` : "";
+
+  function toggleDay(d: number) {
+    setBt((prev) => ({
+      ...prev,
+      available_days: prev.available_days.includes(d)
+        ? prev.available_days.filter((x) => x !== d)
+        : [...prev.available_days, d].sort(),
+    }));
+  }
+
+  async function handleSave() {
+    if (!bt.title.trim()) { setErr("Title is required."); return; }
+    setSaving(true); setErr("");
+    const method = bt.id ? "PATCH" : "POST";
+    const url    = bt.id ? `/api/crm/sitrep/booking-types/${bt.id}` : "/api/crm/sitrep/booking-types";
+    const res    = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title:            bt.title.trim(),
+        description:      bt.description?.trim() || null,
+        duration_minutes: bt.duration_minutes,
+        buffer_before:    bt.buffer_before,
+        buffer_after:     bt.buffer_after,
+        available_days:   bt.available_days,
+        available_start:  bt.available_start,
+        available_end:    bt.available_end,
+        timezone:         bt.timezone,
+        sitrep_item_type: bt.sitrep_item_type,
+        confirmation_msg: bt.confirmation_msg?.trim() || null,
+        is_active:        bt.is_active,
+      }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      const saved = await res.json();
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 2000);
+      onSaved({ ...bt, ...saved });
+    } else {
+      const e = await res.json().catch(() => ({}));
+      setErr(e.error ?? "Save failed.");
+    }
+  }
+
+  const ROW: React.CSSProperties = {
+    display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+    gap: 12, padding: "12px 0", borderBottom: `1px solid ${S.border}`,
+  };
+  const LABEL: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: S.text };
+  const SUB:   React.CSSProperties = { fontSize: 11, color: S.dim, marginTop: 2 };
+  const INPUT: React.CSSProperties = {
+    width: "100%", padding: "8px 11px", borderRadius: 8, boxSizing: "border-box",
+    background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 13,
+  };
+
+  const panel = (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)" }} onClick={onClose} />
+      <div style={{
+        position: "relative", zIndex: 1, width: 520, maxWidth: "100vw",
+        background: S.card, borderLeft: `1px solid ${S.border}`,
+        display: "flex", flexDirection: "column", overflowY: "auto",
+      }}>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "18px 20px 14px", borderBottom: `1px solid ${S.border}`,
+          position: "sticky", top: 0, background: S.card, zIndex: 2,
+        }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>
+              {bt.id ? "Edit Booking Page" : "New Booking Page"}
+            </div>
+            {publicUrl && (
+              <a href={publicUrl} target="_blank" rel="noopener" style={{ fontSize: 11, color: "#60a5fa", textDecoration: "none" }}>
+                {publicUrl}
+              </a>
+            )}
+          </div>
+          <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: S.dim, fontSize: 18, cursor: "pointer", padding: "4px 8px" }}>✕</button>
+        </div>
+
+        <div style={{ padding: "20px", flex: 1, display: "grid", gap: 0 }}>
+
+          <div style={{ paddingBottom: 14, borderBottom: `1px solid ${S.border}` }}>
+            <label style={{ ...LABEL, display: "block", marginBottom: 6 }}>Title *</label>
+            <input type="text" value={bt.title} onChange={(e) => setBt((p) => ({ ...p, title: e.target.value }))} style={INPUT} placeholder="e.g. 30-Minute Intro Call" />
+          </div>
+
+          <div style={{ paddingTop: 12, paddingBottom: 14, borderBottom: `1px solid ${S.border}` }}>
+            <label style={{ ...LABEL, display: "block", marginBottom: 6 }}>Description</label>
+            <textarea rows={2} value={bt.description ?? ""} onChange={(e) => setBt((p) => ({ ...p, description: e.target.value || null }))} style={{ ...INPUT, resize: "vertical" }} placeholder="Optional description shown on the booking page…" />
+          </div>
+
+          {/* Duration */}
+          <div style={{ ...ROW }}>
+            <div>
+              <div style={LABEL}>Duration</div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {DURATION_PRESETS.map((d) => (
+                <button key={d} type="button" onClick={() => { setBt((p) => ({ ...p, duration_minutes: d })); setCustomDuration(false); }} style={{
+                  padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                  border: `1px solid ${S.border}`, cursor: "pointer",
+                  background: !customDuration && bt.duration_minutes === d ? "rgba(99,102,241,.2)" : "rgba(255,255,255,.05)",
+                  borderColor: !customDuration && bt.duration_minutes === d ? "rgba(99,102,241,.5)" : S.border,
+                  color: !customDuration && bt.duration_minutes === d ? "#a5b4fc" : S.dim,
+                }}>{d < 60 ? `${d}m` : `${d/60}h`}</button>
+              ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <input type="number" min={5} max={480} value={customDuration ? bt.duration_minutes : ""} placeholder="custom" onChange={(e) => { const v = parseInt(e.target.value); if (v > 0) { setBt((p) => ({ ...p, duration_minutes: v })); setCustomDuration(true); } }} style={{ width: 72, padding: "5px 8px", borderRadius: 8, background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 12, textAlign: "center" }} />
+                <span style={{ fontSize: 11, color: S.dim }}>min</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Available days */}
+          <div style={{ ...ROW }}>
+            <div>
+              <div style={LABEL}>Available Days</div>
+            </div>
+            <div style={{ display: "flex", gap: 5 }}>
+              {DAY_LABELS.map((label, i) => (
+                <button key={i} type="button" onClick={() => toggleDay(i)} style={{
+                  width: 32, height: 32, borderRadius: 8, fontSize: 11, fontWeight: 700,
+                  border: `1px solid ${S.border}`, cursor: "pointer",
+                  background: bt.available_days.includes(i) ? "rgba(99,102,241,.2)" : "rgba(255,255,255,.05)",
+                  borderColor: bt.available_days.includes(i) ? "rgba(99,102,241,.5)" : S.border,
+                  color: bt.available_days.includes(i) ? "#a5b4fc" : S.dim,
+                }}>{label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Time range */}
+          <div style={{ ...ROW }}>
+            <div>
+              <div style={LABEL}>Hours</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input type="time" value={bt.available_start} onChange={(e) => setBt((p) => ({ ...p, available_start: e.target.value }))} style={{ padding: "5px 8px", borderRadius: 8, background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 12 }} />
+              <span style={{ fontSize: 12, color: S.dim }}>to</span>
+              <input type="time" value={bt.available_end} onChange={(e) => setBt((p) => ({ ...p, available_end: e.target.value }))} style={{ padding: "5px 8px", borderRadius: 8, background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 12 }} />
+            </div>
+          </div>
+
+          {/* Timezone */}
+          <div style={{ ...ROW }}>
+            <div>
+              <div style={LABEL}>Timezone</div>
+            </div>
+            <select value={bt.timezone} onChange={(e) => setBt((p) => ({ ...p, timezone: e.target.value }))} style={{ padding: "6px 10px", borderRadius: 8, background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 12 }}>
+              {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+            </select>
+          </div>
+
+          {/* Buffer */}
+          <div style={{ ...ROW }}>
+            <div>
+              <div style={LABEL}>Buffer</div>
+              <div style={SUB}>Padding before/after each booking</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="number" min={0} max={60} value={bt.buffer_before} onChange={(e) => setBt((p) => ({ ...p, buffer_before: parseInt(e.target.value) || 0 }))} style={{ width: 48, padding: "5px 8px", borderRadius: 8, background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 12, textAlign: "center" }} />
+              <span style={{ fontSize: 11, color: S.dim }}>min before /</span>
+              <input type="number" min={0} max={60} value={bt.buffer_after} onChange={(e) => setBt((p) => ({ ...p, buffer_after: parseInt(e.target.value) || 0 }))} style={{ width: 48, padding: "5px 8px", borderRadius: 8, background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 12, textAlign: "center" }} />
+              <span style={{ fontSize: 11, color: S.dim }}>min after</span>
+            </div>
+          </div>
+
+          {/* Item type */}
+          <div style={{ ...ROW }}>
+            <div>
+              <div style={LABEL}>Creates Item Type</div>
+              <div style={SUB}>What type of SitRep item is booked</div>
+            </div>
+            <select value={bt.sitrep_item_type} onChange={(e) => setBt((p) => ({ ...p, sitrep_item_type: e.target.value }))} style={{ padding: "6px 10px", borderRadius: 8, background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 12 }}>
+              {types.filter((t) => t.booking_enabled || ["meeting","event"].includes(t.slug)).map((t) => (
+                <option key={t.slug} value={t.slug}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Confirmation message */}
+          <div style={{ paddingTop: 12, paddingBottom: 14, borderBottom: `1px solid ${S.border}` }}>
+            <label style={{ ...LABEL, display: "block", marginBottom: 6 }}>Confirmation Message</label>
+            <textarea rows={2} value={bt.confirmation_msg ?? ""} onChange={(e) => setBt((p) => ({ ...p, confirmation_msg: e.target.value || null }))} style={{ ...INPUT, resize: "vertical" }} placeholder="Shown after booking + in confirmation email…" />
+          </div>
+
+          {/* Active */}
+          <div style={{ paddingTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={LABEL}>Active</div>
+              <div style={SUB}>Disable to hide the public booking page</div>
+            </div>
+            <OsPill value={bt.is_active} onChange={(v) => setBt((p) => ({ ...p, is_active: v }))} />
+          </div>
+        </div>
+
+        <div style={{ padding: "14px 20px", borderTop: `1px solid ${S.border}`, display: "flex", alignItems: "center", gap: 12, background: S.card, position: "sticky", bottom: 0 }}>
+          <button type="button" onClick={handleSave} disabled={saving} className="btn" style={{ padding: "8px 22px", fontSize: 13, borderRadius: 8 }}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+          {savedOk && <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>Saved ✓</span>}
+          {err     && <span style={{ fontSize: 12, color: "#fca5a5" }}>{err}</span>}
+        </div>
+      </div>
+    </div>
+  );
+  return typeof window !== "undefined" ? createPortal(panel, document.body) : null;
+}
+
 // ── Public Calendar Form ───────────────────────────────────────────────────────
 
 function CalendarForm({
@@ -842,6 +1108,10 @@ export default function SitRepSettingsPanel() {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
 
+  const [bookingTypes, setBookingTypes] = useState<BookingType[]>([]);
+  const [bookingLoading, setBookingLoading] = useState(true);
+  const [editingBooking, setEditingBooking] = useState<BookingType | "new" | null>(null);
+
   const [calendars, setCalendars] = useState<PublicCalendar[]>([]);
   const [calsLoading, setCalsLoading] = useState(true);
 
@@ -856,6 +1126,12 @@ export default function SitRepSettingsPanel() {
       .then((data) => setTypes(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    fetch("/api/crm/sitrep/booking-types")
+      .then((r) => r.json())
+      .then((data) => setBookingTypes(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setBookingLoading(false));
 
     fetch("/api/crm/sitrep/public-calendars")
       .then((r) => r.json())
@@ -1032,6 +1308,104 @@ export default function SitRepSettingsPanel() {
               <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgb(220 38 38)" }}>{addError}</p>
             )}
           </div>
+        </div>
+
+        {/* My Booking Pages card */}
+        <div style={{
+          background: S.card, border: `1px solid ${S.border}`,
+          borderRadius: 16, padding: 24, display: "grid", gap: 20,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>My Booking Pages</h2>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+                Public scheduling pages for your availability — like Calendly, built in.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditingBooking("new")}
+              className="btn"
+              style={{ padding: "7px 16px", fontSize: 13, borderRadius: 8, flexShrink: 0 }}
+            >+ New Page</button>
+          </div>
+
+          {bookingLoading ? (
+            <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
+          ) : bookingTypes.length === 0 ? (
+            <div style={{
+              background: S.surface, border: `1px dashed ${S.border}`, borderRadius: 12,
+              padding: "28px 20px", textAlign: "center",
+            }}>
+              <p style={{ margin: "0 0 6px", fontSize: 14, color: S.dim }}>No booking pages yet.</p>
+              <p style={{ margin: 0, fontSize: 12, color: S.dim }}>
+                Create one and share the link — anyone can book time on your calendar.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {bookingTypes.map((bt) => {
+                const origin = typeof window !== "undefined" ? window.location.origin : "";
+                const url = `${origin}/book/${bt.slug}`;
+                const dur = bt.duration_minutes < 60 ? `${bt.duration_minutes}m` : `${bt.duration_minutes / 60}h`;
+                return (
+                  <div key={bt.id} style={{
+                    background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12,
+                    padding: "12px 16px", display: "flex", alignItems: "center", gap: 12,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: S.text }}>{bt.title}</span>
+                        {!bt.is_active && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(255,255,255,.07)", color: S.dim, borderRadius: 4, padding: "1px 6px" }}>INACTIVE</span>
+                        )}
+                      </div>
+                      <a href={url} target="_blank" rel="noopener" style={{ fontSize: 11, color: "#60a5fa", textDecoration: "none" }}>
+                        /book/{bt.slug}
+                      </a>
+                      <div style={{ fontSize: 11, color: S.dim, marginTop: 2 }}>
+                        {dur} · {bt.sitrep_item_type} · {bt.timezone}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard.writeText(url); }}
+                        title="Copy link"
+                        style={{
+                          padding: "5px 10px", fontSize: 12, borderRadius: 7,
+                          border: `1px solid ${S.border}`, background: "rgba(255,255,255,.05)",
+                          color: S.dim, cursor: "pointer",
+                        }}
+                      >Copy link</button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingBooking(bt)}
+                        style={{
+                          padding: "5px 12px", fontSize: 12, borderRadius: 7,
+                          border: `1px solid ${S.border}`, background: "rgba(255,255,255,.05)",
+                          color: S.text, cursor: "pointer",
+                        }}
+                      >Edit</button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm(`Delete "${bt.title}"?`)) return;
+                          const res = await fetch(`/api/crm/sitrep/booking-types/${bt.id}`, { method: "DELETE" });
+                          if (res.ok) setBookingTypes((prev) => prev.filter((b) => b.id !== bt.id));
+                        }}
+                        style={{
+                          padding: "5px 10px", fontSize: 12, borderRadius: 7,
+                          border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.07)",
+                          color: "#fca5a5", cursor: "pointer",
+                        }}
+                      >Delete</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Public Calendars card */}
@@ -1253,6 +1627,22 @@ export default function SitRepSettingsPanel() {
           onSaved={(updated) => {
             setTypes((prev) => prev.map((t) => t.id === updated.id ? updated : t));
             setEditingType(null);
+          }}
+        />
+      )}
+
+      {/* Booking page editor slide-in */}
+      {editingBooking && (
+        <BookingPagePanel
+          initial={editingBooking === "new" ? null : editingBooking}
+          types={types}
+          onClose={() => setEditingBooking(null)}
+          onSaved={(saved) => {
+            setBookingTypes((prev) => {
+              const exists = prev.find((b) => b.id === saved.id);
+              return exists ? prev.map((b) => b.id === saved.id ? saved : b) : [...prev, saved];
+            });
+            setEditingBooking(null);
           }}
         />
       )}

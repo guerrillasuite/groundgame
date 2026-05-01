@@ -104,6 +104,11 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/account/auth") &&
     !pathname.startsWith("/account/set-password");
 
+  // Public booking pages and APIs — no auth, no tenant check
+  const isPublicBooking =
+    pathname.startsWith("/book/") ||
+    pathname.startsWith("/api/booking/");
+
   // Protect PWA API routes
   // /api/survey/panel-submit and /api/survey/response are called by public hosted
   // survey pages (/s/[surveyId]) where the respondent has no session.
@@ -115,6 +120,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/dials") ||
     (pathname.startsWith("/api/survey") && !isPublicSurveySubmit) ||
     pathname.startsWith("/api/contacts");
+
+  if (isPublicBooking) return supabaseResponse;
 
   if (!user) {
     if (isCrmApi || isPwaApi) {
