@@ -161,7 +161,7 @@ export default async function SitRepCalendarPage() {
       .order("start_at", { ascending: true, nullsFirst: false })
       .order("due_date",  { ascending: true, nullsFirst: false })
       .limit(500);
-    if (data) extraItemRows.push(...data);
+    if (data) extraItemRows.push(...data.map((r: any) => ({ ...r, _source_tenant_id: tid })));
   }));
 
   // Own items: existing visibility rules

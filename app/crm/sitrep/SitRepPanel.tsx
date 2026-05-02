@@ -31,6 +31,8 @@ export type SitRepItem = {
   created_by: string;
   created_at: string;
   sitrep_assignments: Assignment[];
+  // set only on items fetched from a shared cross-tenant calendar
+  _source_tenant_id?: string;
 };
 
 type User       = { id: string; name: string; email: string };

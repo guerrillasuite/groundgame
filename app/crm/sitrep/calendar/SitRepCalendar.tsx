@@ -193,9 +193,9 @@ function ItemPill({
   );
 }
 
-// ── Item details modal ─────────────────────────────────────────────────────────
+// ── Item detail slide panel ────────────────────────────────────────────────────
 
-function ItemDetailsModal({
+function ItemDetailPanel({
   item, typeColors, users, missions, onClose, onToggle, togglePending,
 }: {
   item: SitRepItem;
@@ -207,109 +207,135 @@ function ItemDetailsModal({
   togglePending: boolean;
 }) {
   const family = getItemFamily(item, typeColors);
-  const isDone = item.status === "done";
+  const isDone      = item.status === "done";
   const isConfirmed = item.status === "confirmed";
   const isCancelled = item.status === "cancelled";
-  const cardBg = isDone ? family.shades[1] : family.shades[3];
-  const textColor = isDone ? "#fff" : "#0f172a";
-  const dimColor = isDone ? "rgba(255,255,255,.7)" : "#475569";
-  const mission = item.mission_id ? missions.get(item.mission_id) : undefined;
-  const assignees = item.sitrep_assignments
+  const isShared    = !!item._source_tenant_id;
+  const mission     = item.mission_id ? missions.get(item.mission_id) : undefined;
+  const assignees   = item.sitrep_assignments
     .map((a) => users.get(a.user_id))
     .filter(Boolean) as { id: string; name: string; email: string }[];
 
   const S = {
-    surface: "rgb(18 23 33)",
-    card:    "rgb(28 36 48)",
-    border:  "rgb(43 53 67)",
+    surface: "rgb(12 15 23)",
+    card:    "rgb(22 28 40)",
+    border:  "rgba(255,255,255,.08)",
     text:    "rgb(238 242 246)",
-    dim:     "rgb(160 174 192)",
+    dim:     "rgb(140 155 170)",
+    accent:  family.shades[0],
   } as const;
 
+  const typeLabel = item.item_type === "task" ? "TASK"
+    : item.item_type === "event" ? "EVENT"
+    : item.item_type === "meeting" ? "MEETING"
+    : item.item_type.toUpperCase();
+
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 300,
-      background: "rgba(0,0,0,.65)", backdropFilter: "blur(3px)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-    }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
+    <>
+      {/* Scrim — click to close */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 290,
+          background: "rgba(0,0,0,.45)",
+        }}
+      />
+
+      {/* Slide panel */}
       <div style={{
-        width: "min(520px, 100%)",
-        background: S.card, border: `1px solid ${S.border}`,
-        borderRadius: 16, overflow: "hidden",
-        boxShadow: "0 24px 64px rgba(0,0,0,.55)",
-        maxHeight: "90vh", display: "flex", flexDirection: "column",
+        position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 300,
+        width: "min(480px, 100vw)",
+        background: S.card,
+        borderLeft: `1px solid ${S.border}`,
+        boxShadow: "-24px 0 64px rgba(0,0,0,.55)",
+        display: "flex", flexDirection: "column",
+        animation: "slideInRight .18s ease",
       }}>
-        {/* Color header stripe */}
+        <style>{`@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+
+        {/* Colored top stripe */}
         <div style={{
-          background: cardBg, padding: "16px 20px",
-          display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12,
+          background: `linear-gradient(135deg, ${family.shades[2]}, ${family.shades[3]})`,
+          padding: "18px 20px 16px",
+          borderBottom: `1px solid ${S.border}`,
+          flexShrink: 0,
         }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              <span style={{
-                fontSize: 10, fontWeight: 800, letterSpacing: "0.07em",
-                padding: "2px 6px", borderRadius: 4,
-                background: isDone ? "rgba(0,0,0,.28)" : family.shades[1],
-                color: "#fff", flexShrink: 0,
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 800, letterSpacing: "0.08em",
+                  padding: "2px 7px", borderRadius: 4,
+                  background: family.shades[1], color: "#fff",
+                }}>
+                  {typeLabel}
+                </span>
+                {isShared && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: "0.05em",
+                    padding: "2px 6px", borderRadius: 4,
+                    background: "rgba(0,0,0,.25)", color: "rgba(255,255,255,.7)",
+                  }}>SHARED</span>
+                )}
+                {isConfirmed && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: "0.05em",
+                    padding: "2px 6px", borderRadius: 4,
+                    background: "rgba(0,0,0,.2)", color: "rgba(255,255,255,.8)",
+                  }}>CONFIRMED</span>
+                )}
+                {isCancelled && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: "0.05em",
+                    padding: "2px 6px", borderRadius: 4,
+                    background: "rgba(0,0,0,.3)", color: "rgba(255,255,255,.6)",
+                  }}>CANCELLED</span>
+                )}
+                {isDone && !isCancelled && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: "0.05em",
+                    padding: "2px 6px", borderRadius: 4,
+                    background: "rgba(0,0,0,.2)", color: "rgba(255,255,255,.75)",
+                  }}>DONE</span>
+                )}
+              </div>
+              <div style={{
+                fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.3,
+                textDecoration: isDone ? "line-through" : "none",
+                opacity: isDone ? 0.75 : 1,
               }}>
-                {(item.item_type === "task" ? "TASK" : item.item_type === "event" ? "EVENT" : item.item_type === "meeting" ? "MTG" : item.item_type.toUpperCase())}
-              </span>
-              {isConfirmed && (
-                <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: "0.06em",
-                  padding: "1px 5px", borderRadius: 3,
-                  background: "rgba(0,0,0,.12)", color: textColor,
-                }}>CONFIRMED</span>
-              )}
-              {isCancelled && (
-                <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: "0.06em",
-                  padding: "1px 5px", borderRadius: 3,
-                  background: "rgba(0,0,0,.18)", color: textColor,
-                }}>CANCELLED</span>
-              )}
+                {item.title}
+              </div>
             </div>
-            <div style={{
-              fontSize: 17, fontWeight: 700, color: textColor,
-              textDecoration: isDone ? "line-through" : "none",
-              opacity: isDone ? 0.8 : 1,
-              overflow: "hidden", textOverflow: "ellipsis",
-            }}>
-              {item.title}
-            </div>
+            <button onClick={onClose} style={{
+              flexShrink: 0, background: "rgba(0,0,0,.2)", border: "none",
+              color: "rgba(255,255,255,.8)", cursor: "pointer",
+              fontSize: 16, width: 30, height: 30, borderRadius: 8,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              lineHeight: 1, marginTop: 2,
+            }}>✕</button>
           </div>
-          <button onClick={onClose} style={{
-            background: "rgba(0,0,0,.15)", border: "none", color: textColor,
-            cursor: "pointer", fontSize: 16, padding: "4px 8px",
-            borderRadius: 6, lineHeight: 1, flexShrink: 0,
-          }}>✕</button>
         </div>
 
-        {/* Details body */}
-        <div style={{ padding: "20px", overflowY: "auto", display: "grid", gap: 14 }}>
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "grid", gap: 16 }}>
 
           {/* Date / time */}
-          {(effectiveDate(item)) && (
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 14, opacity: 0.5, flexShrink: 0, marginTop: 1 }}>📅</span>
-              <div style={{ fontSize: 13, color: S.text }}>
+          {effectiveDate(item) && (
+            <Row icon="📅">
+              <span style={{ fontSize: 13, color: S.text }}>
                 {fmtDateLabel(item)}
                 {item.end_at && hasExplicitTime(item.end_at) && !item.is_all_day && (
                   <span style={{ color: S.dim }}> → {fmtTime(item.end_at)}</span>
                 )}
-                {item.is_all_day && (
-                  <span style={{ color: S.dim, marginLeft: 6, fontSize: 11 }}>(all day)</span>
-                )}
-              </div>
-            </div>
+                {item.is_all_day && <span style={{ color: S.dim, marginLeft: 6, fontSize: 11 }}>(all day)</span>}
+              </span>
+            </Row>
           )}
 
           {/* Priority */}
           {item.priority && item.priority !== "normal" && item.priority !== "low" && (
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <span style={{ fontSize: 14, opacity: 0.5, flexShrink: 0 }}>⚑</span>
+            <Row icon="⚑">
               <span style={{
                 fontSize: 11, fontWeight: 800, letterSpacing: "0.05em",
                 padding: "2px 8px", borderRadius: 4,
@@ -318,112 +344,159 @@ function ItemDetailsModal({
               }}>
                 {item.priority === "urgent" ? "!! URGENT" : "HIGH"}
               </span>
-            </div>
-          )}
-
-          {/* Mission */}
-          {mission && (
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <span style={{ fontSize: 14, opacity: 0.5, flexShrink: 0 }}>⬡</span>
-              <span style={{ fontSize: 13, color: S.text }}>
-                {mission.title}
-                <span style={{ fontSize: 11, color: S.dim, marginLeft: 6 }}>({mission.status})</span>
-              </span>
-            </div>
+            </Row>
           )}
 
           {/* Assignees */}
           {assignees.length > 0 && (
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 14, opacity: 0.5, flexShrink: 0, marginTop: 2 }}>👥</span>
+            <Row icon="👥">
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {assignees.map((u) => (
                   <span key={u.id} style={{
-                    fontSize: 12, padding: "2px 10px", borderRadius: 12,
-                    background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.1)",
+                    fontSize: 12, padding: "3px 10px", borderRadius: 12,
+                    background: "rgba(255,255,255,.07)", border: `1px solid ${S.border}`,
                     color: S.text,
                   }}>
                     {u.name || u.email}
                   </span>
                 ))}
               </div>
-            </div>
+            </Row>
           )}
 
           {/* Location */}
           {(item.location || item.location_address) && (
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 14, opacity: 0.5, flexShrink: 0, marginTop: 1 }}>📍</span>
+            <Row icon="📍">
               <div>
                 {item.location && (
-                  <div style={{ fontSize: 13, fontWeight: 600, color: S.text }}>{item.location}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: S.text, marginBottom: 2 }}>{item.location}</div>
                 )}
                 {item.location_address && (() => {
-                  const addr = item.location_address;
+                  const addr = item.location_address!;
                   const isUrl = /^https?:\/\//i.test(addr);
                   return (
                     <a
                       href={isUrl ? addr : `https://maps.google.com/?q=${encodeURIComponent(addr)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      target="_blank" rel="noopener noreferrer"
                       style={{ fontSize: 12, color: "#60a5fa", textDecoration: "underline", wordBreak: "break-all" }}
-                    >
-                      {addr}
-                    </a>
+                    >{addr}</a>
                   );
                 })()}
               </div>
-            </div>
+            </Row>
+          )}
+
+          {/* Mission */}
+          {mission && (
+            <Row icon="⬡">
+              <span style={{ fontSize: 13, color: S.text }}>
+                {mission.title}
+                <span style={{ fontSize: 11, color: S.dim, marginLeft: 6 }}>({mission.status})</span>
+              </span>
+            </Row>
           )}
 
           {/* Description */}
           {item.description && (
             <div style={{
-              fontSize: 13, color: S.text, lineHeight: 1.6,
-              background: "rgba(255,255,255,.04)", borderRadius: 8,
-              padding: "10px 14px", border: "1px solid rgba(255,255,255,.06)",
+              fontSize: 13, color: S.text, lineHeight: 1.65,
+              background: "rgba(255,255,255,.04)", borderRadius: 10,
+              padding: "12px 16px", border: `1px solid ${S.border}`,
               whiteSpace: "pre-wrap",
             }}>
               {item.description}
             </div>
           )}
 
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center", paddingTop: 4 }}>
+          {/* Agenda (meetings) */}
+          {(item as any).agenda && (
+            <Section label="Agenda" dim={S.dim} border={S.border}>
+              <div style={{ fontSize: 13, color: S.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                {(item as any).agenda}
+              </div>
+            </Section>
+          )}
+
+          {/* Meeting notes */}
+          {(item as any).meeting_notes && (
+            <Section label="Notes" dim={S.dim} border={S.border}>
+              <div style={{ fontSize: 13, color: S.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                {(item as any).meeting_notes}
+              </div>
+            </Section>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div style={{
+          borderTop: `1px solid ${S.border}`,
+          padding: "14px 20px",
+          display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between",
+          flexShrink: 0, background: S.surface,
+        }}>
+          {isShared ? (
+            <span style={{
+              fontSize: 11, color: S.dim, fontStyle: "italic",
+              padding: "6px 12px", borderRadius: 8,
+              background: "rgba(255,255,255,.04)", border: `1px solid ${S.border}`,
+            }}>
+              Shared — view only
+            </span>
+          ) : (
             <Link href={`/crm/sitrep/${item.id}`} style={{
               fontSize: 12, fontWeight: 600, color: S.dim,
               textDecoration: "none", padding: "7px 14px",
-              border: "1px solid rgba(255,255,255,.1)", borderRadius: 8,
+              border: `1px solid ${S.border}`, borderRadius: 8,
               background: "rgba(255,255,255,.04)",
               transition: "all .12s ease",
             }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.08)"; (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(-1px)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.04)"; (e.currentTarget as HTMLAnchorElement).style.transform = ""; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.08)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,.04)"; }}
             >
               Open full details →
             </Link>
-            {!isCancelled && (
-              <button
-                onClick={() => { onToggle(item); onClose(); }}
-                disabled={togglePending}
-                style={{
-                  fontSize: 12, fontWeight: 600,
-                  padding: "7px 16px", borderRadius: 8, cursor: "pointer",
-                  background: isDone ? "rgba(255,255,255,.09)" : family.shades[1],
-                  color: isDone ? S.dim : "#fff",
-                  border: `1px solid ${isDone ? "rgba(255,255,255,.12)" : family.shades[0]}`,
-                  opacity: togglePending ? 0.6 : 1,
-                  boxShadow: isDone ? "none" : `0 0 14px ${family.shades[0]}33`,
-                  transition: "all .12s ease",
-                }}
-                onMouseEnter={(e) => { if (!togglePending) { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.filter = "brightness(1.1)"; } }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.filter = ""; }}
-              >
-                {isDone ? "↩ Mark open" : "✓ Mark done"}
-              </button>
-            )}
-          </div>
+          )}
+          {!isShared && !isCancelled && (
+            <button
+              onClick={() => { onToggle(item); onClose(); }}
+              disabled={togglePending}
+              style={{
+                fontSize: 12, fontWeight: 600,
+                padding: "7px 16px", borderRadius: 8, cursor: "pointer",
+                background: isDone ? "rgba(255,255,255,.09)" : family.shades[1],
+                color: isDone ? S.dim : "#fff",
+                border: `1px solid ${isDone ? "rgba(255,255,255,.12)" : family.shades[0]}`,
+                opacity: togglePending ? 0.6 : 1,
+                boxShadow: isDone ? "none" : `0 0 14px ${family.shades[0]}33`,
+                transition: "all .12s ease",
+              }}
+              onMouseEnter={(e) => { if (!togglePending) e.currentTarget.style.filter = "brightness(1.1)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.filter = ""; }}
+            >
+              {isDone ? "↩ Mark open" : "✓ Mark done"}
+            </button>
+          )}
         </div>
+      </div>
+    </>
+  );
+}
+
+function Row({ icon, children }: { icon: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <span style={{ fontSize: 14, opacity: 0.45, flexShrink: 0, marginTop: 1, lineHeight: 1.5 }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
+
+function Section({ label, dim, border, children }: { label: string; dim: string; border: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.07em", color: dim, marginBottom: 8, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ background: "rgba(255,255,255,.03)", borderRadius: 8, padding: "10px 14px", border: `1px solid ${border}` }}>
+        {children}
       </div>
     </div>
   );
@@ -1087,9 +1160,9 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
         );
       })()}
 
-      {/* Details modal */}
+      {/* Item detail panel */}
       {modalItem && (
-        <ItemDetailsModal
+        <ItemDetailPanel
           item={modalItem}
           typeColors={typeColors}
           users={userMap}
