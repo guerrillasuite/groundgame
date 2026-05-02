@@ -90,7 +90,7 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/sitrep/items?tenantId=${tenantId}`);
+      const res = await fetch(`/api/sitrep/items`);
       if (res.ok) {
         const data = await res.json();
         setItems(Array.isArray(data) ? [...data] : []);

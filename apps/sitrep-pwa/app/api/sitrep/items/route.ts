@@ -1,52 +1,97 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { getCrmUser } from "@/lib/crm-auth";
 import { makeServiceSb } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
 const SELECT = `
-  id, item_type, title, description, location, status, priority,
+  id, tenant_id, item_type, title, description, location, status, priority,
   due_date, start_at, end_at, is_all_day,
   mission_id, parent_item_id, depth,
   visibility, created_by, created_at,
   sitrep_assignments(user_id, role)
 `;
 
-// GET /api/sitrep/items?tenantId=xxx
-export async function GET(req: NextRequest) {
+function makeRawSb() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+
+// GET /api/sitrep/items
+// Returns all items assigned to or created by the authenticated user,
+// across every tenant they belong to.
+export async function GET(_req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { searchParams } = new URL(req.url);
-  const tenantId = searchParams.get("tenantId");
-  if (!tenantId) return NextResponse.json({ error: "tenantId required" }, { status: 400 });
+  const sb = makeRawSb();
 
-  const sb = makeServiceSb(tenantId);
+  // All tenants this user is a member of
+  const { data: memberships } = await sb
+    .from("user_tenants")
+    .select("tenant_id")
+    .eq("user_id", user.userId)
+    .in("status", ["active", "invited"]);
 
-  const { data, error } = await sb
-    .from("sitrep_items")
-    .select(SELECT)
-    .eq("tenant_id", tenantId)
-    .order("due_date",  { ascending: true, nullsFirst: false })
-    .order("start_at",  { ascending: true, nullsFirst: false })
-    .limit(500);
+  const tenantIds = (memberships ?? []).map((m: any) => m.tenant_id as string);
+  if (!tenantIds.length) return NextResponse.json([]);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // All item IDs this user is explicitly assigned to
+  const { data: assignments } = await sb
+    .from("sitrep_assignments")
+    .select("item_id")
+    .eq("user_id", user.userId);
 
-  // Visibility filter
-  const items = ((data ?? []) as any[]).filter((item) => {
-    if (item.visibility === "private") return item.created_by === user.userId;
-    if (item.visibility === "assignee_only") {
-      return item.created_by === user.userId ||
-        item.sitrep_assignments?.some((a: any) => a.user_id === user.userId);
+  const assignedIds = [...new Set((assignments ?? []).map((a: any) => a.item_id as string))];
+
+  // Two parallel queries to avoid large .or() URL limits
+  const [createdRes, assignedRes] = await Promise.all([
+    // Items created by this user across all their tenants
+    sb.from("sitrep_items")
+      .select(SELECT)
+      .in("tenant_id", tenantIds)
+      .eq("created_by", user.userId)
+      .limit(500),
+
+    // Items assigned to this user (cap at 500 IDs to stay within URL limits)
+    assignedIds.length > 0
+      ? sb.from("sitrep_items")
+          .select(SELECT)
+          .in("tenant_id", tenantIds)
+          .in("id", assignedIds.slice(0, 500))
+          .limit(500)
+      : Promise.resolve({ data: [] as any[], error: null }),
+  ]);
+
+  if (createdRes.error) return NextResponse.json({ error: createdRes.error.message }, { status: 500 });
+
+  // Merge and dedup by id
+  const seen = new Set<string>();
+  const items: any[] = [];
+  for (const item of [...(createdRes.data ?? []), ...(assignedRes.data ?? [])]) {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      items.push(item);
     }
-    return true;
+  }
+
+  // Sort by effective date ascending, nulls last
+  items.sort((a, b) => {
+    const da = a.due_date ?? a.start_at;
+    const db = b.due_date ?? b.start_at;
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return da.localeCompare(db);
   });
 
-  return NextResponse.json([...items]);
+  return NextResponse.json(items);
 }
 
-// POST /api/sitrep/items
+// POST /api/sitrep/items — creates in the specified tenant
 export async function POST(req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -64,7 +109,7 @@ export async function POST(req: NextRequest) {
       tenant_id:   body.tenantId,
       item_type:   body.item_type,
       title:       body.title.trim(),
-      status:      body.item_type === "task" ? "open" : "open",
+      status:      "open",
       priority:    body.item_type === "task" ? (body.priority ?? "normal") : null,
       due_date:    body.item_type === "task" ? (body.due_date ?? null) : null,
       start_at:    body.item_type !== "task" ? (body.due_date ?? null) : null,
