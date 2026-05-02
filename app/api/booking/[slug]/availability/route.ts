@@ -29,7 +29,7 @@ export async function GET(
   const sbRaw = makeSbRaw();
   const { data: bt, error: btErr } = await sbRaw
     .from("sitrep_booking_types")
-    .select("id, tenant_id, owner_id, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, is_active")
+    .select("id, tenant_id, owner_id, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, is_active, conflict_item_types")
     .eq("slug", slug)
     .eq("is_active", true)
     .limit(1)
@@ -76,6 +76,30 @@ export async function GET(
       ? new Date(item.end_at).getTime()
       : new Date(item.start_at).getTime() + (bt.duration_minutes ?? 30) * 60000,
   }));
+
+  // Also block personal calendar items (owner_user_id = owner, tenant_id = null).
+  // These are items the owner put on their personal calendar that directors cannot see.
+  // Wrapped in try/catch because owner_user_id column requires the v2 migration.
+  try {
+    const { data: personalBusy } = await sbRaw
+      .from("sitrep_items")
+      .select("start_at, end_at")
+      .is("tenant_id", null)
+      .eq("owner_user_id", bt.owner_id)
+      .neq("status", "cancelled")
+      .not("start_at", "is", null)
+      .gte("start_at", nowIso)
+      .lte("start_at", windowIso);
+
+    for (const item of personalBusy ?? []) {
+      busySlots.push({
+        start: new Date(item.start_at).getTime(),
+        end: item.end_at
+          ? new Date(item.end_at).getTime()
+          : new Date(item.start_at).getTime() + (bt.duration_minutes ?? 30) * 60000,
+      });
+    }
+  } catch { /* owner_user_id column not yet available — skip personal items */ }
 
   // Generate candidate slots
   const tz = bt.timezone ?? "America/New_York";

@@ -37,13 +37,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const sb = makeSb(tenant.id);
+  // Allow edit if you are the availability owner OR the person who created the page
   const { data, error } = await sb
     .from("sitrep_booking_types")
     .update(update)
     .eq("id", id)
     .eq("tenant_id", tenant.id)
-    .eq("owner_id", crmUser.userId) // only own booking types
-    .select("id, title, slug, is_active, duration_minutes")
+    .or(`owner_id.eq.${crmUser.userId},created_by_id.eq.${crmUser.userId}`)
+    .select("id, title, slug, is_active, duration_minutes, owner_id, created_by_id")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -58,12 +59,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!crmUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const sb = makeSb(tenant.id);
+  // Allow delete if you are the availability owner OR the person who created the page
   const { error } = await sb
     .from("sitrep_booking_types")
     .delete()
     .eq("id", id)
     .eq("tenant_id", tenant.id)
-    .eq("owner_id", crmUser.userId);
+    .or(`owner_id.eq.${crmUser.userId},created_by_id.eq.${crmUser.userId}`);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return new NextResponse(null, { status: 204 });

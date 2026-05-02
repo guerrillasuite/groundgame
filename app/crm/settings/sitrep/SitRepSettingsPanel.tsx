@@ -57,8 +57,16 @@ const DEFAULT_WIDGET: WidgetSettings = {
   calendar_default_view: "week",
 };
 
+type TenantUser = {
+  id: string;
+  email: string;
+  name: string;
+};
+
 type BookingType = {
   id: string;
+  owner_id: string;
+  created_by_id: string | null;
   title: string;
   slug: string;
   description: string | null;
@@ -626,16 +634,23 @@ const TIMEZONES = [
 function BookingPagePanel({
   initial,
   types,
+  isDirector,
+  users,
+  currentUserId,
   onClose,
   onSaved,
 }: {
   initial: BookingType | null;
   types: ItemType[];
+  isDirector: boolean;
+  users: TenantUser[];
+  currentUserId: string;
   onClose: () => void;
   onSaved: (bt: BookingType) => void;
 }) {
   const blank: BookingType = {
-    id: "", title: "", slug: "", description: null, duration_minutes: 30,
+    id: "", owner_id: currentUserId, created_by_id: null, title: "", slug: "",
+    description: null, duration_minutes: 30,
     buffer_before: 0, buffer_after: 0, available_days: [1,2,3,4,5],
     available_start: "09:00", available_end: "17:00",
     timezone: "America/New_York",
@@ -674,24 +689,29 @@ function BookingPagePanel({
     setSaving(true); setErr("");
     const method = bt.id ? "PATCH" : "POST";
     const url    = bt.id ? `/api/crm/sitrep/booking-types/${bt.id}` : "/api/crm/sitrep/booking-types";
-    const res    = await fetch(url, {
+    const body: Record<string, unknown> = {
+      title:            bt.title.trim(),
+      description:      bt.description?.trim() || null,
+      duration_minutes: bt.duration_minutes,
+      buffer_before:    bt.buffer_before,
+      buffer_after:     bt.buffer_after,
+      available_days:   bt.available_days,
+      available_start:  bt.available_start,
+      available_end:    bt.available_end,
+      timezone:         bt.timezone,
+      sitrep_item_type:    bt.sitrep_item_type,
+      confirmation_msg:    bt.confirmation_msg?.trim() || null,
+      is_active:           bt.is_active,
+      conflict_item_types: bt.conflict_item_types,
+    };
+    // Only send owner_id on create, and only when director chose a different user
+    if (!bt.id && isDirector && bt.owner_id !== currentUserId) {
+      body.owner_id = bt.owner_id;
+    }
+    const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title:            bt.title.trim(),
-        description:      bt.description?.trim() || null,
-        duration_minutes: bt.duration_minutes,
-        buffer_before:    bt.buffer_before,
-        buffer_after:     bt.buffer_after,
-        available_days:   bt.available_days,
-        available_start:  bt.available_start,
-        available_end:    bt.available_end,
-        timezone:         bt.timezone,
-        sitrep_item_type:    bt.sitrep_item_type,
-        confirmation_msg:    bt.confirmation_msg?.trim() || null,
-        is_active:           bt.is_active,
-        conflict_item_types: bt.conflict_item_types,
-      }),
+      body: JSON.stringify(body),
     });
     setSaving(false);
     if (res.ok) {
@@ -748,6 +768,37 @@ function BookingPagePanel({
             <label style={{ ...LABEL, display: "block", marginBottom: 6 }}>Title *</label>
             <input type="text" value={bt.title} onChange={(e) => setBt((p) => ({ ...p, title: e.target.value }))} style={INPUT} placeholder="e.g. 30-Minute Intro Call" />
           </div>
+
+          {/* Booking on behalf of — Directors only, new pages only */}
+          {isDirector && !bt.id && users.length > 1 && (
+            <div style={{ ...ROW }}>
+              <div>
+                <div style={LABEL}>Booking For</div>
+                <div style={SUB}>Whose calendar this page checks</div>
+              </div>
+              <select
+                value={bt.owner_id}
+                onChange={(e) => setBt((p) => ({ ...p, owner_id: e.target.value }))}
+                style={{ padding: "6px 10px", borderRadius: 8, background: S.surface, border: `1px solid ${S.border}`, color: S.text, fontSize: 12 }}
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name || u.email}{u.id === currentUserId ? " (me)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {/* Show read-only owner label when editing a page created for someone else */}
+          {bt.id && bt.owner_id !== currentUserId && (() => {
+            const owner = users.find((u) => u.id === bt.owner_id);
+            return owner ? (
+              <div style={{ ...ROW }}>
+                <div style={LABEL}>Booking For</div>
+                <div style={{ fontSize: 13, color: S.dimBrt }}>{owner.name || owner.email}</div>
+              </div>
+            ) : null;
+          })()}
 
           <div style={{ paddingTop: 12, paddingBottom: 14, borderBottom: `1px solid ${S.border}` }}>
             <label style={{ ...LABEL, display: "block", marginBottom: 6 }}>Description</label>
@@ -1576,7 +1627,7 @@ function CalendarViewEditor({
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
-export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?: boolean }) {
+export default function SitRepSettingsPanel({ isDirector = true, currentUserId = "" }: { isDirector?: boolean; currentUserId?: string }) {
   const [types, setTypes] = useState<ItemType[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingType, setEditingType] = useState<ItemType | null>(null);
@@ -1588,6 +1639,7 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
   const [bookingTypes, setBookingTypes] = useState<BookingType[]>([]);
   const [bookingLoading, setBookingLoading] = useState(true);
   const [editingBooking, setEditingBooking] = useState<BookingType | "new" | null>(null);
+  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
 
   const [myCals,          setMyCals]          = useState<MyCal[]>([]);
   const [myCalsLoading,   setMyCalsLoading]   = useState(true);
@@ -1616,11 +1668,23 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
       .then((r) => r.json())
       .then((data) => setBookingTypes(
         Array.isArray(data)
-          ? data.map((bt: any) => ({ ...bt, conflict_item_types: bt.conflict_item_types ?? ["meeting", "event"] }))
+          ? data.map((bt: any) => ({
+              ...bt,
+              owner_id:          bt.owner_id ?? "",
+              created_by_id:     bt.created_by_id ?? null,
+              conflict_item_types: bt.conflict_item_types ?? ["meeting", "event"],
+            }))
           : []
       ))
       .catch(() => {})
       .finally(() => setBookingLoading(false));
+
+    if (isDirector) {
+      fetch("/api/crm/users")
+        .then((r) => r.ok ? r.json() : [])
+        .then((data) => setTenantUsers(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    }
 
     fetch("/api/user/calendar-types")
       .then((r) => r.json())
@@ -1876,6 +1940,9 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
                 const origin = typeof window !== "undefined" ? window.location.origin : "";
                 const url = `${origin}/book/${bt.slug}`;
                 const dur = bt.duration_minutes < 60 ? `${bt.duration_minutes}m` : `${bt.duration_minutes / 60}h`;
+                const ownerUser = bt.owner_id !== currentUserId
+                  ? tenantUsers.find((u) => u.id === bt.owner_id)
+                  : null;
                 return (
                   <div key={bt.id} style={{
                     background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12,
@@ -1884,6 +1951,11 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 14, fontWeight: 600, color: S.text }}>{bt.title}</span>
+                        {ownerUser && (
+                          <span style={{ fontSize: 10, fontWeight: 600, background: "rgba(99,102,241,.15)", color: "#a5b4fc", borderRadius: 4, padding: "1px 6px" }}>
+                            {ownerUser.name || ownerUser.email}
+                          </span>
+                        )}
                         {!bt.is_active && (
                           <span style={{ fontSize: 10, fontWeight: 700, background: "rgba(255,255,255,.07)", color: S.dim, borderRadius: 4, padding: "1px 6px" }}>INACTIVE</span>
                         )}
@@ -2412,6 +2484,9 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
         <BookingPagePanel
           initial={editingBooking === "new" ? null : editingBooking}
           types={types}
+          isDirector={isDirector}
+          users={tenantUsers.length > 0 ? tenantUsers : currentUserId ? [{ id: currentUserId, email: "", name: "Me" }] : []}
+          currentUserId={currentUserId}
           onClose={() => setEditingBooking(null)}
           onSaved={(saved) => {
             setBookingTypes((prev) => {

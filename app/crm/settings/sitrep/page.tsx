@@ -7,5 +7,5 @@ import SitRepSettingsPanel from "./SitRepSettingsPanel";
 export default async function SitRepSettingsPage() {
   const user = await getCrmUser();
   if (!user || user.role === "operative" || user.role === null) redirect("/crm");
-  return <SitRepSettingsPanel isDirector={user.role === "director" || user.isSuperAdmin} />;
+  return <SitRepSettingsPanel isDirector={user.role === "director" || user.isSuperAdmin} currentUserId={user.userId} />;
 }

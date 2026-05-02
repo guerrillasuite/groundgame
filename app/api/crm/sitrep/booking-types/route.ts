@@ -14,7 +14,7 @@ function makeSb(tenantId: string) {
   });
 }
 
-const SELECT = "id, tenant_id, owner_id, title, slug, description, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, sitrep_item_type, confirmation_msg, is_active, created_at";
+const SELECT = "id, tenant_id, owner_id, created_by_id, title, slug, description, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, sitrep_item_type, confirmation_msg, is_active, conflict_item_types, created_at";
 
 export async function GET() {
   const tenant  = await getTenant();
@@ -26,7 +26,7 @@ export async function GET() {
     .from("sitrep_booking_types")
     .select(SELECT)
     .eq("tenant_id", tenant.id)
-    .eq("owner_id", crmUser.userId)
+    .or(`owner_id.eq.${crmUser.userId},created_by_id.eq.${crmUser.userId}`)
     .order("created_at");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -42,6 +42,10 @@ export async function POST(req: NextRequest) {
   if (!body?.title?.trim()) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
   }
+
+  // Directors can create booking pages on behalf of another user
+  const isDirector = crmUser.role === "director" || crmUser.isSuperAdmin;
+  const ownerId    = isDirector && body.owner_id ? body.owner_id : crmUser.userId;
 
   const baseSlug = (body.slug?.trim() || body.title.trim())
     .toLowerCase()
@@ -67,7 +71,8 @@ export async function POST(req: NextRequest) {
     .from("sitrep_booking_types")
     .insert({
       tenant_id:        tenant.id,
-      owner_id:         crmUser.userId,
+      owner_id:         ownerId,
+      created_by_id:    crmUser.userId,
       title:            body.title.trim(),
       slug,
       description:      body.description?.trim() ?? null,
@@ -78,8 +83,8 @@ export async function POST(req: NextRequest) {
       available_start:  body.available_start ?? "09:00",
       available_end:    body.available_end ?? "17:00",
       timezone:         body.timezone ?? "America/New_York",
-      sitrep_item_type:     body.sitrep_item_type ?? "meeting",
-      confirmation_msg:     body.confirmation_msg?.trim() ?? null,
+      sitrep_item_type:    body.sitrep_item_type ?? "meeting",
+      confirmation_msg:    body.confirmation_msg?.trim() ?? null,
       is_active:            body.is_active !== false,
       conflict_item_types:  body.conflict_item_types ?? ["meeting", "event"],
     })
