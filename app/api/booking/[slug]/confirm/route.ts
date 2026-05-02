@@ -92,6 +92,42 @@ export async function POST(
     }
   } catch { /* best-effort */ }
 
+  // ── Re-check availability at confirm time (prevents double-booking) ────────────
+  const reqStart = new Date(body.start_at).getTime();
+  const reqEnd   = new Date(body.end_at).getTime();
+
+  const [conflictCreated, conflictAssigned] = await Promise.all([
+    sb.from("sitrep_items")
+      .select("id")
+      .eq("created_by", bt.owner_id)
+      .eq("tenant_id", bt.tenant_id)
+      .neq("status", "cancelled")
+      .not("start_at", "is", null)
+      .lt("start_at", body.end_at)
+      .gt("end_at",   body.start_at),
+    sb.from("sitrep_items")
+      .select("id, sitrep_assignments!inner(user_id)")
+      .eq("sitrep_assignments.user_id", bt.owner_id)
+      .eq("tenant_id", bt.tenant_id)
+      .neq("status", "cancelled")
+      .not("start_at", "is", null)
+      .lt("start_at", body.end_at)
+      .gt("end_at",   body.start_at),
+  ]);
+
+  const hasConflict =
+    (conflictCreated.data?.length ?? 0) > 0 ||
+    (conflictAssigned.data?.length ?? 0) > 0;
+
+  if (hasConflict) {
+    return NextResponse.json(
+      { error: "This slot was just taken. Please choose another time." },
+      { status: 409 }
+    );
+  }
+
+  void reqStart; void reqEnd; // used implicitly via the DB query above
+
   // ── Create SitRep item ────────────────────────────────────────────────────────
   const { data: item, error: itemErr } = await sb
     .from("sitrep_items")

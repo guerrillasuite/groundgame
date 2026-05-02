@@ -41,25 +41,40 @@ export async function GET(
 
   const sb = makeSbTenant(bt.tenant_id);
 
-  // Fetch existing items for the owner in the next `days` window
+  // Fetch existing items for the owner in the next `days` window.
+  // Must cover both items the owner created AND items they're assigned to.
   const now = new Date();
   const windowEnd = new Date(now.getTime() + days * 86400000);
+  const nowIso = now.toISOString();
+  const windowIso = windowEnd.toISOString();
 
-  const { data: existingItems } = await sb
-    .from("sitrep_items")
-    .select("start_at, end_at, due_date")
-    .eq("created_by", bt.owner_id)
-    .eq("tenant_id", bt.tenant_id)
-    .neq("status", "cancelled")
-    .not("start_at", "is", null)
-    .gte("start_at", now.toISOString())
-    .lte("start_at", windowEnd.toISOString());
+  const [createdRes, assignedRes] = await Promise.all([
+    // Items the owner created
+    sb.from("sitrep_items")
+      .select("start_at, end_at")
+      .eq("created_by", bt.owner_id)
+      .eq("tenant_id", bt.tenant_id)
+      .neq("status", "cancelled")
+      .not("start_at", "is", null)
+      .gte("start_at", nowIso)
+      .lte("start_at", windowIso),
+    // Items the owner is assigned to (meetings booked by others, team events)
+    sb.from("sitrep_items")
+      .select("start_at, end_at, sitrep_assignments!inner(user_id)")
+      .eq("sitrep_assignments.user_id", bt.owner_id)
+      .eq("tenant_id", bt.tenant_id)
+      .neq("status", "cancelled")
+      .not("start_at", "is", null)
+      .gte("start_at", nowIso)
+      .lte("start_at", windowIso),
+  ]);
 
-  const busySlots = (existingItems ?? []).map((item: any) => ({
+  const allBusy = [...(createdRes.data ?? []), ...(assignedRes.data ?? [])];
+  const busySlots = allBusy.map((item: any) => ({
     start: new Date(item.start_at).getTime(),
     end: item.end_at
       ? new Date(item.end_at).getTime()
-      : new Date(item.start_at).getTime() + 30 * 60000,
+      : new Date(item.start_at).getTime() + (bt.duration_minutes ?? 30) * 60000,
   }));
 
   // Generate candidate slots
