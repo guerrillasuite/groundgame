@@ -27,9 +27,12 @@ export default function CalendarLayout({
   tenantId:       string;
   sharedViews?:   SharedViewData[];
 }) {
-  // By default all calendar types are visible
+  // By default all calendar types AND shared views are visible
   const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(
-    () => new Set(calendarTypes.map((ct) => ct.id))
+    () => new Set([
+      ...calendarTypes.map((ct) => ct.id),
+      ...sharedViews.map((sv) => sv.view_id),
+    ])
   );
   const [calTypes, setCalTypes]  = useState<CalendarTypeData[]>(calendarTypes);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -67,12 +70,14 @@ export default function CalendarLayout({
     return hasVisibleWork;
   });
 
-  // When all work calendars are hidden, show nothing
+  // Show items when any work calendar OR any shared view is visible
   const workVisible = calTypes
     .filter((ct) => visibleTypeIds.has(ct.id))
     .some((ct) => ct.sources.some((s) => s.type === "tenant"));
 
-  const displayItems = workVisible ? initialItems : [];
+  const sharedViewVisible = sharedViews.some((sv) => visibleTypeIds.has(sv.view_id));
+
+  const displayItems = (workVisible || sharedViewVisible) ? initialItems : [];
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "rgb(10 13 20)" }}>
