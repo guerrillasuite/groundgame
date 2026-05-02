@@ -33,7 +33,7 @@ export async function GET() {
 
   if (typesErr) return NextResponse.json({ error: typesErr.message }, { status: 500 });
 
-  const contactTypes: ContactTypeWithStages[] = Array.isArray(types) ? [...types] : [];
+  const contactTypes: ContactTypeWithStages[] = (Array.isArray(types) ? [...types] : []).map((t) => ({ ...t, stages: [] }));
 
   if (contactTypes.length > 0) {
     const keys = contactTypes.map((t) => t.key);

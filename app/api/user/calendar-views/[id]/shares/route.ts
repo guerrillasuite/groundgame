@@ -25,9 +25,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!view) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const { data, error } = await sb()
-    .from("calendar_view_shares")
-    .select("id, shared_with_user_id, role, created_at")
-    .eq("view_id", id);
+    .from("calendar_view_invites")
+    .select("id, email, role, status, created_at")
+    .eq("view_id", id)
+    .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data ?? []);
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { data: invite, error: inviteErr } = await sb()
     .from("calendar_view_invites")
     .insert({ view_id: id, invited_by: crmUser.userId, email, role })
-    .select("id, token")
+    .select("id, email, role, status, token")
     .single();
 
   if (inviteErr) return NextResponse.json({ error: inviteErr.message }, { status: 500 });
@@ -87,7 +88,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     console.error("[calendar invite] email failed:", e);
   }
 
-  return NextResponse.json({ invite_id: invite.id, accept_url: acceptUrl }, { status: 201 });
+  return NextResponse.json({
+    id:         invite.id,
+    email:      invite.email,
+    role:       invite.role,
+    status:     invite.status,
+    accept_url: acceptUrl,
+  }, { status: 201 });
 }
 
 // DELETE — remove a share (owner only)
@@ -109,7 +116,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!view) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const { error } = await sb()
-    .from("calendar_view_shares")
+    .from("calendar_view_invites")
     .delete()
     .eq("id", share_id)
     .eq("view_id", id);
