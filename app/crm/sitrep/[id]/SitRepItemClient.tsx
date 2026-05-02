@@ -125,9 +125,15 @@ const ACTIVITY_DESC: Record<string, (e: any) => string> = {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function toDatetimeLocal(iso: string | null): string {
+function utcToDatetimeLocal(iso: string | null): string {
   if (!iso) return "";
-  return iso.slice(0, 16);
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localToUtcIso(local: string): string {
+  return new Date(local).toISOString();
 }
 
 function fmtDate(iso: string) {
@@ -178,8 +184,8 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
   const [status,       setStatus]       = useState(item.status ?? stages[0]?.slug ?? "open");
   const [priority,     setPriority]     = useState(item.priority ?? "normal");
   const [dueDate,      setDueDate]      = useState(item.due_date ?? "");
-  const [startAt,      setStartAt]      = useState(toDatetimeLocal(item.start_at));
-  const [endAt,        setEndAt]        = useState(toDatetimeLocal(item.end_at));
+  const [startAt,      setStartAt]      = useState(utcToDatetimeLocal(item.start_at));
+  const [endAt,        setEndAt]        = useState(utcToDatetimeLocal(item.end_at));
   const [isAllDay,     setIsAllDay]     = useState(item.is_all_day ?? false);
   const [location,     setLocation]     = useState(item.location ?? "");
   const [locationAddr, setLocationAddr] = useState(item.location_address ?? "");
@@ -589,11 +595,19 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
           },
           !isTask && {
             label: "Start",
-            content: <input type={isAllDay ? "date" : "datetime-local"} value={isAllDay ? startAt.split("T")[0] : startAt} onChange={(e) => { setStartAt(e.target.value); patchNow({ start_at: e.target.value || null }); }} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField} />,
+            content: <input type={isAllDay ? "date" : "datetime-local"} value={isAllDay ? startAt.split("T")[0] : startAt} onChange={(e) => {
+              setStartAt(e.target.value);
+              const utc = e.target.value ? (isAllDay ? e.target.value : localToUtcIso(e.target.value)) : null;
+              patchNow({ start_at: utc });
+            }} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField} />,
           },
           !isTask && {
             label: "End",
-            content: <input type={isAllDay ? "date" : "datetime-local"} value={isAllDay ? endAt.split("T")[0] : endAt} onChange={(e) => { setEndAt(e.target.value); patchNow({ end_at: e.target.value || null }); }} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField} />,
+            content: <input type={isAllDay ? "date" : "datetime-local"} value={isAllDay ? endAt.split("T")[0] : endAt} onChange={(e) => {
+              setEndAt(e.target.value);
+              const utc = e.target.value ? (isAllDay ? e.target.value : localToUtcIso(e.target.value)) : null;
+              patchNow({ end_at: utc });
+            }} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField} />,
           },
           !isTask && {
             label: "All Day",

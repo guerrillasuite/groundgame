@@ -13,9 +13,26 @@ type View = "month" | "week" | "day";
 
 function todayStr() { return new Date().toISOString().split("T")[0]; }
 
+// datetime-local input value (local time) → UTC ISO string
+function localToUtcIso(local: string): string { return new Date(local).toISOString(); }
+
+// UTC ISO string → datetime-local input value (local time)
+function utcToDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function effectiveDate(item: SitRepItem): string | null {
   if (item.item_type === "task") return item.due_date;
   return item.start_at ?? item.due_date;
+}
+
+// Returns the local calendar date "YYYY-MM-DD" for any ISO timestamp
+function localDateStr(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function hasExplicitTime(s: string | null | undefined): boolean {
@@ -79,7 +96,7 @@ function fmtDateLabel(item: SitRepItem): string {
   if (!ed) return "";
   const today = todayStr();
   const tomorrow = addDays(today, 1);
-  const ds = ed.split("T")[0];
+  const ds = ed.includes("T") ? localDateStr(ed) : ed;
   const prefix = ds === today ? "Today" : ds === tomorrow ? "Tomorrow"
     : new Date(ds + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const time = item.item_type !== "task" && hasExplicitTime(item.start_at) && !item.is_all_day
@@ -150,7 +167,7 @@ function ItemPill({
     ? fmtTime(item.start_at!) + " " : "";
   const today = todayStr();
   const ed = effectiveDate(item);
-  const isPastDue = !!ed && ed.split("T")[0] < today && !isDone && item.status !== "cancelled";
+  const isPastDue = !!ed && (ed.includes("T") ? localDateStr(ed) : ed) < today && !isDone && item.status !== "cancelled";
   const accentCol = isDone ? family.shades[0] : family.shades[2];
 
   return (
@@ -580,7 +597,7 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
   for (const item of filtered) {
     const ed = effectiveDate(item);
     if (!ed) continue;
-    const ds = ed.split("T")[0];
+    const ds = ed.includes("T") ? localDateStr(ed) : ed;
     if (!dateMap.has(ds)) dateMap.set(ds, []);
     dateMap.get(ds)!.push(item);
   }
@@ -611,18 +628,21 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
     const item = draggingItem;
     setDraggingItem(null);
     setDragOverDate(null);
-    const curDs = effectiveDate(item)?.split("T")[0];
+    const rawEd = effectiveDate(item);
+    const curDs = rawEd ? (rawEd.includes("T") ? localDateStr(rawEd) : rawEd) : undefined;
     if (curDs === targetDate) return;
 
     const patch: Record<string, string | null> = {};
     if (item.item_type === "task") {
       patch.due_date = targetDate;
     } else if (item.start_at && hasExplicitTime(item.start_at)) {
-      const t = item.start_at.split("T")[1].slice(0, 5);
-      patch.start_at = `${targetDate}T${t}`;
+      const oldStart = new Date(item.start_at);
+      // Preserve the same wall-clock time (HH:mm in the user's timezone) on the new date
+      const newStart = new Date(`${targetDate}T${String(oldStart.getHours()).padStart(2,"0")}:${String(oldStart.getMinutes()).padStart(2,"0")}`);
+      patch.start_at = newStart.toISOString();
       if (item.end_at && hasExplicitTime(item.end_at)) {
-        const dur = new Date(item.end_at).getTime() - new Date(item.start_at).getTime();
-        patch.end_at = new Date(new Date(patch.start_at!).getTime() + dur).toISOString().slice(0, 16);
+        const dur = new Date(item.end_at).getTime() - oldStart.getTime();
+        patch.end_at = new Date(newStart.getTime() + dur).toISOString();
       }
     } else {
       patch.start_at = targetDate;
@@ -652,9 +672,9 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
     };
     if (createType === "task") {
       body.status   = "open";
-      body.due_date = createDate || null;
+      body.due_date = createDate || null; // date-only, no conversion needed
     } else {
-      body.start_at   = createDate || null;
+      body.start_at   = (createDate && !createAllDay) ? localToUtcIso(createDate) : (createDate || null);
       body.is_all_day = createAllDay;
     }
     const res = await fetch("/api/crm/sitrep/items", {
@@ -664,13 +684,14 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
     });
     if (res.ok) {
       const data = await res.json();
+      const utcStartAt = (createDate && !createAllDay) ? localToUtcIso(createDate) : (createDate || null);
       const newItem: SitRepItem = {
         id: data.id, item_type: createType, title: createTitle.trim(),
         status: createType === "task" ? "open" : null,
         priority: createType === "task" ? "normal" : null,
         description: null, location: null, location_address: null,
         due_date:  createType === "task" ? (createDate || null) : null,
-        start_at:  createType !== "task" ? (createDate || null) : null,
+        start_at:  createType !== "task" ? utcStartAt : null,
         end_at: null, is_all_day: createAllDay,
         mission_id: createMissionId || null,
         visibility: createType === "task" ? "assignee_only" : "team",
