@@ -11,8 +11,8 @@ const sb = () => createClient(
 
 const VIEW_SELECT = "id, calendar_type_id, name, color, filter_config, is_default, sort_order";
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ typeId: string }> }) {
-  const { typeId } = await params;
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: typeId } = await params;
   const crmUser = await getCrmUser();
   if (!crmUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -35,8 +35,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ typ
   return NextResponse.json(data ?? []);
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ typeId: string }> }) {
-  const { typeId } = await params;
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: typeId } = await params;
   const crmUser = await getCrmUser();
   if (!crmUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

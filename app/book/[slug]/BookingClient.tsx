@@ -130,7 +130,7 @@ export default function BookingClient({
           <p style={{ margin: "0 0 4px", fontSize: 13, color: S.dim }}>{hostName}</p>
           <h1 style={{ margin: "0 0 8px", fontSize: 28, fontWeight: 800, color: S.text }}>{title}</h1>
           {description && (
-            <p style={{ margin: "0 0 10px", fontSize: 14, color: S.dim, maxWidth: 520, margin: "0 auto" }}>{description}</p>
+            <p style={{ margin: "0 auto 10px", fontSize: 14, color: S.dim, maxWidth: 520 }}>{description}</p>
           )}
           <span style={{
             display: "inline-block", marginTop: 10,

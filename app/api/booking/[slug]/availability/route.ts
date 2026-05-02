@@ -71,6 +71,21 @@ export async function GET(
   const [startH, startM] = (bt.available_start ?? "09:00").split(":").map(Number);
   const [endH,   endM  ] = (bt.available_end   ?? "17:00").split(":").map(Number);
 
+  // Convert a wall-clock time on a specific date in `tz` to UTC milliseconds.
+  // new Date("YYYY-MM-DDTHH:MM:00") is LOCAL (server = UTC on Railway) — must not use it.
+  function tzWallToUtcMs(dateStr: string, h: number, m: number, timezone: string): number {
+    const hh = String(h).padStart(2, "0");
+    const mm = String(m).padStart(2, "0");
+    // Treat target wall time as if it were UTC to get a reference point
+    const naive = new Date(`${dateStr}T${hh}:${mm}:00Z`);
+    // Ask Intl what that UTC instant looks like in the target timezone
+    const localStr = naive.toLocaleString("sv-SE", { timeZone: timezone }); // "YYYY-MM-DD HH:MM:SS"
+    const localAsUtc = new Date(localStr.replace(" ", "T") + "Z");
+    // offsetMs > 0 means timezone is behind UTC (e.g. UTC-5); < 0 means ahead
+    const offsetMs = naive.getTime() - localAsUtc.getTime();
+    return naive.getTime() + offsetMs;
+  }
+
   const slots: { start: string; end: string }[] = [];
 
   for (let d = 0; d < days; d++) {
@@ -85,17 +100,14 @@ export async function GET(
 
     if (!availDays.includes(weekday)) continue;
 
-    // Build day boundaries in the owner's timezone
+    // Build day boundaries in the owner's timezone — correctly mapped to UTC
     const dateStr = dayDate.toLocaleDateString("en-CA", { timeZone: tz }); // YYYY-MM-DD
-    const dayStart = new Date(`${dateStr}T${String(startH).padStart(2,"0")}:${String(startM).padStart(2,"0")}:00`);
-    const dayEnd   = new Date(`${dateStr}T${String(endH).padStart(2,"0")}:${String(endM).padStart(2,"0")}:00`);
+    const dayStartMs = tzWallToUtcMs(dateStr, startH, startM, tz);
+    const dayEndMs   = tzWallToUtcMs(dateStr, endH,   endM,   tz);
 
-    // Adjust for timezone offset approximation
-    // Use the browser's interpretation of the date; server-side we use UTC dates
-    let cursor = dayStart.getTime();
-    const endMs = dayEnd.getTime();
+    let cursor = dayStartMs;
 
-    while (cursor + duration <= endMs) {
+    while (cursor + duration <= dayEndMs) {
       const slotStart = cursor;
       const slotEnd   = cursor + duration;
 
