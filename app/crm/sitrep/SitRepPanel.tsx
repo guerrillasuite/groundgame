@@ -97,7 +97,7 @@ function isUrgentOrOverdue(item: SitRepItem): boolean {
   return (ed.includes("T") ? localDateStr(ed) : ed) < todayStr();
 }
 
-function fmtDate(item: SitRepItem): string {
+function fmtDate(item: SitRepItem, tz: string): string {
   const ed = effectiveDate(item);
   if (!ed) return "";
   const dateStr = ed.includes("T") ? localDateStr(ed) : ed;
@@ -106,7 +106,7 @@ function fmtDate(item: SitRepItem): string {
 
   const withTime = item.item_type !== "task" && hasExplicitTime(item.start_at) && !item.is_all_day;
   const timeLabel = withTime
-    ? " " + new Date(item.start_at!).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+    ? " " + new Date(item.start_at!).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: tz })
     : "";
 
   if (dateStr === today)    return `Today${timeLabel}`;
@@ -309,6 +309,9 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
 export default function SitRepPanel({ initialItems, users, currentUserId, hasMissions, typeColors, typeNames, typeDefs, missions }: Props) {
   const searchParams = useSearchParams();
   const router       = useRouter();
+
+  const [viewerTz, setViewerTz] = useState("UTC");
+  useEffect(() => { setViewerTz(Intl.DateTimeFormat().resolvedOptions().timeZone); }, []);
 
   const [items, setItems]               = useState<SitRepItem[]>(initialItems);
   const [scope, setScope]               = useState<"mine" | "all">(
@@ -787,7 +790,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
                   const family      = getItemFamily(item, typeColors);
                   const isMissionItem = missionTypeSlugs.has(item.item_type);
                   const hasParent   = !!item.parent_item_id;
-                  const dateLabel   = fmtDate(item);
+                  const dateLabel   = fmtDate(item, viewerTz);
                   const assignees   = item.sitrep_assignments
                     .slice(0, 4)
                     .map((a) => userMap.get(a.user_id))

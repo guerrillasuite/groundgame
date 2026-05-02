@@ -619,7 +619,7 @@ const TIMEZONES = [
   "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
   "America/Phoenix", "America/Anchorage", "Pacific/Honolulu",
   "Europe/London", "Europe/Paris", "Europe/Berlin", "Asia/Tokyo",
-  "Australia/Sydney",
+  "Australia/Sydney", "UTC",
 ];
 
 function BookingPagePanel({
@@ -637,10 +637,19 @@ function BookingPagePanel({
     id: "", title: "", slug: "", description: null, duration_minutes: 30,
     buffer_before: 0, buffer_after: 0, available_days: [1,2,3,4,5],
     available_start: "09:00", available_end: "17:00",
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+    timezone: "America/New_York",
     sitrep_item_type: "meeting", confirmation_msg: null, is_active: true,
   };
   const [bt, setBt] = useState<BookingType>(initial ?? blank);
+
+  // Set default timezone to viewer's local zone after mount (avoids SSR mismatch)
+  useEffect(() => {
+    if (!initial) {
+      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (TIMEZONES.includes(localTz)) setBt((p) => ({ ...p, timezone: localTz }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [err, setErr] = useState("");
