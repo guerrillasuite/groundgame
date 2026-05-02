@@ -132,6 +132,16 @@ type CalInvite = {
   status: "pending" | "accepted" | "declined";
 };
 
+type PendingCalInvite = {
+  id:         string;
+  token:      string;
+  role:       "viewer" | "editor";
+  view_name:  string;
+  view_color: string;
+  type_name:  string;
+  owner_name: string;
+};
+
 // ── Style constants ───────────────────────────────────────────────────────────
 
 const S = {
@@ -1540,9 +1550,11 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
   const [bookingLoading, setBookingLoading] = useState(true);
   const [editingBooking, setEditingBooking] = useState<BookingType | "new" | null>(null);
 
-  const [myCals,        setMyCals]        = useState<MyCal[]>([]);
-  const [myCalsLoading, setMyCalsLoading] = useState(true);
-  const [sharedViews,   setSharedViews]   = useState<SharedView[]>([]);
+  const [myCals,          setMyCals]          = useState<MyCal[]>([]);
+  const [myCalsLoading,   setMyCalsLoading]   = useState(true);
+  const [sharedViews,     setSharedViews]     = useState<SharedView[]>([]);
+  const [pendingInvites,  setPendingInvites]  = useState<PendingCalInvite[]>([]);
+  const [inviteBusy,      setInviteBusy]      = useState<string | null>(null);
   const [editingCalView, setEditingCalView] = useState<{ view: MyCalView | null; typeId: string } | null>(null);
   const [calTypeExpanded, setCalTypeExpanded] = useState<Set<string>>(new Set());
 
@@ -1578,6 +1590,11 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
       .then((data) => setSharedViews(Array.isArray(data) ? data : []))
       .catch(() => {});
 
+    fetch("/api/user/calendar-invites")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setPendingInvites(Array.isArray(data) ? data : []))
+      .catch(() => {});
+
     fetch("/api/crm/sitrep/public-calendars")
       .then((r) => r.json())
       .then((data) => setCalendars(Array.isArray(data) ? data : []))
@@ -1590,6 +1607,29 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
       .catch(() => {})
       .finally(() => setWidgetLoading(false));
   }, []);
+
+  async function handlePendingInviteAction(invite: PendingCalInvite, action: "accept" | "decline") {
+    setInviteBusy(invite.id);
+    try {
+      const res = await fetch(`/api/calendar-invite/${invite.token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
+        if (action === "accept") {
+          // Refresh shared views so it appears immediately
+          fetch("/api/user/calendar-views/shared")
+            .then((r) => r.json())
+            .then((d) => setSharedViews(Array.isArray(d) ? d : []))
+            .catch(() => {});
+        }
+      }
+    } finally {
+      setInviteBusy(null);
+    }
+  }
 
   async function saveWidget() {
     setWidgetSaving(true);
@@ -1962,6 +2002,59 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Pending invites */}
+          {pendingInvites.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgb(251 191 36)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+                Pending Invites · {pendingInvites.length}
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {pendingInvites.map((inv) => {
+                  const dot  = getFamilyByKey(inv.view_color)?.shades[2] ?? "#818cf8";
+                  const busy = inviteBusy === inv.id;
+                  return (
+                    <div key={inv.id} style={{
+                      background: "rgba(251,191,36,.05)", border: "1px solid rgba(251,191,36,.15)",
+                      borderRadius: 10, padding: "12px 14px",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: S.text }}>{inv.view_name}</div>
+                          <div style={{ fontSize: 11, color: S.dim, marginTop: 1 }}>
+                            {inv.type_name} · from {inv.owner_name}
+                          </div>
+                        </div>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+                          background: inv.role === "editor" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.07)",
+                          color: inv.role === "editor" ? "#a5b4fc" : S.dim,
+                        }}>{inv.role.toUpperCase()}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => handlePendingInviteAction(inv, "accept")}
+                          disabled={busy}
+                          className="btn"
+                          style={{ flex: 1, padding: "7px 0", fontSize: 12, borderRadius: 8, opacity: busy ? 0.6 : 1 }}
+                        >{busy ? "…" : "Accept"}</button>
+                        <button
+                          onClick={() => handlePendingInviteAction(inv, "decline")}
+                          disabled={busy}
+                          style={{
+                            padding: "7px 12px", fontSize: 12, fontWeight: 600, borderRadius: 8,
+                            border: `1px solid ${S.border}`, background: "none", color: S.dim,
+                            cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
+                          }}
+                        >Decline</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

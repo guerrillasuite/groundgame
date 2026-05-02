@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 
 const S = {
@@ -38,6 +38,16 @@ export type SharedViewData = {
   view_color: string | null;
   type_name:  string;
   type_color: string;
+  owner_name: string;
+};
+
+type PendingInvite = {
+  id:         string;
+  token:      string;
+  role:       "viewer" | "editor";
+  view_name:  string;
+  view_color: string;
+  type_name:  string;
   owner_name: string;
 };
 
@@ -158,14 +168,44 @@ export default function CalendarSwitcher({
   onTypesChanged: () => void;
   sharedViews?:   SharedViewData[];
 }) {
-  const [collapsed, setCollapsed]   = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed]     = useState<Set<string>>(new Set());
   const [sharingView, setSharingView] = useState<CalendarView | null>(null);
-  const [adding, setAdding]         = useState(false);
-  const [newName, setNewName]       = useState("");
-  const [newType, setNewType]       = useState<"work" | "personal" | "family" | "custom">("custom");
-  const [newColor, setNewColor]     = useState("blue");
-  const [addErr, setAddErr]         = useState("");
-  const [addBusy, setAddBusy]       = useState(false);
+  const [adding, setAdding]           = useState(false);
+  const [newName, setNewName]         = useState("");
+  const [newType, setNewType]         = useState<"work" | "personal" | "family" | "custom">("custom");
+  const [newColor, setNewColor]       = useState("blue");
+  const [addErr, setAddErr]           = useState("");
+  const [addBusy, setAddBusy]         = useState(false);
+
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [inviteBusy, setInviteBusy]         = useState<string | null>(null); // invite id being acted on
+
+  useEffect(() => {
+    fetch("/api/user/calendar-invites")
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => setPendingInvites(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
+
+  async function handleInviteAction(invite: PendingInvite, action: "accept" | "decline") {
+    setInviteBusy(invite.id);
+    try {
+      const res = await fetch(`/api/calendar-invite/${invite.token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
+        if (action === "accept") {
+          // Reload so the newly accepted shared view appears in the sidebar
+          window.location.reload();
+        }
+      }
+    } finally {
+      setInviteBusy(null);
+    }
+  }
 
   function toggleCollapse(id: string) {
     setCollapsed((prev) => {
@@ -268,6 +308,57 @@ export default function CalendarSwitcher({
           </div>
         );
       })}
+
+      {/* Pending invites */}
+      {pendingInvites.length > 0 && (
+        <div>
+          <div style={{
+            padding: "10px 14px 6px", fontSize: 10, fontWeight: 700, color: "rgb(251 191 36)",
+            letterSpacing: "0.07em", textTransform: "uppercase",
+          }}>Invites · {pendingInvites.length}</div>
+          {pendingInvites.map((inv) => {
+            const dot  = getFamilyByKey(inv.view_color)?.shades[3] ?? "#818cf8";
+            const busy = inviteBusy === inv.id;
+            return (
+              <div key={inv.id} style={{ padding: "5px 14px 8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: S.dimBrt, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>{inv.view_name}</div>
+                    <div style={{ fontSize: 10, color: S.dim, opacity: 0.8 }}>{inv.owner_name}</div>
+                  </div>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+                    background: inv.role === "editor" ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.06)",
+                    color: inv.role === "editor" ? "#a5b4fc" : S.dim,
+                  }}>{inv.role === "editor" ? "ED" : "VW"}</span>
+                </div>
+                <div style={{ display: "flex", gap: 5, paddingLeft: 14 }}>
+                  <button
+                    onClick={() => handleInviteAction(inv, "accept")}
+                    disabled={busy}
+                    style={{
+                      flex: 1, padding: "4px 0", fontSize: 11, fontWeight: 700, borderRadius: 5,
+                      border: "none", cursor: busy ? "not-allowed" : "pointer",
+                      background: "var(--gg-primary,#2563eb)", color: "#fff", opacity: busy ? 0.6 : 1,
+                    }}
+                  >{busy ? "…" : "Accept"}</button>
+                  <button
+                    onClick={() => handleInviteAction(inv, "decline")}
+                    disabled={busy}
+                    style={{
+                      padding: "4px 8px", fontSize: 11, fontWeight: 600, borderRadius: 5,
+                      border: `1px solid ${S.border}`, cursor: busy ? "not-allowed" : "pointer",
+                      background: "none", color: S.dim, opacity: busy ? 0.6 : 1,
+                    }}
+                  >✕</button>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ height: 1, background: S.border, margin: "4px 14px 2px" }} />
+        </div>
+      )}
 
       {/* Shared with me */}
       {sharedViews.length > 0 && (
