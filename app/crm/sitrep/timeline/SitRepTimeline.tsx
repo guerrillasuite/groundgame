@@ -22,7 +22,12 @@ type ZoomIdx = 0 | 1 | 2;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function todayStr() { return new Date().toISOString().split("T")[0]; }
+function pad(n: number) { return String(n).padStart(2, "0"); }
+function localDs(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function todayStr() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 
 function addDays(ds: string, n: number): string {
   const d = new Date(ds + "T00:00:00");
@@ -36,14 +41,19 @@ function daysBetween(a: string, b: string): number {
   );
 }
 
+function toDateStr(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  return iso.includes("T") ? localDs(iso) : iso;
+}
+
 function itemStart(item: SitRepItem): string | null {
-  return (item.start_at ?? item.due_date)?.split("T")[0] ?? null;
+  return toDateStr(item.start_at ?? item.due_date);
 }
 
 function itemEnd(item: SitRepItem): string | null {
   if (item.item_type === "task")
-    return item.due_date?.split("T")[0] ?? item.start_at?.split("T")[0] ?? null;
-  return (item.end_at ?? item.start_at ?? item.due_date)?.split("T")[0] ?? null;
+    return toDateStr(item.due_date ?? item.start_at);
+  return toDateStr(item.end_at ?? item.start_at ?? item.due_date);
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────

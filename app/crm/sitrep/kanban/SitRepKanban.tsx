@@ -86,9 +86,11 @@ function KanbanCard({
   isDragging: boolean;
   onDragStart: (e: React.DragEvent) => void;
 }) {
-  const today = new Date().toISOString().split("T")[0];
+  const d = new Date(); const pad = (n: number) => String(n).padStart(2,"0");
+  const today = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   const effectiveDate = item.item_type === "task" ? item.due_date : (item.start_at ?? item.due_date);
-  const isOverdue = effectiveDate && effectiveDate.split("T")[0] < today && item.status !== "done" && item.status !== "cancelled";
+  const localDs = effectiveDate ? (effectiveDate.includes("T") ? (() => { const dt = new Date(effectiveDate); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`; })() : effectiveDate) : null;
+  const isOverdue = localDs && localDs < today && item.status !== "done" && item.status !== "cancelled";
 
   return (
     <div
@@ -112,13 +114,13 @@ function KanbanCard({
         </span>
         {item.priority && <PriorityDot priority={item.priority} />}
       </div>
-      {effectiveDate && (
-        <div style={{
+      {localDs && (
+        <div suppressHydrationWarning style={{
           fontSize: 11, color: isOverdue ? "rgb(239 68 68)" : S.dim,
           fontWeight: isOverdue ? 600 : 400,
         }}>
           {isOverdue ? "Overdue · " : ""}
-          {new Date(effectiveDate.split("T")[0] + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          {new Date(localDs + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </div>
       )}
       <Link

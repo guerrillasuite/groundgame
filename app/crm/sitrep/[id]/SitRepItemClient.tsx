@@ -184,8 +184,14 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
   const [status,       setStatus]       = useState(item.status ?? stages[0]?.slug ?? "open");
   const [priority,     setPriority]     = useState(item.priority ?? "normal");
   const [dueDate,      setDueDate]      = useState(item.due_date ?? "");
-  const [startAt,      setStartAt]      = useState(utcToDatetimeLocal(item.start_at));
-  const [endAt,        setEndAt]        = useState(utcToDatetimeLocal(item.end_at));
+  // Initialize with UTC-sliced value so SSR matches; useEffect corrects to local tz after hydration
+  const [startAt, setStartAt] = useState(item.start_at ? item.start_at.slice(0, 16) : "");
+  const [endAt,   setEndAt]   = useState(item.end_at   ? item.end_at.slice(0, 16)   : "");
+  useEffect(() => {
+    if (item.start_at) setStartAt(utcToDatetimeLocal(item.start_at));
+    if (item.end_at)   setEndAt(utcToDatetimeLocal(item.end_at));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [isAllDay,     setIsAllDay]     = useState(item.is_all_day ?? false);
   const [location,     setLocation]     = useState(item.location ?? "");
   const [locationAddr, setLocationAddr] = useState(item.location_address ?? "");
