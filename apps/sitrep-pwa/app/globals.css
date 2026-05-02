@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: rgb(10 13 20);
+  color: rgb(236 240 245);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+:root {
+  --gg-primary: #2563eb;
+  --gg-bg: rgb(10 13 20);
+  --gg-surface: rgb(14 18 28);
+  --gg-card: rgb(20 25 38);
+  --gg-border: rgba(255,255,255,.07);
+  --gg-text: rgb(236 240 245);
+  --gg-dim: rgb(100 116 139);
+  --gg-dim-bright: rgb(148 163 184);
+  --bottom-nav-h: 56px;
+}
+
+/* Remove iOS Safari blue highlight on tap */
+a, button { -webkit-tap-highlight-color: transparent; }
+
+/* Prevent iOS bounce scroll on the root */
+#__next { height: 100%; }
+
+/* Smooth scroll on iOS */
+.scroll-area {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* Safe-area bottom padding helper */
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }

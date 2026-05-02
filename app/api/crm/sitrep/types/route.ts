@@ -48,6 +48,24 @@ const SYSTEM_SEED = [
 
 const SELECT_COLS = "id, name, slug, color, is_system, is_public, sort_order, stages, is_mission_type, show_in_kanban, booking_enabled, custom_roles";
 
+async function getGlobalSeedTemplates(): Promise<typeof SYSTEM_SEED> {
+  try {
+    // Prefer global templates table (managed via /admin in sitrep-pwa)
+    const sbRaw = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    const { data } = await sbRaw
+      .from("sitrep_global_type_templates")
+      .select("slug, name, color, is_mission_type, show_in_kanban, booking_enabled, stages, sort_order")
+      .eq("is_active", true)
+      .order("sort_order");
+    if (data && data.length > 0) return data as typeof SYSTEM_SEED;
+  } catch { /* fall through to hardcoded defaults */ }
+  // Safety net: never leave a tenant with zero types
+  return SYSTEM_SEED;
+}
+
 export async function GET() {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
@@ -63,9 +81,10 @@ export async function GET() {
 
   const rows = [...(data ?? [])] as any[];
 
-  // Seed missing system types on first load
+  // Seed missing system types on first load — reads from global templates table
   const existingSlugs = new Set(rows.map((r) => r.slug));
-  const missing = SYSTEM_SEED.filter((t) => !existingSlugs.has(t.slug));
+  const seedTemplates = await getGlobalSeedTemplates();
+  const missing = seedTemplates.filter((t) => !existingSlugs.has(t.slug));
   if (missing.length > 0) {
     const { data: inserted } = await sb
       .from("sitrep_item_types")
