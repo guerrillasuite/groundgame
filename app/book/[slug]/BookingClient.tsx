@@ -62,6 +62,9 @@ export default function BookingClient({
   const [confirmed, setConfirmed]     = useState<{ start: string; end: string; msg: string | null } | null>(null);
   const [error, setError]             = useState("");
 
+  // Display times in viewer's local timezone; host timezone is shown as context only
+  const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   useEffect(() => {
     fetch(`/api/booking/${slug}/availability?days=28`)
       .then((r) => r.json())
@@ -92,7 +95,7 @@ export default function BookingClient({
     finally { setSubmitting(false); }
   }
 
-  const grouped = groupSlotsByDate(slots, timezone);
+  const grouped = groupSlotsByDate(slots, viewerTz);
   const duration = durationMinutes < 60
     ? `${durationMinutes} min`
     : durationMinutes % 60 === 0
@@ -110,7 +113,7 @@ export default function BookingClient({
           <div style={{ fontSize: 48, marginBottom: 12 }}>✓</div>
           <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: S.text }}>You're booked!</h1>
           <p style={{ margin: "0 0 20px", fontSize: 14, color: S.dim }}>
-            {fmtDate(confirmed.start, timezone)} · {fmtTime(confirmed.start, timezone)} – {fmtTime(confirmed.end, timezone)}
+            {fmtDate(confirmed.start, viewerTz)} · {fmtTime(confirmed.start, viewerTz)} – {fmtTime(confirmed.end, viewerTz)}
           </p>
           {confirmed.msg && (
             <p style={{ margin: "0 0 24px", fontSize: 14, color: S.dim, lineHeight: 1.6 }}>{confirmed.msg}</p>
@@ -136,7 +139,14 @@ export default function BookingClient({
             display: "inline-block", marginTop: 10,
             fontSize: 12, fontWeight: 600, color: S.dim,
             background: "rgba(255,255,255,.06)", borderRadius: 20, padding: "4px 14px",
-          }}>{duration} · {timezone}</span>
+          }}>
+            {duration} · {viewerTz}
+            {viewerTz !== timezone && (
+              <span style={{ opacity: 0.6, fontWeight: 400, marginLeft: 6 }}>
+                (host: {timezone})
+              </span>
+            )}
+          </span>
         </div>
 
         {!selectedSlot ? (
@@ -172,7 +182,7 @@ export default function BookingClient({
                           e.currentTarget.style.borderColor = S.border;
                         }}
                       >
-                        {fmtTime(slot.start, timezone)}
+                        {fmtTime(slot.start, viewerTz)}
                       </button>
                     ))}
                   </div>
@@ -192,10 +202,10 @@ export default function BookingClient({
             }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: S.text }}>
-                  {fmtDate(selectedSlot.start, timezone)}
+                  {fmtDate(selectedSlot.start, viewerTz)}
                 </div>
                 <div style={{ fontSize: 13, color: S.dim, marginTop: 2 }}>
-                  {fmtTime(selectedSlot.start, timezone)} – {fmtTime(selectedSlot.end, timezone)}
+                  {fmtTime(selectedSlot.start, viewerTz)} – {fmtTime(selectedSlot.end, viewerTz)}
                 </div>
               </div>
               <button
