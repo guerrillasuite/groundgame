@@ -46,10 +46,9 @@ export async function POST(req: NextRequest) {
   }
 
   const sources = body.sources ?? (
-    body.cal_type === "work"     ? [{ type: "tenant", tenant_id: tenant.id }] :
     body.cal_type === "personal" ? [{ type: "personal" }] :
     body.cal_type === "family"   ? [{ type: "personal" }] :
-    []
+    [{ type: "tenant", tenant_id: tenant.id }]  // work + custom both default to current tenant
   );
 
   const { data, error } = await sb()

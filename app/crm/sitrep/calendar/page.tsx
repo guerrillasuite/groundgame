@@ -112,7 +112,7 @@ export default async function SitRepCalendarPage() {
       .order("sort_order"),
     sbRaw()
       .from("calendar_view_shares")
-      .select("id, role, view_id, user_calendar_views(id, name, color, filter_config, user_calendar_types(id, name, color, owner_user_id))")
+      .select("id, role, view_id, user_calendar_views(id, name, color, filter_config, user_calendar_types(id, name, color, owner_user_id, sources))")
       .eq("shared_with_user_id", crmUser.userId),
   ]);
 
@@ -137,8 +137,35 @@ export default async function SitRepCalendarPage() {
     }
   } catch { /* best-effort */ }
 
-  const allItems = (itemsRes.data ?? []) as any[];
-  const items = allItems.filter((item) => {
+  // Collect shared view owner IDs and any cross-tenant IDs we need to fetch
+  const sharedOwnerIds = new Set<string>();
+  const extraTenantIds = new Set<string>();
+  for (const s of (sharedViewsRes.data ?? []) as any[]) {
+    const calType = s.user_calendar_views?.user_calendar_types ?? {};
+    if (calType.owner_user_id) sharedOwnerIds.add(calType.owner_user_id);
+    for (const src of (calType.sources ?? [])) {
+      if (src.type === "tenant" && src.tenant_id && src.tenant_id !== tenant.id) {
+        extraTenantIds.add(src.tenant_id);
+      }
+    }
+  }
+
+  // Fetch items from any cross-tenant sources referenced by shared views
+  const ITEM_SELECT = "id, item_type, title, description, location, location_address, status, priority, due_date, start_at, end_at, is_all_day, mission_id, parent_item_id, depth, visibility, created_by, created_at, sitrep_assignments(user_id, role)";
+  const extraItemRows: any[] = [];
+  await Promise.all([...extraTenantIds].map(async (tid) => {
+    const { data } = await makeSb(tid)
+      .from("sitrep_items")
+      .select(ITEM_SELECT)
+      .eq("tenant_id", tid)
+      .order("start_at", { ascending: true, nullsFirst: false })
+      .order("due_date",  { ascending: true, nullsFirst: false })
+      .limit(500);
+    if (data) extraItemRows.push(...data);
+  }));
+
+  // Own items: existing visibility rules
+  const ownItems = ((itemsRes.data ?? []) as any[]).filter((item) => {
     if (item.visibility === "private") return item.created_by === crmUser.userId;
     if (item.visibility === "assignee_only") {
       return (
@@ -148,6 +175,37 @@ export default async function SitRepCalendarPage() {
     }
     return true;
   });
+
+  // Same-tenant items from shared view owners (assignee_only items not yet visible)
+  const sameTenanOwnerId = [...sharedOwnerIds].filter(
+    (id) => id !== crmUser.userId && extraTenantIds.size === 0
+  );
+  const extraSameTenantItems = sameTenanOwnerId.length > 0
+    ? ((itemsRes.data ?? []) as any[]).filter((item) => {
+        if (item.visibility === "private") return false;
+        if (item.visibility === "assignee_only") {
+          return (
+            sharedOwnerIds.has(item.created_by) ||
+            item.sitrep_assignments?.some((a: any) => sharedOwnerIds.has(a.user_id))
+          );
+        }
+        return false; // team items already included in ownItems
+      })
+    : [];
+
+  // Cross-tenant items: show non-private items, or assignee_only where owner is involved
+  const extraItems = extraItemRows.filter((item) => {
+    if (item.visibility === "private") return false;
+    if (item.visibility === "assignee_only") {
+      return (
+        sharedOwnerIds.has(item.created_by) ||
+        item.sitrep_assignments?.some((a: any) => sharedOwnerIds.has(a.user_id))
+      );
+    }
+    return true;
+  });
+
+  const items = [...ownItems, ...extraSameTenantItems, ...extraItems];
 
   const typeColors: Record<string, string> = {};
   for (const t of (typesRes.data ?? []) as any[]) {
@@ -163,10 +221,10 @@ export default async function SitRepCalendarPage() {
       share_id:   s.id,
       role:       s.role,
       view_id:    s.view_id,
-      view_name:  view.name      ?? "Unknown",
-      view_color: view.color     ?? null,
-      type_name:  calType.name   ?? "Unknown",
-      type_color: calType.color  ?? "blue",
+      view_name:  view.name     ?? "Unknown",
+      view_color: view.color    ?? null,
+      type_name:  calType.name  ?? "Unknown",
+      type_color: calType.color ?? "blue",
       owner_name: calType.owner_user_id ?? "Someone",
     };
   });
