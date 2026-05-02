@@ -48,28 +48,42 @@ export async function GET(
   const nowIso = now.toISOString();
   const windowIso = windowEnd.toISOString();
 
-  const [createdRes, assignedRes] = await Promise.all([
-    // Items the owner created
-    sb.from("sitrep_items")
-      .select("start_at, end_at")
-      .eq("created_by", bt.owner_id)
-      .eq("tenant_id", bt.tenant_id)
-      .neq("status", "cancelled")
-      .not("start_at", "is", null)
-      .gte("start_at", nowIso)
-      .lte("start_at", windowIso),
-    // Items the owner is assigned to (meetings booked by others, team events)
-    sb.from("sitrep_items")
-      .select("start_at, end_at, sitrep_assignments!inner(user_id)")
-      .eq("sitrep_assignments.user_id", bt.owner_id)
-      .eq("tenant_id", bt.tenant_id)
-      .neq("status", "cancelled")
-      .not("start_at", "is", null)
-      .gte("start_at", nowIso)
-      .lte("start_at", windowIso),
-  ]);
+  // Items the owner created
+  const createdRes = await sb.from("sitrep_items")
+    .select("start_at, end_at")
+    .eq("created_by", bt.owner_id)
+    .eq("tenant_id", bt.tenant_id)
+    .neq("status", "cancelled")
+    .not("start_at", "is", null)
+    .gte("start_at", nowIso)
+    .lte("start_at", windowIso);
 
-  const allBusy = [...(createdRes.data ?? []), ...(assignedRes.data ?? [])];
+  // Items the owner is assigned to — two-step to avoid !inner join filter unreliability
+  const assignmentIds = await sb.from("sitrep_assignments")
+    .select("item_id")
+    .eq("user_id", bt.owner_id);
+
+  const assignedItemIds = (assignmentIds.data ?? []).map((a: any) => a.item_id as string);
+
+  let assignedItems: { start_at: string; end_at: string | null }[] = [];
+  if (assignedItemIds.length > 0) {
+    // Chunk to avoid URL length limits
+    const chunks: string[][] = [];
+    for (let i = 0; i < assignedItemIds.length; i += 200) chunks.push(assignedItemIds.slice(i, i + 200));
+    for (const chunk of chunks) {
+      const { data } = await sb.from("sitrep_items")
+        .select("start_at, end_at")
+        .in("id", chunk)
+        .eq("tenant_id", bt.tenant_id)
+        .neq("status", "cancelled")
+        .not("start_at", "is", null)
+        .gte("start_at", nowIso)
+        .lte("start_at", windowIso);
+      if (data) assignedItems = assignedItems.concat(data as any);
+    }
+  }
+
+  const allBusy = [...(createdRes.data ?? []), ...assignedItems];
   const busySlots = allBusy.map((item: any) => ({
     start: new Date(item.start_at).getTime(),
     end: item.end_at

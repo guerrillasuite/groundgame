@@ -96,28 +96,38 @@ export async function POST(
   const reqStart = new Date(body.start_at).getTime();
   const reqEnd   = new Date(body.end_at).getTime();
 
-  const [conflictCreated, conflictAssigned] = await Promise.all([
-    sb.from("sitrep_items")
-      .select("id")
-      .eq("created_by", bt.owner_id)
-      .eq("tenant_id", bt.tenant_id)
-      .neq("status", "cancelled")
-      .not("start_at", "is", null)
-      .lt("start_at", body.end_at)
-      .gt("end_at",   body.start_at),
-    sb.from("sitrep_items")
-      .select("id, sitrep_assignments!inner(user_id)")
-      .eq("sitrep_assignments.user_id", bt.owner_id)
-      .eq("tenant_id", bt.tenant_id)
-      .neq("status", "cancelled")
-      .not("start_at", "is", null)
-      .lt("start_at", body.end_at)
-      .gt("end_at",   body.start_at),
-  ]);
+  const conflictCreated = await sb.from("sitrep_items")
+    .select("id")
+    .eq("created_by", bt.owner_id)
+    .eq("tenant_id", bt.tenant_id)
+    .neq("status", "cancelled")
+    .not("start_at", "is", null)
+    .lt("start_at", body.end_at)
+    .gt("end_at",   body.start_at);
+
+  // Two-step for assigned conflicts to avoid !inner join filter unreliability
+  let assignedConflictCount = 0;
+  const assignmentRows = await sb.from("sitrep_assignments").select("item_id").eq("user_id", bt.owner_id);
+  const ownerItemIds = (assignmentRows.data ?? []).map((a: any) => a.item_id as string);
+  if (ownerItemIds.length > 0) {
+    const chunks: string[][] = [];
+    for (let i = 0; i < ownerItemIds.length; i += 200) chunks.push(ownerItemIds.slice(i, i + 200));
+    for (const chunk of chunks) {
+      const { data } = await sb.from("sitrep_items")
+        .select("id")
+        .in("id", chunk)
+        .eq("tenant_id", bt.tenant_id)
+        .neq("status", "cancelled")
+        .not("start_at", "is", null)
+        .lt("start_at", body.end_at)
+        .gt("end_at",   body.start_at);
+      assignedConflictCount += data?.length ?? 0;
+    }
+  }
 
   const hasConflict =
     (conflictCreated.data?.length ?? 0) > 0 ||
-    (conflictAssigned.data?.length ?? 0) > 0;
+    assignedConflictCount > 0;
 
   if (hasConflict) {
     return NextResponse.json(
