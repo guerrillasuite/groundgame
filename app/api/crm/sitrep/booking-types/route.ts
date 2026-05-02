@@ -14,7 +14,7 @@ function makeSb(tenantId: string) {
   });
 }
 
-const SELECT = "id, tenant_id, owner_id, title, slug, description, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, sitrep_item_type, confirmation_msg, is_active, conflict_item_types, created_at";
+const SELECT = "id, tenant_id, owner_id, title, slug, description, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, sitrep_item_type, confirmation_msg, is_active, created_at";
 
 export async function GET() {
   const tenant  = await getTenant();

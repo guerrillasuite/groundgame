@@ -29,7 +29,7 @@ export async function GET(
   const sbRaw = makeSbRaw();
   const { data: bt, error: btErr } = await sbRaw
     .from("sitrep_booking_types")
-    .select("id, tenant_id, owner_id, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, is_active, conflict_item_types")
+    .select("id, tenant_id, owner_id, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, is_active")
     .eq("slug", slug)
     .eq("is_active", true)
     .limit(1)

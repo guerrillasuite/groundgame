@@ -36,7 +36,7 @@ export async function POST(
   const sbRaw = makeSbRaw();
   const { data: bt } = await sbRaw
     .from("sitrep_booking_types")
-    .select("id, tenant_id, owner_id, title, timezone, sitrep_item_type, confirmation_msg, is_active, conflict_item_types")
+    .select("id, tenant_id, owner_id, title, timezone, sitrep_item_type, confirmation_msg, is_active")
     .eq("slug", slug)
     .eq("is_active", true)
     .limit(1)
