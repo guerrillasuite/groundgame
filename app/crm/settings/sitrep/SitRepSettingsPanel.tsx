@@ -86,14 +86,62 @@ type PublicCalendar = {
   default_view: "day" | "week" | "month";
 };
 
+type CalFilterConfig = {
+  assignee_filter?:    "me" | "all";
+  show_viewer_items?:  boolean;
+  item_type_slugs?:   string[];
+  stage_slugs?:        string[];
+  show_terminal?:      boolean;
+  location_city?:      string;
+  location_state?:     string;
+};
+
+type MyCalView = {
+  id:            string;
+  name:          string;
+  color:         string | null;
+  filter_config: CalFilterConfig;
+  is_default:    boolean;
+  sort_order:    number;
+};
+
+type MyCal = {
+  id:                  string;
+  name:                string;
+  color:               string;
+  cal_type:            string;
+  sources:             { type: string; tenant_id?: string }[];
+  user_calendar_views: MyCalView[];
+};
+
+type SharedView = {
+  share_id:      string;
+  role:          "viewer" | "editor";
+  view_id:       string;
+  view_name:     string;
+  view_color:    string | null;
+  type_name:     string;
+  type_color:    string;
+  owner_name:    string;
+};
+
+type CalInvite = {
+  id:     string;
+  email:  string;
+  role:   "viewer" | "editor";
+  status: "pending" | "accepted" | "declined";
+};
+
 // ── Style constants ───────────────────────────────────────────────────────────
 
 const S = {
   surface: "rgb(18 23 33)",
   card:    "rgb(28 36 48)",
+  bg:      "rgb(10 13 20)",
   border:  "rgb(43 53 67)",
   text:    "rgb(238 242 246)",
   dim:     "rgb(160 174 192)",
+  dimBrt:  "rgb(203 213 225)",
 } as const;
 
 const ALL_STATUSES = [
@@ -1097,6 +1145,386 @@ function CalendarCard({ cal, onDelete }: { cal: PublicCalendar; onDelete: (id: s
   );
 }
 
+// ── Calendar View Editor slide-in ─────────────────────────────────────────────
+
+function CalendarViewEditor({
+  view, typeId, types, onSaved, onCreated, onDeleted, onClose,
+}: {
+  view:       MyCalView | null;
+  typeId:     string;
+  types:      ItemType[];
+  onSaved:    (v: MyCalView) => void;
+  onCreated:  (v: MyCalView) => void;
+  onDeleted:  (viewId: string) => void;
+  onClose:    () => void;
+}) {
+  const isNew = view === null;
+
+  const [name,    setName]    = useState(view?.name ?? "");
+  const [color,   setColor]   = useState(view?.color ?? null);
+  const [fc, setFc] = useState<CalFilterConfig>(view?.filter_config ?? { assignee_filter: "me" });
+  const [saving,  setSaving]  = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [err,     setErr]     = useState("");
+
+  const [invites,       setInvites]       = useState<CalInvite[]>([]);
+  const [inviteEmail,   setInviteEmail]   = useState("");
+  const [inviteRole,    setInviteRole]    = useState<"viewer" | "editor">("viewer");
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteErr,     setInviteErr]     = useState("");
+  const [inviteSent,    setInviteSent]    = useState(false);
+
+  useEffect(() => {
+    if (!view) return;
+    fetch(`/api/user/calendar-views/${view.id}/shares`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => setInvites(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [view?.id]);
+
+  // Stages available given current type filter
+  const visibleStages = (() => {
+    const src = fc.item_type_slugs?.length
+      ? types.filter((t) => fc.item_type_slugs!.includes(t.slug))
+      : types;
+    const seen = new Set<string>();
+    const out: Stage[] = [];
+    for (const t of src) {
+      for (const s of t.stages ?? []) {
+        if (!seen.has(s.slug)) { seen.add(s.slug); out.push(s); }
+      }
+    }
+    return fc.show_terminal ? out : out.filter((s) => !s.is_terminal);
+  })();
+
+  function toggleSlug(key: "item_type_slugs" | "stage_slugs", slug: string) {
+    setFc((prev) => {
+      const cur = prev[key] ?? [];
+      return { ...prev, [key]: cur.includes(slug) ? cur.filter((s) => s !== slug) : [...cur, slug] };
+    });
+  }
+
+  async function handleSave() {
+    if (!name.trim()) return;
+    setSaving(true); setErr("");
+    try {
+      if (isNew) {
+        const res = await fetch(`/api/user/calendar-types/${typeId}/views`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), color, filter_config: fc }),
+        });
+        const json = await res.json();
+        if (!res.ok) { setErr(json.error ?? "Failed"); return; }
+        onCreated(json);
+      } else {
+        const res = await fetch(`/api/user/calendar-views/${view!.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), color, filter_config: fc }),
+        });
+        const json = await res.json();
+        if (!res.ok) { setErr(json.error ?? "Failed"); return; }
+        onSaved(json);
+      }
+    } finally { setSaving(false); }
+  }
+
+  async function handleDelete() {
+    if (!view || !confirm(`Delete view "${view.name}"? This cannot be undone.`)) return;
+    setDeleting(true);
+    const res = await fetch(`/api/user/calendar-views/${view.id}`, { method: "DELETE" });
+    setDeleting(false);
+    if (res.ok) onDeleted(view.id);
+  }
+
+  async function handleInvite() {
+    if (!view || !inviteEmail.trim()) return;
+    setInviteSending(true); setInviteErr(""); setInviteSent(false);
+    const res = await fetch(`/api/user/calendar-views/${view.id}/shares`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+    });
+    setInviteSending(false);
+    if (res.ok) {
+      setInviteSent(true); setInviteEmail("");
+      const newInv = await res.json().catch(() => null);
+      if (newInv) setInvites((prev) => [...prev, newInv]);
+    } else {
+      const e = await res.json().catch(() => ({}));
+      setInviteErr(e.error ?? "Failed");
+    }
+  }
+
+  const PillBtn = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
+    <button type="button" onClick={onClick} style={{
+      padding: "4px 13px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
+      border: `1px solid ${active ? "rgba(99,102,241,.5)" : S.border}`,
+      background: active ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.04)",
+      color: active ? "#a5b4fc" : S.dim, transition: "all .1s",
+    }}>{label}</button>
+  );
+
+  const Label = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+      {children}
+    </div>
+  );
+
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.55)" }} onClick={onClose} />
+      <div style={{
+        position: "relative", zIndex: 1, width: 520, maxWidth: "100vw",
+        background: S.card, borderLeft: `1px solid ${S.border}`,
+        display: "flex", flexDirection: "column", overflowY: "auto",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px 16px", borderBottom: `1px solid ${S.border}`, display: "flex", alignItems: "center", gap: 12 }}>
+          <ColorFamilyPicker value={color ?? "blue"} onChange={(c) => setColor(c)} size={28} />
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="View name…"
+            style={{
+              flex: 1, background: "transparent", border: "none", outline: "none",
+              color: S.text, fontSize: 18, fontWeight: 700,
+            }}
+          />
+          <button onClick={onClose} style={{ background: "none", border: "none", color: S.dim, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 24, overflowY: "auto" }}>
+
+          {/* ── Filters ── */}
+          <div>
+            <Label>Filters</Label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+              {/* Assignee */}
+              <div>
+                <div style={{ fontSize: 13, color: S.dimBrt, fontWeight: 600, marginBottom: 8 }}>Show items assigned to</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <PillBtn label="Me only"  active={!fc.assignee_filter || fc.assignee_filter === "me"} onClick={() => setFc((p) => ({ ...p, assignee_filter: "me" }))} />
+                  <PillBtn label="Everyone" active={fc.assignee_filter === "all"} onClick={() => setFc((p) => ({ ...p, assignee_filter: "all" }))} />
+                </div>
+              </div>
+
+              {/* Viewer items */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 13, color: S.dimBrt }}>Include events I can see but am not assigned to</span>
+                <button
+                  type="button"
+                  onClick={() => setFc((p) => ({ ...p, show_viewer_items: !p.show_viewer_items }))}
+                  style={{
+                    width: 38, height: 21, borderRadius: 21, border: "none", cursor: "pointer", flexShrink: 0,
+                    background: fc.show_viewer_items ? "var(--gg-primary,#2563eb)" : "rgba(255,255,255,.12)",
+                    position: "relative", transition: "background .15s",
+                  }}
+                >
+                  <span style={{
+                    position: "absolute", top: 3, left: fc.show_viewer_items ? 19 : 3,
+                    width: 15, height: 15, borderRadius: "50%", background: "#fff", transition: "left .15s",
+                  }} />
+                </button>
+              </div>
+
+              {/* Item types */}
+              {types.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 13, color: S.dimBrt, fontWeight: 600, marginBottom: 8 }}>
+                    Item Types <span style={{ fontSize: 11, color: S.dim, fontWeight: 400 }}>(empty = all)</span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {types.map((t) => (
+                      <PillBtn
+                        key={t.slug}
+                        label={t.name}
+                        active={(fc.item_type_slugs ?? []).includes(t.slug)}
+                        onClick={() => toggleSlug("item_type_slugs", t.slug)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Stages */}
+              {visibleStages.length > 0 && (
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, color: S.dimBrt, fontWeight: 600 }}>
+                      Stages <span style={{ fontSize: 11, color: S.dim, fontWeight: 400 }}>(empty = all active)</span>
+                    </span>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: S.dim, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={!!fc.show_terminal}
+                        onChange={(e) => setFc((p) => ({ ...p, show_terminal: e.target.checked, stage_slugs: [] }))}
+                        style={{ accentColor: "var(--gg-primary,#2563eb)" }}
+                      />
+                      Include completed
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {visibleStages.map((s) => (
+                      <PillBtn
+                        key={s.slug}
+                        label={s.name}
+                        active={(fc.stage_slugs ?? []).includes(s.slug)}
+                        onClick={() => toggleSlug("stage_slugs", s.slug)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Location */}
+              <div>
+                <div style={{ fontSize: 13, color: S.dimBrt, fontWeight: 600, marginBottom: 8 }}>Location filter</div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 11, color: S.dim, display: "block", marginBottom: 4 }}>City</label>
+                    <input
+                      type="text"
+                      value={fc.location_city ?? ""}
+                      onChange={(e) => setFc((p) => ({ ...p, location_city: e.target.value }))}
+                      placeholder="Any city"
+                      style={{
+                        width: "100%", padding: "8px 11px", borderRadius: 9, boxSizing: "border-box",
+                        background: S.bg, border: `1px solid ${S.border}`, color: S.text, fontSize: 13,
+                      }}
+                    />
+                  </div>
+                  <div style={{ width: 100 }}>
+                    <label style={{ fontSize: 11, color: S.dim, display: "block", marginBottom: 4 }}>State</label>
+                    <input
+                      type="text"
+                      value={fc.location_state ?? ""}
+                      onChange={(e) => setFc((p) => ({ ...p, location_state: e.target.value.toUpperCase().slice(0, 2) }))}
+                      placeholder="TX"
+                      maxLength={2}
+                      style={{
+                        width: "100%", padding: "8px 11px", borderRadius: 9, boxSizing: "border-box",
+                        background: S.bg, border: `1px solid ${S.border}`, color: S.text, fontSize: 13, textTransform: "uppercase",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Share / Invite ── (existing views only) */}
+          {!isNew && (
+            <div>
+              <Label>Share this view</Label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleInvite(); }}
+                    placeholder="colleague@example.com"
+                    style={{
+                      flex: 1, padding: "8px 12px", borderRadius: 9,
+                      background: S.bg, border: `1px solid ${S.border}`, color: S.text, fontSize: 13,
+                    }}
+                  />
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as any)}
+                    style={{ padding: "8px 10px", borderRadius: 9, background: S.bg, border: `1px solid ${S.border}`, color: S.dim, fontSize: 12 }}
+                  >
+                    <option value="viewer">Viewer</option>
+                    <option value="editor">Editor</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleInvite}
+                    disabled={inviteSending || !inviteEmail.trim()}
+                    className="btn"
+                    style={{ padding: "8px 16px", fontSize: 13, borderRadius: 9, flexShrink: 0 }}
+                  >
+                    {inviteSending ? "…" : "Invite"}
+                  </button>
+                </div>
+                {inviteErr  && <p style={{ margin: 0, fontSize: 12, color: "#fca5a5" }}>{inviteErr}</p>}
+                {inviteSent && <p style={{ margin: 0, fontSize: 12, color: "#4ade80" }}>Invite sent — they'll get an email with an accept link ✓</p>}
+
+                <p style={{ margin: 0, fontSize: 11, color: S.dim, lineHeight: 1.5 }}>
+                  <strong style={{ color: S.dimBrt }}>Viewer</strong> — sees what this filter returns, can't modify.<br />
+                  <strong style={{ color: S.dimBrt }}>Editor</strong> — can also add items and assign you to them.
+                </p>
+
+                {invites.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ fontSize: 11, color: S.dim, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Shared with</div>
+                    {invites.map((inv) => (
+                      <div key={inv.id} style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        background: S.surface, border: `1px solid ${S.border}`, borderRadius: 9, padding: "8px 12px",
+                      }}>
+                        <span style={{ flex: 1, fontSize: 13, color: S.text }}>{inv.email}</span>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+                          background: inv.role === "editor" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.07)",
+                          color: inv.role === "editor" ? "#a5b4fc" : S.dim,
+                        }}>{inv.role.toUpperCase()}</span>
+                        <span style={{
+                          fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 4,
+                          background: inv.status === "accepted" ? "rgba(16,185,129,.1)" : "rgba(255,255,255,.05)",
+                          color: inv.status === "accepted" ? "#6ee7b7" : S.dim,
+                        }}>{inv.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {err && <p style={{ margin: 0, fontSize: 13, color: "#fca5a5" }}>{err}</p>}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "16px 24px", borderTop: `1px solid ${S.border}`,
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          {!isNew && !view?.is_default && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{
+                padding: "8px 16px", fontSize: 13, borderRadius: 9, cursor: "pointer",
+                border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)",
+                color: "#fca5a5",
+              }}
+            >{deleting ? "Deleting…" : "Delete View"}</button>
+          )}
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} style={{
+            padding: "8px 18px", fontSize: 13, borderRadius: 9, cursor: "pointer",
+            border: `1px solid ${S.border}`, background: "none", color: S.dim,
+          }}>Cancel</button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !name.trim()}
+            className="btn"
+            style={{ padding: "8px 22px", fontSize: 13, borderRadius: 9 }}
+          >{saving ? "Saving…" : isNew ? "Create View" : "Save"}</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
 export default function SitRepSettingsPanel() {
@@ -1111,6 +1539,12 @@ export default function SitRepSettingsPanel() {
   const [bookingTypes, setBookingTypes] = useState<BookingType[]>([]);
   const [bookingLoading, setBookingLoading] = useState(true);
   const [editingBooking, setEditingBooking] = useState<BookingType | "new" | null>(null);
+
+  const [myCals,        setMyCals]        = useState<MyCal[]>([]);
+  const [myCalsLoading, setMyCalsLoading] = useState(true);
+  const [sharedViews,   setSharedViews]   = useState<SharedView[]>([]);
+  const [editingCalView, setEditingCalView] = useState<{ view: MyCalView | null; typeId: string } | null>(null);
+  const [calTypeExpanded, setCalTypeExpanded] = useState<Set<string>>(new Set());
 
   const [calendars, setCalendars] = useState<PublicCalendar[]>([]);
   const [calsLoading, setCalsLoading] = useState(true);
@@ -1132,6 +1566,17 @@ export default function SitRepSettingsPanel() {
       .then((data) => setBookingTypes(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setBookingLoading(false));
+
+    fetch("/api/user/calendar-types")
+      .then((r) => r.json())
+      .then((data) => setMyCals(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setMyCalsLoading(false));
+
+    fetch("/api/user/calendar-views/shared")
+      .then((r) => r.json())
+      .then((data) => setSharedViews(Array.isArray(data) ? data : []))
+      .catch(() => {});
 
     fetch("/api/crm/sitrep/public-calendars")
       .then((r) => r.json())
@@ -1404,6 +1849,152 @@ export default function SitRepSettingsPanel() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* My Calendars card */}
+        <div style={{
+          background: S.card, border: `1px solid ${S.border}`,
+          borderRadius: 16, padding: 24, display: "grid", gap: 20,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>My Calendars</h2>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+                Configure views, filters, and sharing for each of your calendars.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                const name = prompt("Calendar name:");
+                if (!name?.trim()) return;
+                const res = await fetch("/api/user/calendar-types", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: name.trim(), color: "blue", cal_type: "custom" }),
+                });
+                if (res.ok) {
+                  const created = await res.json();
+                  setMyCals((prev) => [...prev, created]);
+                }
+              }}
+              className="btn"
+              style={{ padding: "7px 16px", fontSize: 13, borderRadius: 8, flexShrink: 0 }}
+            >+ Add Calendar</button>
+          </div>
+
+          {myCalsLoading ? (
+            <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
+          ) : myCals.length === 0 ? (
+            <div style={{ background: S.surface, border: `1px dashed ${S.border}`, borderRadius: 12, padding: "20px", textAlign: "center" }}>
+              <p style={{ margin: 0, fontSize: 13, color: S.dim }}>No calendars yet. Your Work and Personal calendars are created the first time you visit the Calendar page.</p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {myCals.map((cal) => {
+                const dot = getFamilyByKey(cal.color)?.shades[2] ?? "#818cf8";
+                const expanded = calTypeExpanded.has(cal.id);
+                const views = cal.user_calendar_views ?? [];
+                return (
+                  <div key={cal.id} style={{ background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12, overflow: "hidden" }}>
+                    {/* Type header row */}
+                    <div
+                      onClick={() => setCalTypeExpanded((p) => { const n = new Set(p); n.has(cal.id) ? n.delete(cal.id) : n.add(cal.id); return n; })}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", cursor: "pointer" }}
+                    >
+                      <span style={{ fontSize: 11, color: S.dim }}>{expanded ? "▼" : "▶"}</span>
+                      <span style={{ width: 11, height: 11, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: S.text }}>{cal.name}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 7px", borderRadius: 4, background: "rgba(255,255,255,.07)", color: S.dim }}>
+                        {cal.cal_type.toUpperCase()}
+                      </span>
+                      <span style={{ fontSize: 12, color: S.dim }}>{views.length} view{views.length !== 1 ? "s" : ""}</span>
+                    </div>
+
+                    {/* Views list */}
+                    {expanded && (
+                      <div style={{ borderTop: `1px solid ${S.border}`, padding: "8px 0" }}>
+                        {views.sort((a, b) => a.sort_order - b.sort_order).map((view) => (
+                          <div key={view.id} style={{
+                            display: "flex", alignItems: "center", gap: 10,
+                            padding: "7px 16px 7px 36px",
+                          }}>
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                            <span style={{ flex: 1, fontSize: 13, color: S.dim }}>{view.name}</span>
+                            {view.is_default && (
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "rgba(255,255,255,.06)", color: S.dim }}>DEFAULT</span>
+                            )}
+                            {/* Show active filters as badges */}
+                            {(view.filter_config?.item_type_slugs ?? []).length > 0 && (
+                              <span style={{ fontSize: 10, color: "#a5b4fc", background: "rgba(99,102,241,.1)", borderRadius: 4, padding: "1px 6px" }}>
+                                {(view.filter_config.item_type_slugs as string[]).length} type{(view.filter_config.item_type_slugs as string[]).length !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                            {view.filter_config?.location_city && (
+                              <span style={{ fontSize: 10, color: "#6ee7b7", background: "rgba(16,185,129,.1)", borderRadius: 4, padding: "1px 6px" }}>
+                                {view.filter_config.location_city as string}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setEditingCalView({ view, typeId: cal.id })}
+                              style={{
+                                padding: "4px 12px", fontSize: 12, borderRadius: 7, cursor: "pointer",
+                                border: `1px solid ${S.border}`, background: "rgba(255,255,255,.05)", color: S.text,
+                              }}
+                            >Configure</button>
+                          </div>
+                        ))}
+                        <div style={{ padding: "6px 16px 4px 36px" }}>
+                          <button
+                            type="button"
+                            onClick={() => setEditingCalView({ view: null, typeId: cal.id })}
+                            style={{
+                              fontSize: 12, color: S.dim, background: "none",
+                              border: "none", cursor: "pointer", padding: "2px 0",
+                            }}
+                          >+ Add view to this calendar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Shared with you */}
+          {sharedViews.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+                Shared with you
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {sharedViews.map((sv) => {
+                  const dot = getFamilyByKey(sv.type_color)?.shades[2] ?? "#818cf8";
+                  return (
+                    <div key={sv.share_id} style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      background: S.surface, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 14px",
+                    }}>
+                      <span style={{ width: 9, height: 9, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: S.text }}>{sv.view_name}</div>
+                        <div style={{ fontSize: 11, color: S.dim, marginTop: 1 }}>
+                          {sv.type_name} · from {sv.owner_name}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+                        background: sv.role === "editor" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.07)",
+                        color: sv.role === "editor" ? "#a5b4fc" : S.dim,
+                      }}>{sv.role.toUpperCase()}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -1692,6 +2283,40 @@ export default function SitRepSettingsPanel() {
               return exists ? prev.map((b) => b.id === saved.id ? saved : b) : [...prev, saved];
             });
             setEditingBooking(null);
+          }}
+        />
+      )}
+
+      {/* Calendar view editor slide-in */}
+      {editingCalView && (
+        <CalendarViewEditor
+          view={editingCalView.view}
+          typeId={editingCalView.typeId}
+          types={types}
+          onClose={() => setEditingCalView(null)}
+          onSaved={(updated) => {
+            setMyCals((prev) => prev.map((cal) =>
+              cal.id === editingCalView.typeId
+                ? { ...cal, user_calendar_views: cal.user_calendar_views.map((v) => v.id === updated.id ? updated : v) }
+                : cal
+            ));
+            setEditingCalView(null);
+          }}
+          onCreated={(created) => {
+            setMyCals((prev) => prev.map((cal) =>
+              cal.id === editingCalView.typeId
+                ? { ...cal, user_calendar_views: [...cal.user_calendar_views, created] }
+                : cal
+            ));
+            setEditingCalView(null);
+          }}
+          onDeleted={(viewId) => {
+            setMyCals((prev) => prev.map((cal) =>
+              cal.id === editingCalView.typeId
+                ? { ...cal, user_calendar_views: cal.user_calendar_views.filter((v) => v.id !== viewId) }
+                : cal
+            ));
+            setEditingCalView(null);
           }}
         />
       )}

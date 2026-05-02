@@ -30,6 +30,17 @@ export type CalendarTypeData = {
   user_calendar_views: CalendarView[];
 };
 
+export type SharedViewData = {
+  share_id:   string;
+  role:       "viewer" | "editor";
+  view_id:    string;
+  view_name:  string;
+  view_color: string | null;
+  type_name:  string;
+  type_color: string;
+  owner_name: string;
+};
+
 // Eye toggle button
 function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
   return (
@@ -139,11 +150,13 @@ export default function CalendarSwitcher({
   visibleTypeIds,
   onToggleType,
   onTypesChanged,
+  sharedViews = [],
 }: {
   calendarTypes:  CalendarTypeData[];
   visibleTypeIds: Set<string>;
-  onToggleType:   (typeId: string) => void;
+  onToggleType:   (id: string) => void;
   onTypesChanged: () => void;
+  sharedViews?:   SharedViewData[];
 }) {
   const [collapsed, setCollapsed]   = useState<Set<string>>(new Set());
   const [sharingView, setSharingView] = useState<CalendarView | null>(null);
@@ -255,6 +268,36 @@ export default function CalendarSwitcher({
           </div>
         );
       })}
+
+      {/* Shared with me */}
+      {sharedViews.length > 0 && (
+        <div>
+          <div style={{
+            padding: "10px 14px 6px", fontSize: 10, fontWeight: 700, color: S.dim,
+            letterSpacing: "0.07em", textTransform: "uppercase",
+          }}>Shared with me</div>
+          {sharedViews.map((sv) => {
+            const dot = getFamilyByKey(sv.type_color)?.shades[3] ?? "#818cf8";
+            const isVisible = visibleTypeIds.has(sv.view_id);
+            return (
+              <div key={sv.share_id} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 14px 5px 14px" }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: S.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sv.view_name}</div>
+                  <div style={{ fontSize: 10, color: S.dim, opacity: 0.6 }}>{sv.owner_name}</div>
+                </div>
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+                  background: sv.role === "editor" ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.06)",
+                  color: sv.role === "editor" ? "#a5b4fc" : S.dim,
+                }}>{sv.role === "editor" ? "ED" : "VW"}</span>
+                <EyeToggle visible={isVisible} onToggle={() => onToggleType(sv.view_id)} />
+              </div>
+            );
+          })}
+          <div style={{ height: 1, background: S.border, margin: "6px 14px" }} />
+        </div>
+      )}
 
       {/* Add calendar type */}
       <div style={{ padding: "10px 14px" }}>

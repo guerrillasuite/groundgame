@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import CalendarSwitcher, { type CalendarTypeData } from "./CalendarSwitcher";
+import CalendarSwitcher, { type CalendarTypeData, type SharedViewData } from "./CalendarSwitcher";
 import SitRepCalendar from "./SitRepCalendar";
 
 type SitRepItem = Parameters<typeof SitRepCalendar>[0]["initialItems"][number];
@@ -15,6 +15,7 @@ export default function CalendarLayout({
   typeColors,
   calendarTypes,
   tenantId,
+  sharedViews = [],
 }: {
   initialItems:   SitRepItem[];
   missions:       any[];
@@ -24,6 +25,7 @@ export default function CalendarLayout({
   typeColors:     Record<string, string>;
   calendarTypes:  CalendarTypeData[];
   tenantId:       string;
+  sharedViews?:   SharedViewData[];
 }) {
   // By default all calendar types are visible
   const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(
@@ -98,6 +100,7 @@ export default function CalendarLayout({
           visibleTypeIds={visibleTypeIds}
           onToggleType={toggleType}
           onTypesChanged={refreshCalendarTypes}
+          sharedViews={sharedViews}
         />
       )}
 

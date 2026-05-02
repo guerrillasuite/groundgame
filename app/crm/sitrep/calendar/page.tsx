@@ -92,7 +92,7 @@ export default async function SitRepCalendarPage() {
   // Seed calendar types if first time
   await seedCalendarTypes(crmUser.userId, tenant.id);
 
-  const [itemsRes, typesRes, calTypesRes] = await Promise.all([
+  const [itemsRes, typesRes, calTypesRes, sharedViewsRes] = await Promise.all([
     sb
       .from("sitrep_items")
       .select(
@@ -111,6 +111,10 @@ export default async function SitRepCalendarPage() {
       .select("id, name, color, cal_type, sources, delegate_for, sort_order, user_calendar_views(id, name, color, filter_config, is_default, sort_order)")
       .eq("owner_user_id", crmUser.userId)
       .order("sort_order"),
+    sbRaw()
+      .from("calendar_view_shares")
+      .select("id, role, view_id, user_calendar_views(id, name, color, filter_config, user_calendar_types(id, name, color, owner_user_id))")
+      .eq("shared_with_user_id", crmUser.userId),
   ]);
 
   let users: { id: string; name: string; email: string }[] = [];
@@ -153,6 +157,21 @@ export default async function SitRepCalendarPage() {
 
   const calendarTypes = (calTypesRes.data ?? []) as any[];
 
+  const sharedViews = ((sharedViewsRes.data ?? []) as any[]).map((s) => {
+    const view    = s.user_calendar_views ?? {};
+    const calType = view.user_calendar_types ?? {};
+    return {
+      share_id:   s.id,
+      role:       s.role,
+      view_id:    s.view_id,
+      view_name:  view.name      ?? "Unknown",
+      view_color: view.color     ?? null,
+      type_name:  calType.name   ?? "Unknown",
+      type_color: calType.color  ?? "blue",
+      owner_name: calType.owner_user_id ?? "Someone",
+    };
+  });
+
   return (
     <Suspense>
       <CalendarLayout
@@ -164,6 +183,7 @@ export default async function SitRepCalendarPage() {
         typeColors={typeColors}
         calendarTypes={calendarTypes}
         tenantId={tenant.id}
+        sharedViews={sharedViews}
       />
     </Suspense>
   );
