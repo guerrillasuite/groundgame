@@ -4,7 +4,6 @@ import { Suspense } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
-import { hasFeature } from "@/lib/features";
 import { redirect } from "next/navigation";
 import SitRepKanban from "./SitRepKanban";
 
@@ -18,7 +17,6 @@ function makeSb(tenantId: string) {
 
 export default async function KanbanPage() {
   const tenant = await getTenant();
-  if (!hasFeature(tenant.features, "sitrep_core")) redirect("/crm");
 
   const crmUser = await getCrmUser();
   if (!crmUser) redirect("/crm/login");

@@ -46,10 +46,8 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
     nav.push({ href: "/crm/intel-brief", label: "Intel Brief" });
   }
 
-  // SitRep: always a flat link; Missions is surfaced on the SitRep page itself
-  if (f("sitrep_core")) {
-    nav.push({ href: "/crm/sitrep", label: "SitRep" });
-  }
+  // SitRep: always visible — no feature gate
+  nav.push({ href: "/crm/sitrep", label: "SitRep" });
 
   // Dispatch: flat link, WarChest+ — Support can send campaigns
   if (f("crm_dispatch") || isSuperAdmin) {
@@ -85,9 +83,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
     if (f("crm_dispatch") || isSuperAdmin) {
       settingsItems.push({ href: "/crm/settings/dispatch", label: "Dispatch" });
     }
-    if (f("sitrep_core")) {
-      settingsItems.push({ href: "/crm/settings/sitrep", label: "SitRep" });
-    }
+    settingsItems.push({ href: "/crm/settings/sitrep", label: "SitRep" });
     if (f("news")) {
       settingsItems.push({ href: "/crm/settings/intel-brief", label: "Intel Brief" });
     }

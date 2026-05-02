@@ -82,7 +82,6 @@ async function seedCalendarTypes(userId: string, tenantId: string) {
 
 export default async function SitRepCalendarPage() {
   const tenant  = await getTenant();
-  if (!hasFeature(tenant.features, "sitrep_core")) redirect("/crm");
 
   const crmUser = await getCrmUser();
   if (!crmUser) redirect("/crm/login");

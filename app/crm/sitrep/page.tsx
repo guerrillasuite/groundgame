@@ -19,7 +19,6 @@ function makeSb(tenantId: string) {
 
 export default async function SitRepPage() {
   const tenant = await getTenant();
-  if (!hasFeature(tenant.features, "sitrep_core")) redirect("/crm");
 
   const crmUser = await getCrmUser();
   if (!crmUser) redirect("/crm/login");
