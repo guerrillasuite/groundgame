@@ -52,14 +52,21 @@ export type Props = {
 
 // ── Date helpers ───────────────────────────────────────────────────────────────
 
-function todayStr() { return new Date().toISOString().split("T")[0]; }
+function pad(n: number) { return String(n).padStart(2, "0"); }
+function localDateStr(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function localToUtcIso(local: string): string { return new Date(local).toISOString(); }
+
+function todayStr() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function tomorrowStr() {
   const d = new Date(); d.setDate(d.getDate() + 1);
-  return d.toISOString().split("T")[0];
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 function weekEndStr() {
   const d = new Date(); d.setDate(d.getDate() + 7);
-  return d.toISOString().split("T")[0];
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
 function effectiveDate(item: SitRepItem): string | null {
@@ -77,7 +84,7 @@ function isOverdue(item: SitRepItem): boolean {
   if (item.status === "done" || item.status === "cancelled") return false;
   const ed = effectiveDate(item);
   if (!ed) return false;
-  return ed.split("T")[0] < todayStr();
+  return (ed.includes("T") ? localDateStr(ed) : ed) < todayStr();
 }
 
 function isUrgentOrOverdue(item: SitRepItem): boolean {
@@ -87,13 +94,13 @@ function isUrgentOrOverdue(item: SitRepItem): boolean {
   if (hasExplicitTime(ed)) {
     return new Date(ed).getTime() < Date.now() + 12 * 60 * 60 * 1000;
   }
-  return ed.split("T")[0] < todayStr();
+  return (ed.includes("T") ? localDateStr(ed) : ed) < todayStr();
 }
 
 function fmtDate(item: SitRepItem): string {
   const ed = effectiveDate(item);
   if (!ed) return "";
-  const dateStr = ed.split("T")[0];
+  const dateStr = ed.includes("T") ? localDateStr(ed) : ed;
   const today = todayStr();
   const tomorrow = tomorrowStr();
 
@@ -139,7 +146,7 @@ function groupItems(items: SitRepItem[]): Group[] {
     if (item.status === "cancelled") { buckets.cancelled.push(item); continue; }
     const ed = effectiveDate(item);
     if (!ed) { buckets.nodate.push(item); continue; }
-    const ds = ed.split("T")[0];
+    const ds = ed.includes("T") ? localDateStr(ed) : ed;
     if (ds < today)      { buckets.overdue.push(item); continue; }
     if (ds === today)    { buckets.today.push(item); continue; }
     if (ds === tomorrow) { buckets.tomorrow.push(item); continue; }
@@ -457,8 +464,8 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
       body.due_date = createDueDate || null;
       body.status   = "open";
     } else {
-      body.start_at   = createStartAt || null;
-      body.end_at     = createEndAt   || null;
+      body.start_at   = (createStartAt && !createIsAllDay) ? localToUtcIso(createStartAt) : (createStartAt || null);
+      body.end_at     = (createEndAt   && !createIsAllDay) ? localToUtcIso(createEndAt)   : (createEndAt   || null);
       body.is_all_day = createIsAllDay;
       if (createType === "meeting") body.agenda = createAgenda || null;
     }
@@ -478,8 +485,8 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
         priority: (createType === "task" || typeDefs?.[createType]?.is_mission_type) ? createPriority : null,
         description: createDesc || null, location: null, location_address: null,
         due_date:   (createType === "task" || typeDefs?.[createType]?.is_mission_type) ? (createDueDate || null) : null,
-        start_at:   (createType !== "task" && !typeDefs?.[createType]?.is_mission_type) ? (createStartAt || null) : null,
-        end_at:     (createType !== "task" && !typeDefs?.[createType]?.is_mission_type) ? (createEndAt   || null) : null,
+        start_at:   (createType !== "task" && !typeDefs?.[createType]?.is_mission_type) ? ((createStartAt && !createIsAllDay) ? localToUtcIso(createStartAt) : (createStartAt || null)) : null,
+        end_at:     (createType !== "task" && !typeDefs?.[createType]?.is_mission_type) ? ((createEndAt   && !createIsAllDay) ? localToUtcIso(createEndAt)   : (createEndAt   || null)) : null,
         is_all_day: createIsAllDay, mission_id: createMissionId || null,
         parent_item_id: null, depth: 0,
         visibility: createVisibility, created_by: currentUserId,
