@@ -48,17 +48,20 @@ export async function GET(
   const nowIso = now.toISOString();
   const windowIso = windowEnd.toISOString();
 
-  // Items the owner created (covers all booking-page slots since created_by = owner_id)
-  const { data: busyData } = await sb.from("sitrep_items")
-    .select("start_at, end_at")
-    .eq("created_by", bt.owner_id)
+  // Fetch all non-cancelled items in the window, then filter client-side for
+  // items the owner created OR is assigned to (same pattern as items/route.ts).
+  const { data: candidateBusy } = await sb.from("sitrep_items")
+    .select("start_at, end_at, created_by, sitrep_assignments(user_id)")
     .eq("tenant_id", bt.tenant_id)
     .neq("status", "cancelled")
     .not("start_at", "is", null)
     .gte("start_at", nowIso)
     .lte("start_at", windowIso);
 
-  const allBusy = busyData ?? [];
+  const allBusy = (candidateBusy ?? []).filter((item: any) =>
+    item.created_by === bt.owner_id ||
+    item.sitrep_assignments?.some((a: any) => a.user_id === bt.owner_id)
+  );
   const busySlots = allBusy.map((item: any) => ({
     start: new Date(item.start_at).getTime(),
     end: item.end_at

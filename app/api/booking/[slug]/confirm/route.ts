@@ -97,15 +97,17 @@ export async function POST(
   const reqEnd   = new Date(body.end_at).getTime();
 
   const { data: conflictData } = await sb.from("sitrep_items")
-    .select("id")
-    .eq("created_by", bt.owner_id)
+    .select("id, created_by, sitrep_assignments(user_id)")
     .eq("tenant_id", bt.tenant_id)
     .neq("status", "cancelled")
     .not("start_at", "is", null)
     .lt("start_at", body.end_at)
     .gt("end_at",   body.start_at);
 
-  const hasConflict = (conflictData?.length ?? 0) > 0;
+  const hasConflict = (conflictData ?? []).some((item: any) =>
+    item.created_by === bt.owner_id ||
+    item.sitrep_assignments?.some((a: any) => a.user_id === bt.owner_id)
+  );
 
   if (hasConflict) {
     return NextResponse.json(
