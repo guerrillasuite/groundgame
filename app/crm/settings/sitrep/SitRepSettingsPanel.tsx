@@ -72,6 +72,7 @@ type BookingType = {
   sitrep_item_type: string;
   confirmation_msg: string | null;
   is_active: boolean;
+  conflict_item_types: string[];
 };
 
 type PublicCalendar = {
@@ -639,6 +640,7 @@ function BookingPagePanel({
     available_start: "09:00", available_end: "17:00",
     timezone: "America/New_York",
     sitrep_item_type: "meeting", confirmation_msg: null, is_active: true,
+    conflict_item_types: ["meeting", "event"],
   };
   const [bt, setBt] = useState<BookingType>(initial ?? blank);
 
@@ -685,9 +687,10 @@ function BookingPagePanel({
         available_start:  bt.available_start,
         available_end:    bt.available_end,
         timezone:         bt.timezone,
-        sitrep_item_type: bt.sitrep_item_type,
-        confirmation_msg: bt.confirmation_msg?.trim() || null,
-        is_active:        bt.is_active,
+        sitrep_item_type:    bt.sitrep_item_type,
+        confirmation_msg:    bt.confirmation_msg?.trim() || null,
+        is_active:           bt.is_active,
+        conflict_item_types: bt.conflict_item_types,
       }),
     });
     setSaving(false);
@@ -838,6 +841,33 @@ function BookingPagePanel({
                 <option key={t.slug} value={t.slug}>{t.name}</option>
               ))}
             </select>
+          </div>
+
+          {/* Conflict item types */}
+          <div style={{ ...ROW, flexWrap: "wrap", gap: 8 }}>
+            <div style={{ minWidth: 140 }}>
+              <div style={LABEL}>Blocks Calendar</div>
+              <div style={SUB}>Item types that occupy your time</div>
+            </div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {types.map((t) => {
+                const active = bt.conflict_item_types.includes(t.slug);
+                return (
+                  <button key={t.slug} type="button" onClick={() => setBt((p) => ({
+                    ...p,
+                    conflict_item_types: active
+                      ? p.conflict_item_types.filter((s) => s !== t.slug)
+                      : [...p.conflict_item_types, t.slug],
+                  }))} style={{
+                    padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    border: `1px solid ${S.border}`, cursor: "pointer",
+                    background: active ? "rgba(99,102,241,.2)" : "rgba(255,255,255,.05)",
+                    borderColor: active ? "rgba(99,102,241,.5)" : S.border,
+                    color: active ? "#a5b4fc" : S.dim,
+                  }}>{t.name}</button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Confirmation message */}
@@ -1584,7 +1614,11 @@ export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?
 
     fetch("/api/crm/sitrep/booking-types")
       .then((r) => r.json())
-      .then((data) => setBookingTypes(Array.isArray(data) ? data : []))
+      .then((data) => setBookingTypes(
+        Array.isArray(data)
+          ? data.map((bt: any) => ({ ...bt, conflict_item_types: bt.conflict_item_types ?? ["meeting", "event"] }))
+          : []
+      ))
       .catch(() => {})
       .finally(() => setBookingLoading(false));
 

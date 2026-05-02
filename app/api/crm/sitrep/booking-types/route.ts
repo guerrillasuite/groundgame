@@ -14,7 +14,7 @@ function makeSb(tenantId: string) {
   });
 }
 
-const SELECT = "id, tenant_id, owner_id, title, slug, description, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, sitrep_item_type, confirmation_msg, is_active, created_at";
+const SELECT = "id, tenant_id, owner_id, title, slug, description, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, sitrep_item_type, confirmation_msg, is_active, conflict_item_types, created_at";
 
 export async function GET() {
   const tenant  = await getTenant();
@@ -78,9 +78,10 @@ export async function POST(req: NextRequest) {
       available_start:  body.available_start ?? "09:00",
       available_end:    body.available_end ?? "17:00",
       timezone:         body.timezone ?? "America/New_York",
-      sitrep_item_type: body.sitrep_item_type ?? "meeting",
-      confirmation_msg: body.confirmation_msg?.trim() ?? null,
-      is_active:        body.is_active !== false,
+      sitrep_item_type:     body.sitrep_item_type ?? "meeting",
+      confirmation_msg:     body.confirmation_msg?.trim() ?? null,
+      is_active:            body.is_active !== false,
+      conflict_item_types:  body.conflict_item_types ?? ["meeting", "event"],
     })
     .select(SELECT)
     .single();

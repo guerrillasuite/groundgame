@@ -36,7 +36,7 @@ export async function POST(
   const sbRaw = makeSbRaw();
   const { data: bt } = await sbRaw
     .from("sitrep_booking_types")
-    .select("id, tenant_id, owner_id, title, timezone, sitrep_item_type, confirmation_msg, is_active")
+    .select("id, tenant_id, owner_id, title, timezone, sitrep_item_type, confirmation_msg, is_active, conflict_item_types")
     .eq("slug", slug)
     .eq("is_active", true)
     .limit(1)
@@ -96,13 +96,21 @@ export async function POST(
   const reqStart = new Date(body.start_at).getTime();
   const reqEnd   = new Date(body.end_at).getTime();
 
-  const { data: conflictData } = await sb.from("sitrep_items")
-    .select("id, created_by, sitrep_assignments(user_id)")
+  const conflictTypes: string[] | null = bt.conflict_item_types ?? null;
+
+  let conflictQuery = sb.from("sitrep_items")
+    .select("id, created_by, item_type, sitrep_assignments(user_id)")
     .eq("tenant_id", bt.tenant_id)
     .neq("status", "cancelled")
     .not("start_at", "is", null)
     .lt("start_at", body.end_at)
     .gt("end_at",   body.start_at);
+
+  if (conflictTypes && conflictTypes.length > 0) {
+    conflictQuery = conflictQuery.in("item_type", conflictTypes);
+  }
+
+  const { data: conflictData } = await conflictQuery;
 
   const hasConflict = (conflictData ?? []).some((item: any) =>
     item.created_by === bt.owner_id ||

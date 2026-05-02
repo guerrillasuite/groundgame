@@ -29,7 +29,7 @@ export async function GET(
   const sbRaw = makeSbRaw();
   const { data: bt, error: btErr } = await sbRaw
     .from("sitrep_booking_types")
-    .select("id, tenant_id, owner_id, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, is_active")
+    .select("id, tenant_id, owner_id, duration_minutes, buffer_before, buffer_after, available_days, available_start, available_end, timezone, is_active, conflict_item_types")
     .eq("slug", slug)
     .eq("is_active", true)
     .limit(1)
@@ -48,15 +48,23 @@ export async function GET(
   const nowIso = now.toISOString();
   const windowIso = windowEnd.toISOString();
 
-  // Fetch all non-cancelled items in the window, then filter client-side for
-  // items the owner created OR is assigned to (same pattern as items/route.ts).
-  const { data: candidateBusy } = await sb.from("sitrep_items")
-    .select("start_at, end_at, created_by, sitrep_assignments(user_id)")
+  // Fetch non-cancelled items in the window that are of a conflicting type,
+  // then filter to items the owner created OR is assigned to.
+  const conflictTypes: string[] | null = bt.conflict_item_types ?? null;
+
+  let busyQuery = sb.from("sitrep_items")
+    .select("start_at, end_at, created_by, item_type, sitrep_assignments(user_id)")
     .eq("tenant_id", bt.tenant_id)
     .neq("status", "cancelled")
     .not("start_at", "is", null)
     .gte("start_at", nowIso)
     .lte("start_at", windowIso);
+
+  if (conflictTypes && conflictTypes.length > 0) {
+    busyQuery = busyQuery.in("item_type", conflictTypes);
+  }
+
+  const { data: candidateBusy } = await busyQuery;
 
   const allBusy = (candidateBusy ?? []).filter((item: any) =>
     item.created_by === bt.owner_id ||

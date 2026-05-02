@@ -16,7 +16,7 @@ function makeSb(tenantId: string) {
 const ALLOWED_PATCH = [
   "title", "description", "duration_minutes", "buffer_before", "buffer_after",
   "available_days", "available_start", "available_end", "timezone",
-  "sitrep_item_type", "confirmation_msg", "is_active",
+  "sitrep_item_type", "confirmation_msg", "is_active", "conflict_item_types",
 ];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
