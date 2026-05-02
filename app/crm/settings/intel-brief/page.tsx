@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import { requireDirectorPage } from "@/lib/crm-auth";
+import { getCrmUser } from "@/lib/crm-auth";
+import { redirect } from "next/navigation";
 import { getTenant } from "@/lib/tenant";
 import { createClient } from "@supabase/supabase-js";
 import IntelBriefSettingsPanel from "./IntelBriefSettingsPanel";
@@ -13,7 +14,9 @@ function makeSb() {
 }
 
 export default async function IntelBriefSettingsPage() {
-  await requireDirectorPage();
+  const user = await getCrmUser();
+  if (!user || user.role === "operative" || user.role === null) redirect("/crm");
+  const isDirector = user.role === "director" || user.isSuperAdmin;
   const tenant = await getTenant();
   const sb = makeSb();
   const { data } = await sb
@@ -22,5 +25,5 @@ export default async function IntelBriefSettingsPage() {
     .eq("tenant_id", tenant.id)
     .maybeSingle();
 
-  return <IntelBriefSettingsPanel initialSettings={data ?? null} />;
+  return <IntelBriefSettingsPanel initialSettings={data ?? null} isDirector={isDirector} />;
 }

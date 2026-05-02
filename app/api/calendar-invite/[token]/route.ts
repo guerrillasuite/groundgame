@@ -23,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
   if (!invite) return NextResponse.json({ error: "Invalid token" }, { status: 404 });
   if (invite.status !== "pending") {
-    return NextResponse.json({ error: `Already ${invite.status}` }, { status: 409 });
+    return NextResponse.json({ already: invite.status, view_id: invite.view_id }, { status: 200 });
   }
 
   const now = new Date().toISOString();
@@ -36,26 +36,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return NextResponse.json({ status: "declined" });
   }
 
-  // Accept: try to get the logged-in user's ID — if not logged in, we still
-  // mark the invite accepted but can't create the share row without a user_id.
+  // Accept: must be logged in to create the share row
   const crmUser = await getCrmUser().catch(() => null);
+  if (!crmUser) {
+    return NextResponse.json({ error: "sign_in_required" }, { status: 401 });
+  }
 
-  // Mark invite accepted
-  await sb()
-    .from("calendar_view_invites")
-    .update({ status: "accepted", accepted_at: now })
-    .eq("id", invite.id);
-
-  if (crmUser) {
-    // Create or update the share row
-    await sb()
+  // Mark invite accepted and create the share row
+  await Promise.all([
+    sb()
+      .from("calendar_view_invites")
+      .update({ status: "accepted", accepted_at: now })
+      .eq("id", invite.id),
+    sb()
       .from("calendar_view_shares")
       .upsert({
         view_id:             invite.view_id,
         shared_with_user_id: crmUser.userId,
         role:                invite.role,
-      }, { onConflict: "view_id,shared_with_user_id" });
-  }
+      }, { onConflict: "view_id,shared_with_user_id" }),
+  ]);
 
   return NextResponse.json({ status: "accepted", view_id: invite.view_id });
 }

@@ -1527,7 +1527,7 @@ function CalendarViewEditor({
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
-export default function SitRepSettingsPanel() {
+export default function SitRepSettingsPanel({ isDirector = true }: { isDirector?: boolean }) {
   const [types, setTypes] = useState<ItemType[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingType, setEditingType] = useState<ItemType | null>(null);
@@ -1651,8 +1651,8 @@ export default function SitRepSettingsPanel() {
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>SitRep Settings</h1>
         </div>
 
-        {/* Item Types card */}
-        <div style={{
+        {/* Item Types card — Director only */}
+        {isDirector && <div style={{
           background: S.card, border: `1px solid ${S.border}`,
           borderRadius: 16, padding: 24, display: "grid", gap: 20,
         }}>
@@ -1753,7 +1753,7 @@ export default function SitRepSettingsPanel() {
               <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgb(220 38 38)" }}>{addError}</p>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* My Booking Pages card */}
         <div style={{
@@ -1999,8 +1999,8 @@ export default function SitRepSettingsPanel() {
           )}
         </div>
 
-        {/* Public Calendars card */}
-        <div style={{
+        {/* Public Calendars card — Director only */}
+        {isDirector && <div style={{
           background: S.card, border: `1px solid ${S.border}`,
           borderRadius: 16, padding: 24, display: "grid", gap: 24,
         }}>
@@ -2037,7 +2037,7 @@ export default function SitRepSettingsPanel() {
               onCreated={(cal) => setCalendars((prev) => [...prev, cal])}
             />
           </div>
-        </div>
+        </div>}
 
         {/* Dashboard Widget card */}
         <div style={{

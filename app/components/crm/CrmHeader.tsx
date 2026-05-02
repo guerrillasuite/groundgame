@@ -64,7 +64,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
     if (dataItems.length > 0) nav.push({ label: "Data", items: dataItems });
   }
 
-  // Settings: Director-only
+  // Settings: Directors get everything; Support gets SitRep + Intel Brief only
   if (isDirector) {
     const settingsItems: NavItem[] = [
       { href: "/crm/settings", label: "Brand Settings" },
@@ -92,6 +92,14 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
       settingsItems.push({ href: "/crm/admin/tenants", label: "Tenants" });
     }
     nav.push({ label: "Settings", items: settingsItems });
+  } else if (role === "support") {
+    const supportSettingsItems: NavItem[] = [
+      { href: "/crm/settings/sitrep", label: "SitRep" },
+    ];
+    if (f("news")) {
+      supportSettingsItems.push({ href: "/crm/settings/intel-brief", label: "Intel Brief" });
+    }
+    nav.push({ label: "Settings", items: supportSettingsItems });
   }
 
   nav.push({ href: "/crm/account", label: "Account" });

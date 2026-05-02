@@ -40,9 +40,10 @@ function slugify(s: string): string {
 
 interface Props {
   initialSettings: Record<string, unknown> | null;
+  isDirector?: boolean;
 }
 
-export default function IntelBriefSettingsPanel({ initialSettings }: Props) {
+export default function IntelBriefSettingsPanel({ initialSettings, isDirector = true }: Props) {
   const init: Settings = {
     keywords: (initialSettings?.keywords as string[]) ?? DEFAULTS.keywords,
     display_threshold: (initialSettings?.display_threshold as number) ?? DEFAULTS.display_threshold,
@@ -151,8 +152,8 @@ export default function IntelBriefSettingsPanel({ initialSettings }: Props) {
         </div>
       )}
 
-      {/* Keywords */}
-      <div style={card}>
+      {/* Keywords — Director only */}
+      {isDirector && <div style={card}>
         <p style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>Keywords</p>
         <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--gg-text-dim,#6b7280)" }}>
           One keyword or phrase per line. Articles matching these score higher.
@@ -164,10 +165,10 @@ export default function IntelBriefSettingsPanel({ initialSettings }: Props) {
           placeholder={"candidate name\ncounty name\ncampaign issue\nlocal ballot measure"}
           style={{ ...input, resize: "vertical", lineHeight: 1.6 }}
         />
-      </div>
+      </div>}
 
-      {/* Display threshold & widget count */}
-      <div style={{ ...card, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      {/* Display threshold & widget count — Director only */}
+      {isDirector && <div style={{ ...card, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <div>
           <span style={label}>Display Threshold</span>
           <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--gg-text-dim,#9ca3af)" }}>
@@ -197,10 +198,10 @@ export default function IntelBriefSettingsPanel({ initialSettings }: Props) {
             style={{ ...input, width: 80 }}
           />
         </div>
-      </div>
+      </div>}
 
-      {/* Field access toggle */}
-      <div style={{ ...card, display: "flex", alignItems: "center", gap: 14 }}>
+      {/* Field access toggle — Director only */}
+      {isDirector && <div style={{ ...card, display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ flex: 1 }}>
           <p style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 700 }}>Show in Field App</p>
           <p style={{ margin: 0, fontSize: 13, color: "var(--gg-text-dim,#6b7280)" }}>
@@ -221,7 +222,7 @@ export default function IntelBriefSettingsPanel({ initialSettings }: Props) {
             transition: "left .15s", boxShadow: "0 1px 3px rgba(0,0,0,.2)",
           }} />
         </button>
-      </div>
+      </div>}
 
       {/* Categories */}
       <div style={card}>

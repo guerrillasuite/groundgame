@@ -1,128 +1,206 @@
 "use client";
 
 import { useState } from "react";
+import { getFamilyByKey } from "@/lib/sitrep-colors";
 
 const S = {
-  bg:   "rgb(10 13 20)",
-  card: "rgb(20 25 38)",
+  bg:     "rgb(10 13 20)",
+  card:   "rgb(20 25 38)",
   border: "rgba(255,255,255,.08)",
-  text: "rgb(236 240 245)",
-  dim:  "rgb(100 116 139)",
+  text:   "rgb(236 240 245)",
+  dim:    "rgb(100 116 139)",
+  dimBrt: "rgb(160 174 192)",
 } as const;
 
+type UIState = "idle" | "accepting" | "declining" | "done_accept" | "done_decline" | "need_signin" | "error";
+
 export default function InviteAcceptClient({
-  token, viewName, role, email, alreadyHandled,
+  token,
+  inviteEmail,
+  inviteRole,
+  inviteStatus,
+  viewName,
+  viewColor,
+  typeName,
+  ownerName,
 }: {
-  token:          string;
-  viewName:       string;
-  role:           string;
-  email:          string;
-  alreadyHandled: string | null;
+  token:        string;
+  inviteEmail:  string;
+  inviteRole:   "viewer" | "editor";
+  inviteStatus: "pending" | "accepted" | "declined";
+  viewName:     string;
+  viewColor:    string;
+  typeName:     string;
+  ownerName:    string;
 }) {
-  const [status, setStatus] = useState<"idle" | "accepting" | "declining" | "done_accept" | "done_decline" | "error">("idle");
-  const [errMsg, setErrMsg] = useState("");
+  const initialState: UIState =
+    inviteStatus === "accepted" ? "done_accept" :
+    inviteStatus === "declined" ? "done_decline" : "idle";
+
+  const [uiState, setUiState] = useState<UIState>(initialState);
+  const [errMsg,  setErrMsg]  = useState("");
+
+  const dot   = getFamilyByKey(viewColor)?.shades[3] ?? "#818cf8";
+  const busy  = uiState === "accepting" || uiState === "declining";
 
   async function respond(action: "accept" | "decline") {
-    setStatus(action === "accept" ? "accepting" : "declining");
+    setUiState(action === "accept" ? "accepting" : "declining");
     try {
       const res = await fetch(`/api/calendar-invite/${token}`, {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body:    JSON.stringify({ action }),
       });
-      if (res.ok) {
-        setStatus(action === "accept" ? "done_accept" : "done_decline");
-      } else {
-        const e = await res.json().catch(() => ({}));
-        setErrMsg(e.error ?? "Something went wrong.");
-        setStatus("error");
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401 && data.error === "sign_in_required") {
+        setUiState("need_signin");
+        return;
       }
+      if (!res.ok) {
+        setErrMsg(data.error ?? "Something went wrong.");
+        setUiState("error");
+        return;
+      }
+      // already handled previously
+      if (data.already) {
+        setUiState(data.already === "accepted" ? "done_accept" : "done_decline");
+        return;
+      }
+      setUiState(action === "accept" ? "done_accept" : "done_decline");
     } catch {
       setErrMsg("Network error. Please try again.");
-      setStatus("error");
+      setUiState("error");
     }
   }
 
-  const busy = status === "accepting" || status === "declining";
+  // ── Invite card header ──────────────────────────────────────────────────────
+  const InviteCard = () => (
+    <div style={{
+      background: "rgba(255,255,255,.04)", border: `1px solid ${S.border}`,
+      borderRadius: 14, padding: "18px 20px", marginBottom: 28,
+      display: "flex", alignItems: "center", gap: 14,
+    }}>
+      <span style={{ width: 14, height: 14, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {viewName}
+        </div>
+        <div style={{ fontSize: 12, color: S.dim, marginTop: 2 }}>
+          {typeName} · shared by <strong style={{ color: S.dimBrt }}>{ownerName}</strong>
+        </div>
+      </div>
+      <span style={{
+        marginLeft: "auto", flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: "0.08em",
+        padding: "3px 9px", borderRadius: 6,
+        background: inviteRole === "editor" ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.07)",
+        color: inviteRole === "editor" ? "#a5b4fc" : S.dimBrt,
+        border: `1px solid ${inviteRole === "editor" ? "rgba(99,102,241,.3)" : S.border}`,
+        textTransform: "uppercase",
+      }}>
+        {inviteRole}
+      </span>
+    </div>
+  );
 
-  if (alreadyHandled) {
+  // ── States ──────────────────────────────────────────────────────────────────
+
+  if (uiState === "done_accept") {
     return (
       <Page>
-        <h1 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 700, color: S.text }}>
-          Invite {alreadyHandled === "accepted" ? "already accepted" : "already declined"}
-        </h1>
-        <p style={{ margin: 0, fontSize: 14, color: S.dim }}>
-          {alreadyHandled === "accepted"
-            ? `You already accepted access to "${viewName}". Visit the calendar to see it.`
-            : "This invite was already declined."}
+        <div style={{ fontSize: 44, marginBottom: 12, textAlign: "center" }}>✓</div>
+        <h1 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 800, color: S.text, textAlign: "center" }}>All set!</h1>
+        <p style={{ margin: "0 0 24px", fontSize: 14, color: S.dim, textAlign: "center" }}>
+          "{viewName}" is in your calendar sidebar as a <strong style={{ color: S.text }}>{inviteRole}</strong>.
         </p>
-        {alreadyHandled === "accepted" && (
-          <a href="/crm/sitrep/calendar" style={{ display: "inline-block", marginTop: 20, padding: "10px 22px", borderRadius: 10, background: "var(--gg-primary,#2563eb)", color: "#fff", textDecoration: "none", fontWeight: 600, fontSize: 14 }}>
-            Open Calendar
-          </a>
-        )}
-      </Page>
-    );
-  }
-
-  if (status === "done_accept") {
-    return (
-      <Page>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>✓</div>
-        <h1 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 700, color: S.text }}>Invite accepted!</h1>
-        <p style={{ margin: "0 0 20px", fontSize: 14, color: S.dim }}>
-          "{viewName}" is now in your calendar as a <strong style={{ color: S.text }}>{role}</strong>.
-        </p>
-        <a href="/crm/sitrep/calendar" style={{ display: "inline-block", padding: "10px 22px", borderRadius: 10, background: "var(--gg-primary,#2563eb)", color: "#fff", textDecoration: "none", fontWeight: 600, fontSize: 14 }}>
+        <a href="/crm/sitrep/calendar" style={{
+          display: "block", textAlign: "center", padding: "12px 0", borderRadius: 10,
+          background: "var(--gg-primary,#2563eb)", color: "#fff",
+          textDecoration: "none", fontWeight: 700, fontSize: 14,
+        }}>
           Open Calendar
         </a>
       </Page>
     );
   }
 
-  if (status === "done_decline") {
+  if (uiState === "done_decline") {
     return (
       <Page>
-        <h1 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 700, color: S.text }}>Invite declined.</h1>
+        <h1 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 800, color: S.text }}>Invite declined</h1>
         <p style={{ margin: 0, fontSize: 14, color: S.dim }}>You won't see "{viewName}" in your calendar.</p>
+      </Page>
+    );
+  }
+
+  if (uiState === "need_signin") {
+    const redirect = encodeURIComponent(`/calendar-invite/${token}`);
+    return (
+      <Page>
+        <InviteCard />
+        <h2 style={{ margin: "0 0 8px", fontSize: 17, fontWeight: 700, color: S.text }}>Sign in to accept</h2>
+        <p style={{ margin: "0 0 24px", fontSize: 14, color: S.dim }}>
+          You need to be signed in to your GroundGame account to accept this calendar invite.
+        </p>
+        <a href={`/crm/login?redirect=${redirect}`} style={{
+          display: "block", textAlign: "center", padding: "12px 0", borderRadius: 10,
+          background: "var(--gg-primary,#2563eb)", color: "#fff",
+          textDecoration: "none", fontWeight: 700, fontSize: 14,
+        }}>
+          Sign In
+        </a>
       </Page>
     );
   }
 
   return (
     <Page>
-      <h1 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 800, color: S.text }}>Calendar Invite</h1>
-      <p style={{ margin: "0 0 6px", fontSize: 14, color: S.dim }}>
-        You've been invited to view <strong style={{ color: S.text }}>{viewName}</strong> as a <strong style={{ color: S.text }}>{role}</strong>.
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: S.dim, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
+          Calendar Invite
+        </div>
+        <h1 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 800, color: S.text }}>
+          You're invited
+        </h1>
+        <p style={{ margin: "0 0 24px", fontSize: 14, color: S.dim }}>
+          Sent to <strong style={{ color: S.dimBrt }}>{inviteEmail}</strong>
+        </p>
+      </div>
+
+      <InviteCard />
+
+      <p style={{ margin: "0 0 6px", fontSize: 13, color: S.dim }}>
+        {inviteRole === "editor"
+          ? "As an editor you can view items and create new events assigned to the owner."
+          : "As a viewer you can see all items in this calendar view."}
       </p>
-      <p style={{ margin: "0 0 28px", fontSize: 13, color: S.dim }}>Sent to: {email}</p>
-      {status === "error" && (
-        <p style={{ margin: "0 0 16px", fontSize: 13, color: "#fca5a5" }}>{errMsg}</p>
+
+      {uiState === "error" && (
+        <p style={{ margin: "12px 0 0", fontSize: 13, color: "#fca5a5" }}>{errMsg}</p>
       )}
-      <div style={{ display: "flex", gap: 10 }}>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
         <button
           onClick={() => respond("accept")}
           disabled={busy}
           style={{
-            padding: "11px 28px", borderRadius: 10, fontSize: 14, fontWeight: 700,
+            flex: 1, padding: "12px 0", borderRadius: 10, fontSize: 14, fontWeight: 700,
             border: "none", cursor: busy ? "not-allowed" : "pointer",
-            background: "var(--gg-primary,#2563eb)", color: "#fff",
-            opacity: busy ? 0.7 : 1,
+            background: "var(--gg-primary,#2563eb)", color: "#fff", opacity: busy ? 0.7 : 1,
           }}
         >
-          {status === "accepting" ? "Accepting…" : "Accept"}
+          {uiState === "accepting" ? "Accepting…" : "Accept Invite"}
         </button>
         <button
           onClick={() => respond("decline")}
           disabled={busy}
           style={{
-            padding: "11px 24px", borderRadius: 10, fontSize: 14, fontWeight: 600,
+            padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600,
             border: `1px solid ${S.border}`, cursor: busy ? "not-allowed" : "pointer",
-            background: "rgba(255,255,255,.05)", color: S.dim,
-            opacity: busy ? 0.7 : 1,
+            background: "rgba(255,255,255,.04)", color: S.dim, opacity: busy ? 0.7 : 1,
           }}
         >
-          {status === "declining" ? "Declining…" : "Decline"}
+          {uiState === "declining" ? "…" : "Decline"}
         </button>
       </div>
     </Page>
@@ -131,7 +209,11 @@ export default function InviteAcceptClient({
 
 function Page({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: "100vh", background: S.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+    <div style={{
+      minHeight: "100vh", background: S.bg,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 24, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    }}>
       <div style={{
         width: "100%", maxWidth: 440,
         background: S.card, border: `1px solid ${S.border}`,

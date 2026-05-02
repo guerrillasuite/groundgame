@@ -1,9 +1,11 @@
 export const dynamic = "force-dynamic";
 
-import { requireDirectorPage } from "@/lib/crm-auth";
+import { getCrmUser } from "@/lib/crm-auth";
+import { redirect } from "next/navigation";
 import SitRepSettingsPanel from "./SitRepSettingsPanel";
 
 export default async function SitRepSettingsPage() {
-  await requireDirectorPage();
-  return <SitRepSettingsPanel />;
+  const user = await getCrmUser();
+  if (!user || user.role === "operative" || user.role === null) redirect("/crm");
+  return <SitRepSettingsPanel isDirector={user.role === "director" || user.isSuperAdmin} />;
 }
