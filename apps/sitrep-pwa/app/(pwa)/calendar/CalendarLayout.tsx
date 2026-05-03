@@ -8,7 +8,7 @@ import WeekView from "./WeekView";
 import MonthView from "./MonthView";
 import ItemBottomSheet from "@/components/ItemBottomSheet";
 import CalendarSwitcherDrawer from "@/components/CalendarSwitcherDrawer";
-import type { CalendarTypeData } from "@/components/CalendarSwitcherDrawer";
+import type { CalendarTypeData, SharedViewData } from "@/components/CalendarSwitcherDrawer";
 import type { SitRepItem } from "@/app/(pwa)/list/ListRow";
 
 const S = {
@@ -56,21 +56,29 @@ function isItemVisible(
   item: SitRepItem,
   visibleTypeIds: Set<string>,
   calTypes: CalendarTypeData[],
+  sharedViews: SharedViewData[],
 ): boolean {
-  if (calTypes.length === 0) return true;
+  if (calTypes.length === 0 && sharedViews.length === 0) return true;
 
-  const itemTenantId = item.tenant_id;
+  const tid = item.tenant_id;
 
-  // Find which calendar types this item belongs to
-  const matchingTypes = calTypes.filter((ct) =>
-    (ct.sources ?? []).some((s) => s.type === "tenant" && s.tenant_id === itemTenantId)
+  // Build all source sets that could claim this item
+  const ownMatches = calTypes.filter((ct) =>
+    (ct.sources ?? []).some((s) => s.type === "tenant" && s.tenant_id === tid)
+  );
+  const sharedMatches = sharedViews.filter((sv) =>
+    (sv.type_sources ?? []).some((s) => s.type === "tenant" && s.tenant_id === tid)
   );
 
-  // Item doesn't match any calendar type → always show (unclassified items)
-  if (matchingTypes.length === 0) return true;
+  // Item claimed by no calendar at all → always show
+  if (ownMatches.length === 0 && sharedMatches.length === 0) return true;
 
-  // Show if at least one matching type is visible
-  return matchingTypes.some((ct) => visibleTypeIds.has(ct.id));
+  // Show if any matching own type is visible
+  if (ownMatches.some((ct) => visibleTypeIds.has(ct.id))) return true;
+  // Show if any matching shared view is visible
+  if (sharedMatches.some((sv) => visibleTypeIds.has(sv.view_id))) return true;
+
+  return false;
 }
 
 export default function CalendarLayout({
@@ -94,6 +102,7 @@ export default function CalendarLayout({
 
   // Calendar switcher state
   const [calendarTypes,  setCalendarTypes]  = useState<CalendarTypeData[]>(initialCalendarTypes);
+  const [sharedViews,    setSharedViews]    = useState<SharedViewData[]>([]);
   const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(
     () => new Set(initialCalendarTypes.map((ct) => ct.id))
   );
@@ -122,7 +131,6 @@ export default function CalendarLayout({
       .then((r) => r.ok ? r.json() : [])
       .then((data: CalendarTypeData[]) => {
         setCalendarTypes(data);
-        // Add any new type IDs to visible set
         setVisibleTypeIds((prev) => {
           const next = new Set(prev);
           data.forEach((ct) => next.add(ct.id));
@@ -130,6 +138,16 @@ export default function CalendarLayout({
         });
       })
       .catch(() => {});
+  }
+
+  function onSharedViewsLoaded(views: SharedViewData[]) {
+    setSharedViews(views);
+    // Auto-show all newly discovered shared views
+    setVisibleTypeIds((prev) => {
+      const next = new Set(prev);
+      views.forEach((sv) => next.add(sv.view_id));
+      return next;
+    });
   }
 
   function onToggleType(id: string) {
@@ -167,8 +185,8 @@ export default function CalendarLayout({
 
   const isToday = cursor === todayStr();
 
-  // Filter items by visible calendar types
-  const displayItems = items.filter((item) => isItemVisible(item, visibleTypeIds, calendarTypes));
+  // Filter items by visible calendar types + shared views
+  const displayItems = items.filter((item) => isItemVisible(item, visibleTypeIds, calendarTypes, sharedViews));
 
   // Count hidden
   const hiddenCount = items.length - displayItems.length;
@@ -287,6 +305,8 @@ export default function CalendarLayout({
         visibleTypeIds={visibleTypeIds}
         onToggleType={onToggleType}
         onTypesChanged={reloadCalendarTypes}
+        sharedViews={sharedViews}
+        onSharedViewsLoaded={onSharedViewsLoaded}
       />
 
       <ItemBottomSheet

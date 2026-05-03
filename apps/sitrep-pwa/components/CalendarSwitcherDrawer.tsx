@@ -28,6 +28,20 @@ export type CalendarTypeData = {
   }[];
 };
 
+export type SharedViewData = {
+  share_id:      string;
+  role:          "viewer" | "editor";
+  view_id:       string;
+  view_name:     string;
+  view_color:    string | null;
+  type_id:       string;
+  type_name:     string;
+  type_color:    string;
+  type_sources:  { type: string; tenant_id?: string }[];
+  owner_user_id: string;
+  owner_name:    string;
+};
+
 function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
   return (
     <button
@@ -54,6 +68,9 @@ interface Props {
   visibleTypeIds: Set<string>;
   onToggleType:   (id: string) => void;
   onTypesChanged: () => void;
+  // Shared views — managed externally so CalendarLayout can filter by them
+  sharedViews:    SharedViewData[];
+  onSharedViewsLoaded: (views: SharedViewData[]) => void;
 }
 
 const TYPE_ICON: Record<string, string> = {
@@ -62,6 +79,7 @@ const TYPE_ICON: Record<string, string> = {
 
 export default function CalendarSwitcherDrawer({
   open, onClose, calendarTypes, visibleTypeIds, onToggleType, onTypesChanged,
+  sharedViews, onSharedViewsLoaded,
 }: Props) {
   const [mounted,   setMounted]   = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -72,6 +90,17 @@ export default function CalendarSwitcherDrawer({
   const [addBusy,   setAddBusy]   = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Fetch shared views once on mount
+  useEffect(() => {
+    fetch("/api/sitrep/calendar-views/shared")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: SharedViewData[]) => {
+        if (Array.isArray(data)) onSharedViewsLoaded(data);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function toggleCollapse(id: string) {
     setCollapsed((prev) => {
@@ -124,7 +153,6 @@ export default function CalendarSwitcherDrawer({
         background: S.bg,
         borderRight: `1px solid ${S.border}`,
         display: "flex", flexDirection: "column",
-        overflowY: "auto",
         transform: open ? "translateX(0)" : "translateX(-100%)",
         transition: "transform .22s cubic-bezier(.4,0,.2,1)",
       }}>
@@ -145,9 +173,11 @@ export default function CalendarSwitcherDrawer({
           >✕</button>
         </div>
 
-        {/* Calendar type list */}
+        {/* Scrollable content */}
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: 24 }}>
-          {calendarTypes.length === 0 && (
+
+          {/* ── Own calendar types ── */}
+          {calendarTypes.length === 0 && sharedViews.length === 0 && (
             <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12, color: S.dim, fontStyle: "italic" }}>
               No calendars yet.
             </div>
@@ -212,7 +242,57 @@ export default function CalendarSwitcherDrawer({
             );
           })}
 
-          {/* Add calendar */}
+          {/* ── Shared with me ── */}
+          {sharedViews.length > 0 && (
+            <div>
+              <div style={{
+                padding: "10px 14px 6px",
+                fontSize: 10, fontWeight: 700, color: S.dim,
+                letterSpacing: "0.07em", textTransform: "uppercase",
+              }}>
+                Shared with me
+              </div>
+
+              {sharedViews.map((sv) => {
+                const dot = getFamilyByKey(sv.type_color)?.shades[3] ?? "#818cf8";
+                const vDot = sv.view_color
+                  ? (getFamilyByKey(sv.view_color)?.shades[3] ?? dot)
+                  : dot;
+                const isVisible = visibleTypeIds.has(sv.view_id);
+                return (
+                  <div key={sv.share_id} style={{
+                    display: "flex", alignItems: "center", gap: 7,
+                    padding: "7px 14px",
+                  }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: vDot, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 12, color: S.dimBrt, fontWeight: 500,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
+                        {sv.view_name}
+                      </div>
+                      <div style={{ fontSize: 10, color: S.dim, marginTop: 1 }}>
+                        {sv.type_name} · {sv.owner_name}
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
+                      background: sv.role === "editor" ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.06)",
+                      color: sv.role === "editor" ? "#a5b4fc" : S.dim,
+                    }}>
+                      {sv.role === "editor" ? "ED" : "VW"}
+                    </span>
+                    <EyeToggle visible={isVisible} onToggle={() => onToggleType(sv.view_id)} />
+                  </div>
+                );
+              })}
+
+              <div style={{ height: 1, background: S.border, margin: "6px 14px" }} />
+            </div>
+          )}
+
+          {/* ── Add calendar ── */}
           <div style={{ padding: "12px 14px" }}>
             {!adding ? (
               <button
@@ -280,6 +360,7 @@ export default function CalendarSwitcherDrawer({
               </div>
             )}
           </div>
+
         </div>
       </div>
     </div>
