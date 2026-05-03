@@ -8,8 +8,8 @@ import CalendarLayout from "./CalendarLayout";
 export const dynamic = "force-dynamic";
 
 const CAL_SELECT = "id, tenant_id, item_type, title, status, priority, due_date, start_at, end_at, is_all_day, visibility, created_by, sitrep_assignments(user_id, role)";
+const CAL_TYPE_SELECT = "id, name, color, cal_type, sources, sort_order, user_calendar_views(id, name, color, is_default, sort_order)";
 
-// Service role, no tenant header — bypasses ALL RLS
 function makeAdminSb() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,10 +33,8 @@ export default async function CalendarPage() {
 
   const sb = makeAdminSb();
 
-  // Get primary tenant only for fetching types + creating new items
   const tenant = await getTenant(user.userId);
 
-  // All item IDs this user is assigned to across ALL tenants (no tenant filter)
   const { data: assignments } = await sb
     .from("sitrep_assignments")
     .select("item_id")
@@ -44,17 +42,14 @@ export default async function CalendarPage() {
 
   const assignedIds = [...new Set((assignments ?? []).map((a: any) => a.item_id as string))];
 
-  const [assignedItems, createdRes, typesRes] = await Promise.all([
-    // All items assigned to this user — no tenant scope
+  const [assignedItems, createdRes, typesRes, calTypesRes] = await Promise.all([
     fetchCalItemsByIds(sb, assignedIds),
 
-    // All items created by this user — no tenant scope
     sb.from("sitrep_items")
       .select(CAL_SELECT)
       .eq("created_by", user.userId)
       .limit(500),
 
-    // Types from primary tenant (for display only)
     tenant
       ? makeServiceSb(tenant.id)
           .from("sitrep_item_types")
@@ -62,9 +57,15 @@ export default async function CalendarPage() {
           .eq("tenant_id", tenant.id)
           .order("sort_order")
       : Promise.resolve({ data: [] as any[], error: null }),
+
+    // User's calendar types (personal calendar groupings)
+    sb.from("user_calendar_types")
+      .select(CAL_TYPE_SELECT)
+      .eq("owner_user_id", user.userId)
+      .order("sort_order"),
   ]);
 
-  // Merge and dedup
+  // Merge items and dedup
   const seen = new Set<string>();
   const allItems: any[] = [];
   for (const item of [...assignedItems, ...(createdRes.data ?? [])]) {
@@ -81,6 +82,7 @@ export default async function CalendarPage() {
         types={typesRes.data ?? []}
         userId={user.userId}
         tenantId={tenant?.id ?? ""}
+        initialCalendarTypes={calTypesRes.data ?? []}
       />
     </Suspense>
   );

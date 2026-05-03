@@ -1,0 +1,289 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { getFamilyByKey } from "@/lib/sitrep-colors";
+
+const S = {
+  bg:     "rgb(15 19 28)",
+  border: "rgba(255,255,255,.07)",
+  text:   "rgb(236 240 245)",
+  dim:    "rgb(100 116 139)",
+  dimBrt: "rgb(148 163 184)",
+} as const;
+
+export type CalendarTypeData = {
+  id:         string;
+  name:       string;
+  color:      string;
+  cal_type:   "work" | "family" | "personal" | "custom";
+  sources:    { type: string; tenant_id?: string }[];
+  sort_order: number;
+  user_calendar_views: {
+    id:         string;
+    name:       string;
+    color:      string | null;
+    is_default: boolean;
+    sort_order: number;
+  }[];
+};
+
+function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      title={visible ? "Hide" : "Show"}
+      style={{
+        background: "none", border: "none", cursor: "pointer",
+        padding: "3px 5px", borderRadius: 5,
+        color: visible ? S.dimBrt : S.dim,
+        fontSize: 16, lineHeight: 1, flexShrink: 0,
+        opacity: visible ? 1 : 0.4,
+      }}
+    >
+      {visible ? "◉" : "○"}
+    </button>
+  );
+}
+
+interface Props {
+  open:           boolean;
+  onClose:        () => void;
+  calendarTypes:  CalendarTypeData[];
+  visibleTypeIds: Set<string>;
+  onToggleType:   (id: string) => void;
+  onTypesChanged: () => void;
+}
+
+const TYPE_ICON: Record<string, string> = {
+  work: "🏢", family: "🏠", personal: "👤", custom: "📅",
+};
+
+export default function CalendarSwitcherDrawer({
+  open, onClose, calendarTypes, visibleTypeIds, onToggleType, onTypesChanged,
+}: Props) {
+  const [mounted,   setMounted]   = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [adding,    setAdding]    = useState(false);
+  const [newName,   setNewName]   = useState("");
+  const [newType,   setNewType]   = useState<"work" | "personal" | "family" | "custom">("custom");
+  const [addErr,    setAddErr]    = useState("");
+  const [addBusy,   setAddBusy]   = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  function toggleCollapse(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function handleAddType() {
+    if (!newName.trim() || addBusy) return;
+    setAddBusy(true); setAddErr("");
+    const res = await fetch("/api/sitrep/calendar-types", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName.trim(), cal_type: newType }),
+    });
+    setAddBusy(false);
+    if (res.ok) {
+      setAdding(false); setNewName(""); onTypesChanged();
+    } else {
+      const e = await res.json().catch(() => ({}));
+      setAddErr(e.error ?? "Failed");
+    }
+  }
+
+  if (!mounted) return null;
+
+  const drawer = (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      pointerEvents: open ? "auto" : "none",
+      display: "flex",
+    }}>
+      {/* Backdrop */}
+      <div
+        style={{
+          position: "absolute", inset: 0, background: "rgba(0,0,0,.6)",
+          opacity: open ? 1 : 0,
+          transition: "opacity .2s",
+        }}
+        onClick={onClose}
+      />
+
+      {/* Drawer panel */}
+      <div style={{
+        position: "relative", zIndex: 1,
+        width: 280, maxWidth: "85vw",
+        height: "100%",
+        background: S.bg,
+        borderRight: `1px solid ${S.border}`,
+        display: "flex", flexDirection: "column",
+        overflowY: "auto",
+        transform: open ? "translateX(0)" : "translateX(-100%)",
+        transition: "transform .22s cubic-bezier(.4,0,.2,1)",
+      }}>
+        {/* Header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "16px 14px",
+          paddingTop: "max(16px, env(safe-area-inset-top))",
+          borderBottom: `1px solid ${S.border}`,
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: S.text, letterSpacing: "0.02em" }}>
+            My Calendars
+          </span>
+          <button
+            onClick={onClose}
+            style={{ background: "none", border: "none", color: S.dim, fontSize: 18, cursor: "pointer", padding: "2px 6px" }}
+          >✕</button>
+        </div>
+
+        {/* Calendar type list */}
+        <div style={{ flex: 1, overflowY: "auto", paddingBottom: 24 }}>
+          {calendarTypes.length === 0 && (
+            <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12, color: S.dim, fontStyle: "italic" }}>
+              No calendars yet.
+            </div>
+          )}
+
+          {calendarTypes.map((ct) => {
+            const isCollapsed = collapsed.has(ct.id);
+            const isVisible   = visibleTypeIds.has(ct.id);
+            const dot = getFamilyByKey(ct.color)?.shades[3] ?? "#818cf8";
+
+            return (
+              <div key={ct.id}>
+                <div
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "11px 14px 9px", cursor: "pointer",
+                  }}
+                  onClick={() => toggleCollapse(ct.id)}
+                >
+                  <span style={{ fontSize: 10, color: S.dim, lineHeight: 1, flexShrink: 0 }}>
+                    {isCollapsed ? "▶" : "▼"}
+                  </span>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                  <span style={{
+                    flex: 1, fontSize: 12, fontWeight: 700, color: S.dimBrt,
+                    letterSpacing: "0.05em", textTransform: "uppercase",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {ct.name}
+                  </span>
+                  <EyeToggle visible={isVisible} onToggle={() => onToggleType(ct.id)} />
+                </div>
+
+                {!isCollapsed && (ct.user_calendar_views ?? []).length > 0 && (
+                  <div style={{ paddingBottom: 4 }}>
+                    {[...(ct.user_calendar_views ?? [])]
+                      .sort((a, b) => a.sort_order - b.sort_order)
+                      .map((view) => {
+                        const vDot = view.color
+                          ? (getFamilyByKey(view.color)?.shades[3] ?? dot)
+                          : dot;
+                        return (
+                          <div key={view.id} style={{
+                            display: "flex", alignItems: "center", gap: 7,
+                            padding: "5px 14px 5px 36px",
+                          }}>
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: vDot, flexShrink: 0 }} />
+                            <span style={{
+                              flex: 1, fontSize: 12, color: S.dim,
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}>
+                              {view.name}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+
+                <div style={{ height: 1, background: S.border, margin: "2px 14px" }} />
+              </div>
+            );
+          })}
+
+          {/* Add calendar */}
+          <div style={{ padding: "12px 14px" }}>
+            {!adding ? (
+              <button
+                onClick={() => setAdding(true)}
+                style={{
+                  width: "100%", padding: "8px 0", fontSize: 12, fontWeight: 600,
+                  background: "none", border: `1px dashed ${S.border}`,
+                  borderRadius: 8, color: S.dim, cursor: "pointer", textAlign: "center",
+                }}
+              >+ Add Calendar</button>
+            ) : (
+              <div style={{ display: "grid", gap: 7 }}>
+                <input
+                  autoFocus
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleAddType();
+                    if (e.key === "Escape") { setAdding(false); setNewName(""); }
+                  }}
+                  placeholder="Calendar name…"
+                  style={{
+                    padding: "8px 10px", borderRadius: 7,
+                    background: "rgb(10 13 20)", border: `1px solid ${S.border}`,
+                    color: S.text, fontSize: 13, outline: "none",
+                  }}
+                />
+                <select
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value as typeof newType)}
+                  style={{
+                    padding: "6px 9px", borderRadius: 7,
+                    background: "rgb(10 13 20)", border: `1px solid ${S.border}`,
+                    color: S.dim, fontSize: 12,
+                  }}
+                >
+                  {(["work", "family", "personal", "custom"] as const).map((t) => (
+                    <option key={t} value={t}>
+                      {TYPE_ICON[t]} {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </option>
+                  ))}
+                </select>
+                {addErr && <p style={{ margin: 0, fontSize: 11, color: "#fca5a5" }}>{addErr}</p>}
+                <div style={{ display: "flex", gap: 5 }}>
+                  <button
+                    onClick={handleAddType}
+                    disabled={!newName.trim() || addBusy}
+                    style={{
+                      flex: 1, padding: "7px 0", borderRadius: 7, fontSize: 12, fontWeight: 700,
+                      border: "none", background: "var(--gg-primary,#2563eb)", color: "#fff",
+                      cursor: !newName.trim() || addBusy ? "not-allowed" : "pointer",
+                      opacity: !newName.trim() || addBusy ? 0.6 : 1,
+                    }}
+                  >{addBusy ? "…" : "Add"}</button>
+                  <button
+                    onClick={() => { setAdding(false); setNewName(""); setAddErr(""); }}
+                    style={{
+                      padding: "7px 12px", borderRadius: 7, fontSize: 12,
+                      border: `1px solid ${S.border}`, background: "none",
+                      color: S.dim, cursor: "pointer",
+                    }}
+                  >Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(drawer, document.body);
+}

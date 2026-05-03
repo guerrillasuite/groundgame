@@ -6,6 +6,7 @@ import SwipeableRow from "./SwipeableRow";
 
 export type SitRepItem = {
   id: string;
+  tenant_id?: string;
   title: string;
   item_type: string;
   status: string;

@@ -254,8 +254,8 @@ export default function DayView({ items, types, cursor, tz, onCursorChange, onIt
                   cursor: "pointer",
                   overflow: "hidden",
                   textAlign: "left",
-                  border: "none",
                   borderLeft: `3px solid ${accent}`,
+                  borderTop: "none", borderRight: "none", borderBottom: "none",
                 }}
               >
                 <div style={{ fontSize: 11, fontWeight: 600, color: accent, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
