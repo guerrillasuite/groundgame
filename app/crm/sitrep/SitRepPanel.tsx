@@ -6,6 +6,8 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
 import { SitRepViewToggle } from "./_components/SitRepViewToggle";
 import SitRepKanban from "./kanban/SitRepKanban";
+import CalendarSwitcher, { type CalendarTypeData, type SharedViewData } from "./calendar/CalendarSwitcher";
+import { filterByVisibleCalendars, loadVisibleIds, saveVisibleIds } from "@/lib/sitrep-calendar-filter";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -304,6 +306,16 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
+// ── Calendar helpers ───────────────────────────────────────────────────────────
+
+function defaultCalTypeId(types: CalendarTypeData[]): string {
+  if (!types.length) return "";
+  const ct = types.find((c) => c.cal_type === "work")
+    ?? types.find((c) => c.cal_type === "family")
+    ?? types[0];
+  return ct?.id ?? "";
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function SitRepPanel({ initialItems, users, currentUserId, hasMissions, typeColors, typeNames, typeDefs, missions }: Props) {
@@ -355,6 +367,13 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   const [creating,         setCreating]         = useState(false);
   const [createError,      setCreateError]      = useState("");
 
+  // Calendar switcher state
+  const [calTypes,       setCalTypes]       = useState<CalendarTypeData[]>([]);
+  const [sharedViews,    setSharedViews]    = useState<SharedViewData[]>([]);
+  const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(new Set());
+  const [sidebarOpen,    setSidebarOpen]    = useState(true);
+  const [createCalId,    setCreateCalId]    = useState("");
+
   const [showNewMenu, setShowNewMenu] = useState(false);
   const newBtnRef  = useRef<HTMLButtonElement>(null);
   const newMenuRef = useRef<HTMLDivElement>(null);
@@ -368,6 +387,39 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showNewMenu]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/user/calendar-types").then((r) => r.ok ? r.json() : []).catch(() => []),
+      fetch("/api/user/calendar-views/shared").then((r) => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([types, views]: [CalendarTypeData[], SharedViewData[]]) => {
+      setCalTypes(types);
+      setSharedViews(views);
+      const allIds = [...types.map((ct) => ct.id), ...views.map((sv) => sv.view_id)];
+      setVisibleTypeIds(loadVisibleIds(allIds));
+      setCreateCalId(defaultCalTypeId(types));
+    });
+  }, []);
+
+  function refreshCalendarTypes() {
+    fetch("/api/user/calendar-types")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: CalendarTypeData[]) => {
+        setCalTypes(data);
+        const allIds = [...data.map((ct) => ct.id), ...sharedViews.map((sv) => sv.view_id)];
+        setVisibleTypeIds(loadVisibleIds(allIds));
+      })
+      .catch(() => {});
+  }
+
+  function toggleCalType(typeId: string) {
+    setVisibleTypeIds((prev) => {
+      const next = new Set(prev);
+      next.has(typeId) ? next.delete(typeId) : next.add(typeId);
+      saveVisibleIds([...calTypes.map((c) => c.id), ...sharedViews.map((s) => s.view_id)], next);
+      return next;
+    });
+  }
 
   const customTypeSlugs = Object.keys(typeNames ?? {}).filter((s) => !["task","event","meeting"].includes(s));
 
@@ -383,7 +435,11 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
       .map(([slug]) => slug)
   );
 
-  let filtered = items;
+  const calFilteredItems = calTypes.length > 0
+    ? filterByVisibleCalendars(items, calTypes as any, sharedViews as any, visibleTypeIds, currentUserId)
+    : items;
+
+  let filtered = calFilteredItems;
   if (scope === "mine") {
     filtered = filtered.filter(
       (i) => i.created_by === currentUserId || i.sitrep_assignments.some((a) => a.user_id === currentUserId)
@@ -445,6 +501,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
     setCreateIsAllDay(false); setCreateAgenda(""); setCreateMissionId("");
     setCreateVisibility(type === "task" ? "assignee_only" : "team");
     setCreateAssignees([]);
+    setCreateCalId(defaultCalTypeId(calTypes));
     setCreateError("");
     setShowCreate(true); setShowNewMenu(false);
   }
@@ -538,7 +595,42 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="stack" style={{ maxWidth: 900 }}>
+    <div style={{ display: "flex", alignItems: "flex-start" }}>
+      {/* Calendar sidebar */}
+      {calTypes.length > 0 && (
+        <div style={{
+          position: "sticky", top: 0, height: "100vh", flexShrink: 0,
+          display: "flex", zIndex: 10,
+        }}>
+          {sidebarOpen && (
+            <CalendarSwitcher
+              calendarTypes={calTypes as any}
+              visibleTypeIds={visibleTypeIds}
+              onToggleType={toggleCalType}
+              onTypesChanged={refreshCalendarTypes}
+              sharedViews={sharedViews as any}
+            />
+          )}
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            title={sidebarOpen ? "Hide calendars" : "Show calendars"}
+            style={{
+              width: 16, height: 48, alignSelf: "center",
+              background: "rgb(22 28 40)",
+              border: "1px solid rgba(255,255,255,.07)", borderLeft: "none",
+              borderRadius: "0 6px 6px 0", cursor: "pointer",
+              color: "rgb(100 116 139)", fontSize: 10,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {sidebarOpen ? "‹" : "›"}
+          </button>
+        </div>
+      )}
+
+      {/* Main content */}
+      <div className="stack" style={{ flex: 1, maxWidth: 900, minWidth: 0 }}>
 
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
@@ -1072,6 +1164,40 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
                   </div>
                 )}
 
+                {calTypes.length > 0 && (
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 8, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Where</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {calTypes.map((ct) => {
+                        const dot = getFamilyByKey(ct.color)?.shades[3] ?? "#818cf8";
+                        const active = createCalId === ct.id;
+                        return (
+                          <button key={ct.id} type="button"
+                            onClick={() => {
+                              setCreateCalId(ct.id);
+                              if (ct.cal_type === "personal") setCreateVisibility("private");
+                              else if (ct.cal_type === "work" || ct.cal_type === "family") setCreateVisibility("team");
+                              else setCreateVisibility("assignee_only");
+                            }}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 5,
+                              padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                              border: active ? `1px solid ${dot}55` : "1px solid rgba(255,255,255,.09)",
+                              background: active ? `${dot}22` : "rgba(255,255,255,.04)",
+                              color: active ? S.dimBright : S.dim,
+                              cursor: "pointer", transition: "all .12s",
+                              boxShadow: active ? `0 0 10px ${dot}22` : "none",
+                            }}
+                          >
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                            {ct.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Visibility</label>
                   <select value={createVisibility} onChange={(e) => setCreateVisibility(e.target.value)} style={inputStyle} onFocus={focusInput} onBlur={blurInput}>
@@ -1115,6 +1241,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
           </div>
         </div>
       )}
+      </div>{/* end main content */}
     </div>
   );
 }

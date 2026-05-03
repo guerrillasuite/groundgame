@@ -3,12 +3,15 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { todayStr } from "@/lib/date-utils";
+import {
+  filterByVisibleCalendars, loadVisibleIds, saveVisibleIds,
+  type CalendarTypeData, type SharedViewData,
+} from "@/lib/calendar-filter";
 import DayView from "./DayView";
 import WeekView from "./WeekView";
 import MonthView from "./MonthView";
 import ItemBottomSheet from "@/components/ItemBottomSheet";
 import CalendarSwitcherDrawer from "@/components/CalendarSwitcherDrawer";
-import type { CalendarTypeData, SharedViewData } from "@/components/CalendarSwitcherDrawer";
 import type { SitRepItem } from "@/app/(pwa)/list/ListRow";
 
 const S = {
@@ -52,35 +55,6 @@ function ViewPill({ active, onClick, children }: { active: boolean; onClick: () 
   );
 }
 
-function isItemVisible(
-  item: SitRepItem,
-  visibleTypeIds: Set<string>,
-  calTypes: CalendarTypeData[],
-  sharedViews: SharedViewData[],
-): boolean {
-  if (calTypes.length === 0 && sharedViews.length === 0) return true;
-
-  const tid = item.tenant_id;
-
-  // Build all source sets that could claim this item
-  const ownMatches = calTypes.filter((ct) =>
-    (ct.sources ?? []).some((s) => s.type === "tenant" && s.tenant_id === tid)
-  );
-  const sharedMatches = sharedViews.filter((sv) =>
-    (sv.type_sources ?? []).some((s) => s.type === "tenant" && s.tenant_id === tid)
-  );
-
-  // Item claimed by no calendar at all → always show
-  if (ownMatches.length === 0 && sharedMatches.length === 0) return true;
-
-  // Show if any matching own type is visible
-  if (ownMatches.some((ct) => visibleTypeIds.has(ct.id))) return true;
-  // Show if any matching shared view is visible
-  if (sharedMatches.some((sv) => visibleTypeIds.has(sv.view_id))) return true;
-
-  return false;
-}
-
 export default function CalendarLayout({
   initialItems, types, userId, tenantId, initialCalendarTypes,
 }: CalendarLayoutProps) {
@@ -104,7 +78,7 @@ export default function CalendarLayout({
   const [calendarTypes,  setCalendarTypes]  = useState<CalendarTypeData[]>(initialCalendarTypes);
   const [sharedViews,    setSharedViews]    = useState<SharedViewData[]>([]);
   const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(
-    () => new Set(initialCalendarTypes.map((ct) => ct.id))
+    () => loadVisibleIds(initialCalendarTypes.map((ct) => ct.id))
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -126,14 +100,21 @@ export default function CalendarLayout({
     if (typeof window !== "undefined") localStorage.setItem("sitrep_cal_view", view);
   }, [view]);
 
+  function allTypeIds(types: CalendarTypeData[], views: SharedViewData[]): string[] {
+    return [...types.map((t) => t.id), ...views.map((v) => v.view_id)];
+  }
+
   function reloadCalendarTypes() {
     fetch("/api/sitrep/calendar-types")
       .then((r) => r.ok ? r.json() : [])
       .then((data: CalendarTypeData[]) => {
         setCalendarTypes(data);
         setVisibleTypeIds((prev) => {
-          const next = new Set(prev);
-          data.forEach((ct) => next.add(ct.id));
+          const ids = allTypeIds(data, sharedViews);
+          const hidden = ids.filter((id) => !prev.has(id) && prev.size > 0);
+          // Preserve existing hidden state; new IDs default visible
+          const next = loadVisibleIds(ids);
+          saveVisibleIds(ids, next);
           return next;
         });
       })
@@ -142,16 +123,14 @@ export default function CalendarLayout({
 
   function onSharedViewsLoaded(views: SharedViewData[]) {
     setSharedViews(views);
-    // Auto-show all newly discovered shared views
     setVisibleTypeIds((prev) => {
-      const next = new Set(prev);
-      views.forEach((sv) => next.add(sv.view_id));
+      const ids = allTypeIds(calendarTypes, views);
+      const next = loadVisibleIds(ids);
       return next;
     });
 
     if (views.length === 0) return;
 
-    // Fetch items belonging to shared calendars and merge into local state
     fetch("/api/sitrep/calendar-views/shared/items")
       .then((r) => r.ok ? r.json() : [])
       .then((sharedItems: SitRepItem[]) => {
@@ -169,6 +148,7 @@ export default function CalendarLayout({
     setVisibleTypeIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
+      saveVisibleIds(allTypeIds(calendarTypes, sharedViews), next);
       return next;
     });
   }
@@ -200,11 +180,8 @@ export default function CalendarLayout({
 
   const isToday = cursor === todayStr();
 
-  // Filter items by visible calendar types + shared views
-  const displayItems = items.filter((item) => isItemVisible(item, visibleTypeIds, calendarTypes, sharedViews));
-
-  // Count hidden
-  const hiddenCount = items.length - displayItems.length;
+  const displayItems = filterByVisibleCalendars(items, calendarTypes, sharedViews, visibleTypeIds, userId);
+  const hiddenCount  = items.length - displayItems.length;
 
   return (
     <div style={{ height: "100dvh", background: S.bg, display: "flex", flexDirection: "column" }}>
@@ -217,9 +194,7 @@ export default function CalendarLayout({
         flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          {/* Left: calendar switcher + view pills */}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {/* Hamburger → opens calendar switcher drawer */}
             <button
               onClick={() => setDrawerOpen(true)}
               title="My Calendars"
@@ -240,8 +215,6 @@ export default function CalendarLayout({
                 </span>
               )}
             </button>
-
-            {/* View switcher */}
             <ViewPill active={view === "day"}   onClick={() => setView("day")}>Day</ViewPill>
             <ViewPill active={view === "week"}  onClick={() => setView("week")}>Week</ViewPill>
             <ViewPill active={view === "month"} onClick={() => setView("month")}>Month</ViewPill>
@@ -256,9 +229,7 @@ export default function CalendarLayout({
                   border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.05)",
                   color: S.dim, cursor: "pointer",
                 }}
-              >
-                Today
-              </button>
+              >Today</button>
             )}
             <button
               onClick={() => { setSheetItem(null); setSheetCreate(true); setSheetOpen(true); }}
@@ -282,35 +253,9 @@ export default function CalendarLayout({
 
       {/* Active view */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {view === "day" && (
-          <DayView
-            items={displayItems}
-            types={types}
-            cursor={cursor}
-            tz={tz}
-            onCursorChange={setCursor}
-            onItemTap={onItemTap}
-          />
-        )}
-        {view === "week" && (
-          <WeekView
-            items={displayItems}
-            types={types}
-            cursor={cursor}
-            tz={tz}
-            onCursorChange={setCursor}
-            onItemTap={onItemTap}
-          />
-        )}
-        {view === "month" && (
-          <MonthView
-            items={displayItems}
-            types={types}
-            cursor={cursor}
-            tz={tz}
-            onCursorChange={onDayTap}
-          />
-        )}
+        {view === "day"   && <DayView   items={displayItems} types={types} cursor={cursor} tz={tz} onCursorChange={setCursor} onItemTap={onItemTap} />}
+        {view === "week"  && <WeekView  items={displayItems} types={types} cursor={cursor} tz={tz} onCursorChange={setCursor} onItemTap={onItemTap} />}
+        {view === "month" && <MonthView items={displayItems} types={types} cursor={cursor} tz={tz} onCursorChange={onDayTap} />}
       </div>
 
       <CalendarSwitcherDrawer
@@ -330,6 +275,7 @@ export default function CalendarLayout({
         item={sheetItem}
         createMode={sheetCreate}
         types={types}
+        calendarTypes={calendarTypes}
         tenantId={tenantId}
         userId={userId}
         tz={tz}

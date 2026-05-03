@@ -6,6 +6,7 @@ import TypePillSelector, { ItemType } from "./TypePillSelector";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 import { utcToDatetimeLocal, localToUtcIso } from "@/lib/date-utils";
 import type { SitRepItem } from "@/app/(pwa)/list/ListRow";
+import type { CalendarTypeData } from "@/lib/calendar-filter";
 
 const S = {
   text:      "rgb(236 240 245)",
@@ -20,6 +21,7 @@ interface ItemBottomSheetProps {
   item: SitRepItem | null;
   createMode: boolean;
   types: ItemType[];
+  calendarTypes?: CalendarTypeData[];
   tenantId: string;
   userId: string;
   tz: string;
@@ -49,12 +51,35 @@ function focusOut(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
   e.currentTarget.style.boxShadow   = "none";
 }
 
+function defaultCalTypeId(calendarTypes?: CalendarTypeData[]): string {
+  if (!calendarTypes?.length) return "";
+  const ct = calendarTypes.find((c) => c.cal_type === "work")
+    ?? calendarTypes.find((c) => c.cal_type === "family")
+    ?? calendarTypes[0];
+  return ct?.id ?? "";
+}
+
+function calPayload(
+  calendarTypes: CalendarTypeData[] | undefined,
+  selectedId: string,
+  fallbackTenantId: string,
+): { tenantId: string; visibility: string } {
+  const ct = calendarTypes?.find((c) => c.id === selectedId);
+  if (!ct) return { tenantId: fallbackTenantId, visibility: "assignee_only" };
+  const src = (ct.sources ?? [])[0];
+  const tid = (src && "tenant_id" in src ? src.tenant_id : null) ?? fallbackTenantId;
+  if (ct.cal_type === "personal") return { tenantId: fallbackTenantId, visibility: "private" };
+  if (ct.cal_type === "work" || ct.cal_type === "family") return { tenantId: tid, visibility: "team" };
+  return { tenantId: tid, visibility: "assignee_only" };
+}
+
 export default function ItemBottomSheet({
-  open, onClose, item, createMode, types, tenantId, userId, tz,
+  open, onClose, item, createMode, types, calendarTypes, tenantId, userId, tz,
   onSaved, onDeleted, onExpandItem,
 }: ItemBottomSheetProps) {
   const [title, setTitle]               = useState("");
   const [typeSlug, setTypeSlug]         = useState(types[0]?.slug ?? "task");
+  const [selectedCalId, setSelectedCalId] = useState(() => defaultCalTypeId(calendarTypes));
   // Stored as datetime-local string (local time) for the <input>
   const [dueDateLocal, setDueDateLocal] = useState("");
   const [location, setLocation]         = useState("");
@@ -70,6 +95,7 @@ export default function ItemBottomSheet({
     if (createMode) {
       setTitle("");
       setTypeSlug(types[0]?.slug ?? "task");
+      setSelectedCalId(defaultCalTypeId(calendarTypes));
       setDueDateLocal("");
       setLocation("");
     } else if (item) {
@@ -99,13 +125,16 @@ export default function ItemBottomSheet({
     // Convert local datetime-local value → UTC ISO for storage
     const dueDateUtc = dueDateLocal ? localToUtcIso(dueDateLocal) : null;
 
+    const cal = createMode ? calPayload(calendarTypes, selectedCalId, tenantId) : null;
+
     const payload = {
       title:      title.trim(),
       item_type:  typeSlug,
       due_date:   dueDateUtc,
       location:   location.trim() || null,
-      tenantId,
+      tenantId:   cal?.tenantId ?? tenantId,
       created_by: userId,
+      ...(cal ? { visibility: cal.visibility } : {}),
     };
 
     try {
@@ -178,6 +207,38 @@ export default function ItemBottomSheet({
             ×
           </button>
         </div>
+
+        {/* Calendar picker — create mode only */}
+        {createMode && calendarTypes && calendarTypes.length > 0 && (
+          <div style={{ overflowX: "auto", display: "flex", gap: 6, paddingBottom: 2, scrollbarWidth: "none" }}>
+            {calendarTypes.map((ct) => {
+              const dot = getFamilyByKey(ct.color)?.shades[3] ?? "#818cf8";
+              const active = selectedCalId === ct.id;
+              return (
+                <button
+                  key={ct.id}
+                  onClick={() => setSelectedCalId(ct.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    flexShrink: 0, padding: "5px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    cursor: "pointer",
+                    border: active
+                      ? `1px solid ${dot}55`
+                      : "1px solid rgba(255,255,255,.08)",
+                    background: active
+                      ? `${dot}22`
+                      : "rgba(255,255,255,.03)",
+                    color: active ? S.dimBright : S.dim,
+                    transition: "all .12s",
+                  }}
+                >
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                  {ct.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Title */}
         <div style={{ animation: titleShake ? "shake .35s ease" : "none" }}>

@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import ListRow, { SitRepItem } from "./ListRow";
 import ItemBottomSheet from "@/components/ItemBottomSheet";
 import RescheduleSheet from "@/components/RescheduleSheet";
+import CalendarSwitcherDrawer from "@/components/CalendarSwitcherDrawer";
 import { todayStr, addDays, localDateStr, effectiveDate } from "@/lib/date-utils";
+import {
+  filterByVisibleCalendars, loadVisibleIds, saveVisibleIds,
+  type CalendarTypeData, type SharedViewData,
+} from "@/lib/calendar-filter";
 
 const S = {
   bg:     "rgb(10 13 20)",
@@ -45,7 +50,6 @@ function groupItems(items: SitRepItem[]): Group[] {
     if (item.status === "cancelled") { buckets.cancelled.push(item); continue; }
     const ed = effectiveDate(item);
     if (!ed) { buckets.nodate.push(item); continue; }
-    // Use local date extraction so we compare in user's timezone
     const ds = ed.includes("T") ? localDateStr(ed) : ed;
     if (ds < today)      { buckets.overdue.push(item); continue; }
     if (ds === today)    { buckets.today.push(item); continue; }
@@ -70,7 +74,6 @@ function groupItems(items: SitRepItem[]): Group[] {
 export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelProps) {
   const router = useRouter();
 
-  // Detect browser timezone once on mount
   const [tz, setTz] = useState("UTC");
   useEffect(() => { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone); }, []);
 
@@ -79,6 +82,12 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["done", "cancelled"]));
   const [completing, setCompleting]   = useState<Set<string>>(new Set());
 
+  // Calendar switcher state
+  const [calendarTypes,  setCalendarTypes]  = useState<CalendarTypeData[]>([]);
+  const [sharedViews,    setSharedViews]    = useState<SharedViewData[]>([]);
+  const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(new Set());
+  const [drawerOpen,     setDrawerOpen]     = useState(false);
+
   // Sheet state
   const [sheetOpen, setSheetOpen]     = useState(false);
   const [sheetItem, setSheetItem]     = useState<SitRepItem | null>(null);
@@ -86,6 +95,21 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   const [rescheduleItem, setRescheduleItem] = useState<SitRepItem | null>(null);
 
   const typeMap = Object.fromEntries(initialTypes.map((t) => [t.slug, t]));
+
+  function allTypeIds(types: CalendarTypeData[], views: SharedViewData[]): string[] {
+    return [...types.map((t) => t.id), ...views.map((v) => v.view_id)];
+  }
+
+  // Fetch calendar types once on mount
+  useEffect(() => {
+    fetch("/api/sitrep/calendar-types")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: CalendarTypeData[]) => {
+        setCalendarTypes(data);
+        setVisibleTypeIds(loadVisibleIds(data.map((ct) => ct.id)));
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -97,9 +121,48 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
       }
     } catch { /* ignore */ }
     setLoading(false);
-  }, [tenantId]);
+  }, []);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  function reloadCalendarTypes() {
+    fetch("/api/sitrep/calendar-types")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: CalendarTypeData[]) => {
+        setCalendarTypes(data);
+        const ids = allTypeIds(data, sharedViews);
+        setVisibleTypeIds(loadVisibleIds(ids));
+      })
+      .catch(() => {});
+  }
+
+  function onSharedViewsLoaded(views: SharedViewData[]) {
+    setSharedViews(views);
+    const ids = allTypeIds(calendarTypes, views);
+    setVisibleTypeIds(loadVisibleIds(ids));
+
+    if (views.length === 0) return;
+    fetch("/api/sitrep/calendar-views/shared/items")
+      .then((r) => r.ok ? r.json() : [])
+      .then((sharedItems: SitRepItem[]) => {
+        if (!Array.isArray(sharedItems) || sharedItems.length === 0) return;
+        setItems((prev) => {
+          const existingIds = new Set(prev.map((i) => i.id));
+          const newOnes = sharedItems.filter((i) => !existingIds.has(i.id));
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+        });
+      })
+      .catch(() => {});
+  }
+
+  function onToggleType(id: string) {
+    setVisibleTypeIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      saveVisibleIds(allTypeIds(calendarTypes, sharedViews), next);
+      return next;
+    });
+  }
 
   function toggleGroup(key: string) {
     setCollapsedGroups((prev) => {
@@ -138,11 +201,7 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   function onSheetSaved(updated: SitRepItem) {
     setItems((prev) => {
       const idx = prev.findIndex((i) => i.id === updated.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = updated;
-        return next;
-      }
+      if (idx >= 0) { const next = [...prev]; next[idx] = updated; return next; }
       return [updated, ...prev];
     });
     setSheetOpen(false);
@@ -165,7 +224,13 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
     setRescheduleItem(null);
   }
 
-  const groups = groupItems(items);
+  // Apply calendar visibility filter
+  const displayItems = calendarTypes.length > 0
+    ? filterByVisibleCalendars(items, calendarTypes, sharedViews, visibleTypeIds, userId)
+    : items;
+
+  const hiddenCount = items.length - displayItems.length;
+  const groups = groupItems(displayItems);
 
   return (
     <div style={{ minHeight: "100dvh", background: S.bg }}>
@@ -178,9 +243,32 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
         display: "flex", alignItems: "center", justifyContent: "space-between",
         paddingTop: "max(12px, env(safe-area-inset-top))",
       }}>
-        <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em", color: S.text }}>
-          SitRep
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Calendar switcher trigger */}
+          <button
+            onClick={() => setDrawerOpen(true)}
+            title="My Calendars"
+            style={{
+              background: "none", border: "none", color: S.dim,
+              fontSize: 18, cursor: "pointer", padding: "4px 6px",
+              lineHeight: 1, display: "flex", alignItems: "center",
+            }}
+          >
+            ☰
+            {hiddenCount > 0 && (
+              <span style={{
+                marginLeft: 3, fontSize: 9, fontWeight: 700,
+                background: "var(--gg-primary,#2563eb)", color: "#fff",
+                borderRadius: 8, padding: "1px 5px",
+              }}>
+                {hiddenCount}
+              </span>
+            )}
+          </button>
+          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em", color: S.text }}>
+            SitRep
+          </span>
+        </div>
         <button
           onClick={openCreate}
           style={{
@@ -202,16 +290,18 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
       {/* Body */}
       <div>
         {loading && items.length === 0 && (
-          <div style={{ padding: 32, textAlign: "center", color: S.dim, fontSize: 14 }}>
-            Loading…
-          </div>
+          <div style={{ padding: 32, textAlign: "center", color: S.dim, fontSize: 14 }}>Loading…</div>
         )}
 
-        {!loading && items.length === 0 && (
+        {!loading && displayItems.length === 0 && (
           <div style={{ padding: "64px 24px", textAlign: "center", color: S.dim }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: S.text, marginBottom: 6 }}>Nothing here yet</div>
-            <div style={{ fontSize: 14 }}>Tap <strong>+ New</strong> to add something.</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: S.text, marginBottom: 6 }}>
+              {hiddenCount > 0 ? "All items filtered" : "Nothing here yet"}
+            </div>
+            <div style={{ fontSize: 14 }}>
+              {hiddenCount > 0 ? "Tap ☰ to adjust your calendar filters." : "Tap + New to add something."}
+            </div>
           </div>
         )}
 
@@ -262,12 +352,24 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
         })}
       </div>
 
+      <CalendarSwitcherDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        calendarTypes={calendarTypes}
+        visibleTypeIds={visibleTypeIds}
+        onToggleType={onToggleType}
+        onTypesChanged={reloadCalendarTypes}
+        sharedViews={sharedViews}
+        onSharedViewsLoaded={onSharedViewsLoaded}
+      />
+
       <ItemBottomSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         item={sheetItem}
         createMode={sheetCreate}
         types={initialTypes}
+        calendarTypes={calendarTypes}
         tenantId={tenantId}
         userId={userId}
         tz={tz}

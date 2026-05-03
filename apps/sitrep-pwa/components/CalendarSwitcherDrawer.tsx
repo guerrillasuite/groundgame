@@ -3,6 +3,10 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
+import type { CalendarTypeData, SharedViewData } from "@/lib/calendar-filter";
+
+// Re-export so consumers can import from one place
+export type { CalendarTypeData, SharedViewData };
 
 const S = {
   bg:     "rgb(15 19 28)",
@@ -11,36 +15,6 @@ const S = {
   dim:    "rgb(100 116 139)",
   dimBrt: "rgb(148 163 184)",
 } as const;
-
-export type CalendarTypeData = {
-  id:         string;
-  name:       string;
-  color:      string;
-  cal_type:   "work" | "family" | "personal" | "custom";
-  sources:    { type: string; tenant_id?: string }[];
-  sort_order: number;
-  user_calendar_views: {
-    id:         string;
-    name:       string;
-    color:      string | null;
-    is_default: boolean;
-    sort_order: number;
-  }[];
-};
-
-export type SharedViewData = {
-  share_id:      string;
-  role:          "viewer" | "editor";
-  view_id:       string;
-  view_name:     string;
-  view_color:    string | null;
-  type_id:       string;
-  type_name:     string;
-  type_color:    string;
-  type_sources:  { type: string; tenant_id?: string }[];
-  owner_user_id: string;
-  owner_name:    string;
-};
 
 function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
   return (

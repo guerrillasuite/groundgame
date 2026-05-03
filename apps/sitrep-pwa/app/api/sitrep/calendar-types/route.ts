@@ -32,11 +32,11 @@ async function seedFromTenants(sb: ReturnType<typeof makeAdminSb>, userId: strin
 
   const tenantMap = Object.fromEntries((tenants ?? []).map((t: any) => [t.id, t]));
 
-  const COLORS = ["blue", "violet", "teal", "amber", "indigo", "green"];
+  const COLORS = ["blue", "teal", "amber", "indigo", "green", "sky"];
   for (let i = 0; i < tenantIds.length; i++) {
     const tid    = tenantIds[i];
     const tenant = tenantMap[tid] as any;
-    const name   = tenant?.name ?? tenant?.slug ?? `Calendar ${i + 1}`;
+    const name   = tenant?.name ?? tenant?.slug ?? `Work ${i + 1}`;
     const color  = COLORS[i % COLORS.length];
 
     const { data: calType } = await sb
@@ -45,8 +45,8 @@ async function seedFromTenants(sb: ReturnType<typeof makeAdminSb>, userId: strin
         owner_user_id: userId,
         name,
         color,
-        cal_type:  i === 0 ? "work" : "custom",
-        sources:   [{ type: "tenant", tenant_id: tid }],
+        cal_type:   "work",
+        sources:    [{ type: "tenant", tenant_id: tid }],
         sort_order: i,
       })
       .select("id")
@@ -62,6 +62,31 @@ async function seedFromTenants(sb: ReturnType<typeof makeAdminSb>, userId: strin
         sort_order:       0,
       }).catch(() => {});
     }
+  }
+
+  // Always seed a Personal calendar
+  const { data: personalType } = await sb
+    .from("user_calendar_types")
+    .insert({
+      owner_user_id: userId,
+      name:          "Personal",
+      color:         "violet",
+      cal_type:      "personal",
+      sources:       [{ type: "personal" }],
+      sort_order:    tenantIds.length,
+    })
+    .select("id")
+    .single();
+
+  if (personalType) {
+    await sb.from("user_calendar_views").insert({
+      calendar_type_id: personalType.id,
+      owner_user_id:    userId,
+      name:             "Private",
+      filter_config:    {},
+      is_default:       true,
+      sort_order:       0,
+    }).catch(() => {});
   }
 }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import CalendarSwitcher, { type CalendarTypeData, type SharedViewData } from "./CalendarSwitcher";
+import { filterByVisibleCalendars, loadVisibleIds, saveVisibleIds } from "@/lib/sitrep-calendar-filter";
 import SitRepCalendar from "./SitRepCalendar";
 
 type SitRepItem = Parameters<typeof SitRepCalendar>[0]["initialItems"][number];
@@ -27,20 +28,22 @@ export default function CalendarLayout({
   tenantId:       string;
   sharedViews?:   SharedViewData[];
 }) {
-  // By default all calendar types AND shared views are visible
+  const allIds = [
+    ...calendarTypes.map((ct) => ct.id),
+    ...sharedViews.map((sv) => sv.view_id),
+  ];
+
   const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(
-    () => new Set([
-      ...calendarTypes.map((ct) => ct.id),
-      ...sharedViews.map((sv) => sv.view_id),
-    ])
+    () => loadVisibleIds(allIds)
   );
-  const [calTypes, setCalTypes]  = useState<CalendarTypeData[]>(calendarTypes);
+  const [calTypes, setCalTypes]   = useState<CalendarTypeData[]>(calendarTypes);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   function toggleType(typeId: string) {
     setVisibleTypeIds((prev) => {
       const next = new Set(prev);
       next.has(typeId) ? next.delete(typeId) : next.add(typeId);
+      saveVisibleIds([...calTypes.map((c) => c.id), ...sharedViews.map((s) => s.view_id)], next);
       return next;
     });
   }
@@ -48,36 +51,33 @@ export default function CalendarLayout({
   const refreshCalendarTypes = useCallback(async () => {
     const res = await fetch("/api/user/calendar-types");
     if (res.ok) {
-      const data = await res.json();
+      const data: CalendarTypeData[] = await res.json();
       setCalTypes(data);
-      // Re-apply visibility: keep existing visible, add any new ones
+      const newIds = data.map((ct) => ct.id);
       setVisibleTypeIds((prev) => {
-        const next = new Set(prev);
-        data.forEach((ct: CalendarTypeData) => { if (!prev.has(ct.id)) next.add(ct.id); });
-        return next;
+        const updated = loadVisibleIds([...newIds, ...sharedViews.map((s) => s.view_id)]);
+        return updated;
       });
     }
-  }, []);
+  }, [sharedViews]);
 
-  // Filter items based on visible calendar types.
-  // Work calendars show tenant items; personal show personal (owner_user_id, no tenant_id).
-  const visibleItems = initialItems.filter(() => {
-    // If any Work calendar type is visible, show all tenant items
-    const hasVisibleWork = calTypes
-      .filter((ct) => visibleTypeIds.has(ct.id))
-      .some((ct) => ct.sources.some((s) => s.type === "tenant" && s.tenant_id === tenantId));
+  // CRM shared view items arrive pre-tagged with _source_tenant_id.
+  // Convert to the shape filterByVisibleCalendars expects (type_sources).
+  const sharedViewsForFilter = sharedViews.map((sv) => ({
+    ...sv,
+    type_sources: (sv as any).type_sources ?? [],
+  }));
 
-    return hasVisibleWork;
+  // Cross-tenant items (_source_tenant_id set) show when the matching shared view is visible.
+  // Own-tenant items go through isItemInCalendar as normal.
+  const anySharedVisible = sharedViews.some((sv) => visibleTypeIds.has(sv.view_id));
+
+  const displayItems = initialItems.filter((item) => {
+    if ((item as any)._source_tenant_id) {
+      return anySharedVisible;
+    }
+    return filterByVisibleCalendars([item], calTypes as any, sharedViewsForFilter as any, visibleTypeIds, currentUserId).length > 0;
   });
-
-  // Show items when any work calendar OR any shared view is visible
-  const workVisible = calTypes
-    .filter((ct) => visibleTypeIds.has(ct.id))
-    .some((ct) => ct.sources.some((s) => s.type === "tenant"));
-
-  const sharedViewVisible = sharedViews.some((sv) => visibleTypeIds.has(sv.view_id));
-
-  const displayItems = (workVisible || sharedViewVisible) ? initialItems : [];
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "rgb(10 13 20)" }}>
