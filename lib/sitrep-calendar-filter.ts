@@ -107,7 +107,8 @@ export function isItemInCalendar(item: ItemLike, calType: CalendarTypeData, user
 
   const tid = effectiveTenantId(item);
   // Empty sources = unconfigured calendar; treat as "any tenant" so items don't vanish.
-  const inSource = sources.length === 0 || sources.some((s) => s.type === "tenant" && s.tenant_id === tid);
+  // No tid = item has no tenant_id on it (e.g. CRM items not fetched with tenant_id); skip source filter.
+  const inSource = sources.length === 0 || !tid || sources.some((s) => s.type === "tenant" && s.tenant_id === tid);
   if (!inSource) return false;
 
   if (item.visibility === "private") return false;

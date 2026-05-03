@@ -98,7 +98,8 @@ export function isItemInCalendar(item: ItemLike, calType: CalendarTypeData, user
 
   // work / family / custom: item must come from a source tenant.
   // Empty sources = unconfigured calendar; treat as "any tenant" so items don't vanish.
-  const inSource = sources.length === 0 || sources.some(
+  // No tenant_id on item = can't match sources; skip source filter so items don't vanish.
+  const inSource = sources.length === 0 || !item.tenant_id || sources.some(
     (s) => s.type === "tenant" && s.tenant_id === item.tenant_id
   );
   if (!inSource) return false;
