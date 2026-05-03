@@ -106,14 +106,14 @@ export function isItemInCalendar(item: ItemLike, calType: CalendarTypeData, user
   }
 
   const tid = effectiveTenantId(item);
-  const inSource = sources.some((s) => s.type === "tenant" && s.tenant_id === tid);
+  // Empty sources = unconfigured calendar; treat as "any tenant" so items don't vanish.
+  const inSource = sources.length === 0 || sources.some((s) => s.type === "tenant" && s.tenant_id === tid);
   if (!inSource) return false;
 
   if (item.visibility === "private") return false;
 
-  if (item.visibility === "team") {
-    return calType.cal_type === "custom" ? matchesFilterConfig(item, calType, userId) : true;
-  }
+  // Team items are visible to everyone — never filter by assignee
+  if (item.visibility === "team") return true;
 
   if (item.visibility === "assignee_only" || !item.visibility) {
     if (!isAssigned(item, userId)) return false;

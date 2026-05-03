@@ -96,8 +96,9 @@ export function isItemInCalendar(item: ItemLike, calType: CalendarTypeData, user
     return item.visibility === "private" && item.created_by === userId;
   }
 
-  // work / family / custom: item must come from a source tenant
-  const inSource = sources.some(
+  // work / family / custom: item must come from a source tenant.
+  // Empty sources = unconfigured calendar; treat as "any tenant" so items don't vanish.
+  const inSource = sources.length === 0 || sources.some(
     (s) => s.type === "tenant" && s.tenant_id === item.tenant_id
   );
   if (!inSource) return false;
@@ -105,9 +106,8 @@ export function isItemInCalendar(item: ItemLike, calType: CalendarTypeData, user
   // Private items never appear in work/custom calendars
   if (item.visibility === "private") return false;
 
-  if (item.visibility === "team") {
-    return calType.cal_type === "custom" ? matchesFilterConfig(item, calType, userId) : true;
-  }
+  // Team items are visible to everyone — never filter by assignee
+  if (item.visibility === "team") return true;
 
   if (item.visibility === "assignee_only" || !item.visibility) {
     if (!isAssigned(item, userId)) return false;
