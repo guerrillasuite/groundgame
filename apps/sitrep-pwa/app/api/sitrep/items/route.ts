@@ -13,6 +13,7 @@ const SELECT = `
   sitrep_assignments(user_id, role)
 `;
 
+// Service role, no tenant header — bypasses ALL RLS, queries across every tenant
 function makeAdminSb() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,49 +21,57 @@ function makeAdminSb() {
   );
 }
 
+// PostgREST has a URL-length limit on large .in() arrays — chunk to stay safe
+async function fetchItemsByIds(sb: ReturnType<typeof makeAdminSb>, ids: string[]): Promise<any[]> {
+  const CHUNK = 150;
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      sb.from("sitrep_items").select(SELECT).in("id", chunk).limit(CHUNK)
+    )
+  );
+  return results.flatMap((r) => r.data ?? []);
+}
+
 // GET /api/sitrep/items
-// Queries each of the user's tenants with the proper tenant header (same pattern as the
-// main SitRep), then filters in-memory to items created by or assigned to this user.
+// SitRep is NOT tenant-scoped. Returns every item this user is assigned to
+// OR created, across ALL tenants. The user's assignment relationship is the
+// only filter — tenant membership is irrelevant.
 export async function GET(_req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // All tenants this user belongs to
-  const { data: memberships, error: mbErr } = await makeAdminSb()
-    .from("user_tenants")
-    .select("tenant_id")
-    .eq("user_id", user.userId)
-    .in("status", ["active", "invited"]);
+  const sb = makeAdminSb();
 
-  if (mbErr) return NextResponse.json({ error: mbErr.message }, { status: 500 });
+  // Every item this user is explicitly assigned to, across all tenants
+  const { data: assignments, error: aErr } = await sb
+    .from("sitrep_assignments")
+    .select("item_id")
+    .eq("user_id", user.userId);
 
-  const tenantIds = (memberships ?? []).map((m: any) => m.tenant_id as string);
-  if (!tenantIds.length) return NextResponse.json([]);
+  if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 });
 
-  // Query each tenant separately with the proper X-Tenant-Id header — exactly
-  // how the main SitRep does it. Parallel fetch across all tenants.
-  const results = await Promise.all(
-    tenantIds.map((tid) =>
-      makeServiceSb(tid)
-        .from("sitrep_items")
-        .select(SELECT)
-        .eq("tenant_id", tid)
-        .order("due_date", { ascending: true, nullsFirst: false })
-        .order("start_at", { ascending: true, nullsFirst: false })
-        .limit(500)
-    )
-  );
+  const assignedIds = [...new Set((assignments ?? []).map((a: any) => a.item_id as string))];
 
-  // Merge, dedup, filter to items where user is creator or assignee
+  // Parallel: fetch assigned items (chunked) + items created by this user
+  const [assignedItems, createdRes] = await Promise.all([
+    assignedIds.length > 0
+      ? fetchItemsByIds(sb, assignedIds)
+      : Promise.resolve([] as any[]),
+    sb
+      .from("sitrep_items")
+      .select(SELECT)
+      .eq("created_by", user.userId)
+      .limit(500),
+  ]);
+
+  // Merge and dedup
   const seen = new Set<string>();
   const items: any[] = [];
-  for (const { data } of results) {
-    for (const item of (data ?? [])) {
-      if (seen.has(item.id)) continue;
-      const isCreator  = item.created_by === user.userId;
-      const isAssigned = (item.sitrep_assignments ?? []).some((a: any) => a.user_id === user.userId);
-      if (!isCreator && !isAssigned) continue;
-      if (item.visibility === "private" && !isCreator) continue;
+  for (const item of [...assignedItems, ...(createdRes.data ?? [])]) {
+    if (!seen.has(item.id)) {
       seen.add(item.id);
       items.push(item);
     }

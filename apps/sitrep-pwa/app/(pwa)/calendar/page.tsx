@@ -9,33 +9,34 @@ export const dynamic = "force-dynamic";
 
 const CAL_SELECT = "id, tenant_id, item_type, title, status, priority, due_date, start_at, end_at, is_all_day, visibility, created_by, sitrep_assignments(user_id, role)";
 
-function makeRawSb() {
+// Service role, no tenant header — bypasses ALL RLS
+function makeAdminSb() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 }
 
+async function fetchCalItemsByIds(sb: ReturnType<typeof makeAdminSb>, ids: string[]): Promise<any[]> {
+  const CHUNK = 150;
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+  const results = await Promise.all(
+    chunks.map((chunk) => sb.from("sitrep_items").select(CAL_SELECT).in("id", chunk).limit(CHUNK))
+  );
+  return results.flatMap((r) => r.data ?? []);
+}
+
 export default async function CalendarPage() {
   const user = await getCrmUser();
   if (!user) redirect("/login");
 
-  const sb = makeRawSb();
+  const sb = makeAdminSb();
 
-  // All tenants this user belongs to
-  const { data: memberships } = await sb
-    .from("user_tenants")
-    .select("tenant_id")
-    .eq("user_id", user.userId)
-    .in("status", ["active", "invited"]);
+  // Get primary tenant only for fetching types + creating new items
+  const tenant = await getTenant(user.userId);
 
-  const tenantIds = (memberships ?? []).map((m: any) => m.tenant_id as string);
-
-  // Primary tenant (for creating new items + fetching types)
-  const primaryTenantId = tenantIds[0] ?? null;
-  if (!primaryTenantId) redirect("/login");
-
-  // All item IDs this user is assigned to
+  // All item IDs this user is assigned to across ALL tenants (no tenant filter)
   const { data: assignments } = await sb
     .from("sitrep_assignments")
     .select("item_id")
@@ -43,35 +44,30 @@ export default async function CalendarPage() {
 
   const assignedIds = [...new Set((assignments ?? []).map((a: any) => a.item_id as string))];
 
-  // Fetch items across all tenants: created by me OR assigned to me
-  const [createdRes, assignedRes, typesRes] = await Promise.all([
+  const [assignedItems, createdRes, typesRes] = await Promise.all([
+    // All items assigned to this user — no tenant scope
+    fetchCalItemsByIds(sb, assignedIds),
+
+    // All items created by this user — no tenant scope
     sb.from("sitrep_items")
       .select(CAL_SELECT)
-      .in("tenant_id", tenantIds)
       .eq("created_by", user.userId)
-      .order("start_at", { ascending: true, nullsFirst: false })
-      .limit(1000),
+      .limit(500),
 
-    assignedIds.length > 0
-      ? sb.from("sitrep_items")
-          .select(CAL_SELECT)
-          .in("tenant_id", tenantIds)
-          .in("id", assignedIds.slice(0, 500))
-          .order("start_at", { ascending: true, nullsFirst: false })
-          .limit(1000)
+    // Types from primary tenant (for display only)
+    tenant
+      ? makeServiceSb(tenant.id)
+          .from("sitrep_item_types")
+          .select("id, name, slug, color, sort_order")
+          .eq("tenant_id", tenant.id)
+          .order("sort_order")
       : Promise.resolve({ data: [] as any[], error: null }),
-
-    makeServiceSb(primaryTenantId)
-      .from("sitrep_item_types")
-      .select("id, name, slug, color, sort_order")
-      .eq("tenant_id", primaryTenantId)
-      .order("sort_order"),
   ]);
 
   // Merge and dedup
   const seen = new Set<string>();
   const allItems: any[] = [];
-  for (const item of [...(createdRes.data ?? []), ...(assignedRes.data ?? [])]) {
+  for (const item of [...assignedItems, ...(createdRes.data ?? [])]) {
     if (!seen.has(item.id)) {
       seen.add(item.id);
       allItems.push(item);
@@ -84,7 +80,7 @@ export default async function CalendarPage() {
         initialItems={allItems}
         types={typesRes.data ?? []}
         userId={user.userId}
-        tenantId={primaryTenantId}
+        tenantId={tenant?.id ?? ""}
       />
     </Suspense>
   );
