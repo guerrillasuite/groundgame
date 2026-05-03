@@ -13,7 +13,7 @@ const SELECT = `
   sitrep_assignments(user_id, role)
 `;
 
-function makeRawSb() {
+function makeAdminSb() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -21,64 +21,54 @@ function makeRawSb() {
 }
 
 // GET /api/sitrep/items
-// Returns all items assigned to or created by the authenticated user,
-// across every tenant they belong to.
+// Queries each of the user's tenants with the proper tenant header (same pattern as the
+// main SitRep), then filters in-memory to items created by or assigned to this user.
 export async function GET(_req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const sb = makeRawSb();
-
-  // All tenants this user is a member of
-  const { data: memberships } = await sb
+  // All tenants this user belongs to
+  const { data: memberships, error: mbErr } = await makeAdminSb()
     .from("user_tenants")
     .select("tenant_id")
     .eq("user_id", user.userId)
     .in("status", ["active", "invited"]);
 
+  if (mbErr) return NextResponse.json({ error: mbErr.message }, { status: 500 });
+
   const tenantIds = (memberships ?? []).map((m: any) => m.tenant_id as string);
   if (!tenantIds.length) return NextResponse.json([]);
 
-  // All item IDs this user is explicitly assigned to
-  const { data: assignments } = await sb
-    .from("sitrep_assignments")
-    .select("item_id")
-    .eq("user_id", user.userId);
+  // Query each tenant separately with the proper X-Tenant-Id header — exactly
+  // how the main SitRep does it. Parallel fetch across all tenants.
+  const results = await Promise.all(
+    tenantIds.map((tid) =>
+      makeServiceSb(tid)
+        .from("sitrep_items")
+        .select(SELECT)
+        .eq("tenant_id", tid)
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .order("start_at", { ascending: true, nullsFirst: false })
+        .limit(500)
+    )
+  );
 
-  const assignedIds = [...new Set((assignments ?? []).map((a: any) => a.item_id as string))];
-
-  // Two parallel queries to avoid large .or() URL limits
-  const [createdRes, assignedRes] = await Promise.all([
-    // Items created by this user across all their tenants
-    sb.from("sitrep_items")
-      .select(SELECT)
-      .in("tenant_id", tenantIds)
-      .eq("created_by", user.userId)
-      .limit(500),
-
-    // Items assigned to this user (cap at 500 IDs to stay within URL limits)
-    assignedIds.length > 0
-      ? sb.from("sitrep_items")
-          .select(SELECT)
-          .in("tenant_id", tenantIds)
-          .in("id", assignedIds.slice(0, 500))
-          .limit(500)
-      : Promise.resolve({ data: [] as any[], error: null }),
-  ]);
-
-  if (createdRes.error) return NextResponse.json({ error: createdRes.error.message }, { status: 500 });
-
-  // Merge and dedup by id
+  // Merge, dedup, filter to items where user is creator or assignee
   const seen = new Set<string>();
   const items: any[] = [];
-  for (const item of [...(createdRes.data ?? []), ...(assignedRes.data ?? [])]) {
-    if (!seen.has(item.id)) {
+  for (const { data } of results) {
+    for (const item of (data ?? [])) {
+      if (seen.has(item.id)) continue;
+      const isCreator  = item.created_by === user.userId;
+      const isAssigned = (item.sitrep_assignments ?? []).some((a: any) => a.user_id === user.userId);
+      if (!isCreator && !isAssigned) continue;
+      if (item.visibility === "private" && !isCreator) continue;
       seen.add(item.id);
       items.push(item);
     }
   }
 
-  // Sort by effective date ascending, nulls last
+  // Sort by effective date, nulls last
   items.sort((a, b) => {
     const da = a.due_date ?? a.start_at;
     const db = b.due_date ?? b.start_at;
@@ -123,7 +113,6 @@ export async function POST(req: NextRequest) {
 
   if (error || !item) return NextResponse.json({ error: error?.message ?? "Failed" }, { status: 500 });
 
-  // Auto-assign creator
   await sb.from("sitrep_assignments").insert({
     item_id: (item as any).id,
     user_id: user.userId,
