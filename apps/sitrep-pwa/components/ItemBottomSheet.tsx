@@ -178,7 +178,10 @@ export default function ItemBottomSheet({
         result = await res.json();
       }
       onSaved(result);
-    } catch { /* ignore */ }
+    } catch {
+      // On any error still close the form so the user isn't stuck
+      onClose();
+    }
     setSaving(false);
   }
 

@@ -258,21 +258,25 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
+  // Sync visibleTypeIds from localStorage whenever the set of known IDs changes
+  useEffect(() => {
+    const ids = allTypeIds(calendarTypes, sharedViews);
+    if (ids.length === 0) return;
+    setVisibleTypeIds(loadVisibleIds(ids));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendarTypes, sharedViews]);
+
   function reloadCalendarTypes() {
     fetch("/api/sitrep/calendar-types")
       .then((r) => (r.ok ? r.json() : []))
       .then((data: CalendarTypeData[]) => {
         setCalendarTypes(data);
-        const ids = allTypeIds(data, sharedViews);
-        setVisibleTypeIds(loadVisibleIds(ids));
       })
       .catch(() => {});
   }
 
   function onSharedViewsLoaded(views: SharedViewData[]) {
     setSharedViews(views);
-    const ids = allTypeIds(calendarTypes, views);
-    setVisibleTypeIds(loadVisibleIds(ids));
     if (views.length === 0) return;
     fetch("/api/sitrep/calendar-views/shared/items")
       .then((r) => (r.ok ? r.json() : []))

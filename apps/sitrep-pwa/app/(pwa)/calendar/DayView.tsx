@@ -210,7 +210,7 @@ export default function DayView({ items, types, cursor, tz, onCursorChange, onIt
             <div style={{
               position: "absolute",
               top: nowTop,
-              left: 44,
+              left: 52,
               right: 0,
               height: 2,
               background: "var(--gg-primary,#2563eb)",
@@ -234,8 +234,9 @@ export default function DayView({ items, types, cursor, tz, onCursorChange, onIt
             const t = typeMap[item.item_type];
             const family = getFamilyByKey(t?.color ?? "blue");
             const accent = family?.shades[2] ?? "#3b82f6";
-            const colW   = `calc((100% - 4px) / ${cols})`;
-            const left   = `calc(${col} * (100% - 4px) / ${cols})`;
+            // 52px = time label column width; events must not overlap it
+            const colW   = `calc((100% - 52px - 4px) / ${cols})`;
+            const left   = `calc(52px + ${col} * (100% - 52px - 4px) / ${cols})`;
             const startStr = (item as any).start_at ?? item.due_date!;
             return (
               <button

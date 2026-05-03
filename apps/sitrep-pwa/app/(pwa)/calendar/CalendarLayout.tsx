@@ -104,30 +104,25 @@ export default function CalendarLayout({
     return [...types.map((t) => t.id), ...views.map((v) => v.view_id)];
   }
 
+  // Sync visibleTypeIds from localStorage whenever the set of known IDs changes
+  useEffect(() => {
+    const ids = allTypeIds(calendarTypes, sharedViews);
+    if (ids.length === 0) return;
+    setVisibleTypeIds(loadVisibleIds(ids));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendarTypes, sharedViews]);
+
   function reloadCalendarTypes() {
     fetch("/api/sitrep/calendar-types")
       .then((r) => r.ok ? r.json() : [])
       .then((data: CalendarTypeData[]) => {
         setCalendarTypes(data);
-        setVisibleTypeIds((prev) => {
-          const ids = allTypeIds(data, sharedViews);
-          const hidden = ids.filter((id) => !prev.has(id) && prev.size > 0);
-          // Preserve existing hidden state; new IDs default visible
-          const next = loadVisibleIds(ids);
-          saveVisibleIds(ids, next);
-          return next;
-        });
       })
       .catch(() => {});
   }
 
   function onSharedViewsLoaded(views: SharedViewData[]) {
     setSharedViews(views);
-    setVisibleTypeIds((prev) => {
-      const ids = allTypeIds(calendarTypes, views);
-      const next = loadVisibleIds(ids);
-      return next;
-    });
 
     if (views.length === 0) return;
 

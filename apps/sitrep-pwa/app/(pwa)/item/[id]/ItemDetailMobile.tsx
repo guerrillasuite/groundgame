@@ -35,8 +35,8 @@ type SitRepItemFull = {
   id: string; item_type: string; title: string; description: string | null;
   location: string | null; status: string; priority: string | null;
   due_date: string | null; start_at: string | null; end_at: string | null;
-  is_all_day: boolean | null; agenda: string | null; meeting_notes: string | null;
-  visibility: string; created_by: string; created_at: string; updated_at: string;
+  is_all_day: boolean | null;
+  visibility: string; created_by: string; created_at: string; updated_at?: string;
   sitrep_assignments: { user_id: string; role: string }[];
   sitrep_comments: { id: string; body: string; author_id: string; created_at: string }[];
   sitrep_activity: { id: string; event_type: string; old_value: string | null; new_value: string | null; actor_id: string; created_at: string }[];

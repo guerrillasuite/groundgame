@@ -20,18 +20,22 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     .from("sitrep_items")
     .select(`
       id, item_type, title, description, location, status, priority,
-      due_date, start_at, end_at, is_all_day, agenda, meeting_notes,
+      due_date, start_at, end_at, is_all_day,
       mission_id, parent_item_id, depth,
       visibility, created_by, created_at, updated_at,
-      sitrep_assignments(user_id, role),
-      sitrep_comments(id, body, author_id, created_at),
-      sitrep_activity(id, event_type, old_value, new_value, actor_id, created_at)
+      sitrep_assignments(user_id, role)
     `)
     .eq("id", id)
     .eq("tenant_id", tenant.id)
     .single();
 
   if (error || !item) redirect("/list");
+
+  // Fetch comments and activity separately so a missing table doesn't break the page
+  const [{ data: rawComments }, { data: rawActivity }] = await Promise.all([
+    sb.from("sitrep_comments").select("id, body, author_id, created_at").eq("item_id", id).order("created_at"),
+    sb.from("sitrep_activity").select("id, event_type, old_value, new_value, actor_id, created_at").eq("item_id", id).order("created_at"),
+  ]);
 
   const i = item as any;
   if (i.visibility === "private" && i.created_by !== user.userId) redirect("/list");
@@ -53,7 +57,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <ItemDetailMobile
-      item={i}
+      item={{ ...i, sitrep_comments: rawComments ?? [], sitrep_activity: rawActivity ?? [] }}
       children={children ?? []}
       types={types ?? []}
       userId={user.userId}
