@@ -16,50 +16,52 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
   const sb = makeServiceSb(tenant.id);
 
+  // Use select("*") so the page never breaks from schema additions/removals.
+  // Related tables are fetched separately with independent error handling.
   const { data: item, error } = await sb
     .from("sitrep_items")
-    .select(`
-      id, item_type, title, description, location, status, priority,
-      due_date, start_at, end_at, is_all_day,
-      mission_id, parent_item_id, depth,
-      visibility, created_by, created_at, updated_at,
-      sitrep_assignments(user_id, role)
-    `)
+    .select("*")
     .eq("id", id)
     .eq("tenant_id", tenant.id)
     .single();
 
   if (error || !item) redirect("/list");
 
-  // Fetch comments and activity separately so a missing table doesn't break the page
-  const [{ data: rawComments }, { data: rawActivity }] = await Promise.all([
+  // Fetch relations separately — each is silently ignored if the table doesn't exist yet
+  const [assignmentsRes, commentsRes, activityRes] = await Promise.allSettled([
+    sb.from("sitrep_assignments").select("user_id, role").eq("item_id", id),
     sb.from("sitrep_comments").select("id, body, author_id, created_at").eq("item_id", id).order("created_at"),
     sb.from("sitrep_activity").select("id, event_type, old_value, new_value, actor_id, created_at").eq("item_id", id).order("created_at"),
   ]);
 
+  const rawAssignments = assignmentsRes.status === "fulfilled" ? (assignmentsRes.value.data ?? []) : [];
+  const rawComments    = commentsRes.status    === "fulfilled" ? (commentsRes.value.data    ?? []) : [];
+  const rawActivity    = activityRes.status    === "fulfilled" ? (activityRes.value.data    ?? []) : [];
+
   const i = item as any;
   if (i.visibility === "private" && i.created_by !== user.userId) redirect("/list");
 
-  // Child items
-  const { data: children } = await sb
-    .from("sitrep_items")
-    .select("id, title, item_type, status, due_date, start_at, priority")
-    .eq("parent_item_id", id)
-    .eq("tenant_id", tenant.id)
-    .order("due_date", { ascending: true, nullsFirst: false });
+  // Child items and types — also wrapped defensively
+  const [childrenRes, typesRes] = await Promise.allSettled([
+    sb.from("sitrep_items")
+      .select("id, title, item_type, status, due_date, start_at, priority")
+      .eq("parent_item_id", id)
+      .eq("tenant_id", tenant.id)
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    sb.from("sitrep_item_types")
+      .select("id, name, slug, color, sort_order")
+      .eq("tenant_id", tenant.id)
+      .order("sort_order"),
+  ]);
 
-  // Types for color
-  const { data: types } = await sb
-    .from("sitrep_item_types")
-    .select("id, name, slug, color, sort_order")
-    .eq("tenant_id", tenant.id)
-    .order("sort_order");
+  const children = childrenRes.status === "fulfilled" ? (childrenRes.value.data ?? []) : [];
+  const types    = typesRes.status    === "fulfilled" ? (typesRes.value.data    ?? []) : [];
 
   return (
     <ItemDetailMobile
-      item={{ ...i, sitrep_comments: rawComments ?? [], sitrep_activity: rawActivity ?? [] }}
-      children={children ?? []}
-      types={types ?? []}
+      item={{ ...i, sitrep_assignments: rawAssignments, sitrep_comments: rawComments, sitrep_activity: rawActivity }}
+      children={children}
+      types={types}
       userId={user.userId}
       tenantId={tenant.id}
     />

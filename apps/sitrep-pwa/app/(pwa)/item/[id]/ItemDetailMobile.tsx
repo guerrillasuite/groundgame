@@ -31,15 +31,17 @@ function focusOut(e: React.FocusEvent<HTMLElement>) {
   (e.currentTarget as HTMLElement).style.boxShadow   = "none";
 }
 
-type SitRepItemFull = {
-  id: string; item_type: string; title: string; description: string | null;
-  location: string | null; status: string; priority: string | null;
-  due_date: string | null; start_at: string | null; end_at: string | null;
-  is_all_day: boolean | null;
-  visibility: string; created_by: string; created_at: string; updated_at?: string;
-  sitrep_assignments: { user_id: string; role: string }[];
-  sitrep_comments: { id: string; body: string; author_id: string; created_at: string }[];
-  sitrep_activity: { id: string; event_type: string; old_value: string | null; new_value: string | null; actor_id: string; created_at: string }[];
+// Loose type — select("*") returns any columns the DB has now or later
+type SitRepItemFull = Record<string, any> & {
+  id: string;
+  item_type: string;
+  title: string;
+  status: string;
+  visibility?: string;
+  created_by?: string;
+  sitrep_assignments?: { user_id: string; role: string }[];
+  sitrep_comments?: { id: string; body: string; author_id: string; created_at: string }[];
+  sitrep_activity?: { id: string; event_type: string; old_value: string | null; new_value: string | null; actor_id: string; created_at: string }[];
 };
 
 type ItemType = { id: string; name: string; slug: string; color: string };
@@ -87,16 +89,16 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
   const router = useRouter();
   const [tz, setTz]           = useState("UTC");
   const [item, setItem]       = useState(initialItem);
-  const [title, setTitle]     = useState(initialItem.title);
+  const [title, setTitle]     = useState(initialItem.title ?? "");
   const [desc, setDesc]       = useState(initialItem.description ?? "");
   const [dueDateLocal, setDueDateLocal] = useState(
-    initialItem.due_date ? utcToDatetimeLocal(initialItem.due_date) : ""
+    (initialItem.due_date ?? initialItem.start_at) ? utcToDatetimeLocal(initialItem.due_date ?? initialItem.start_at) : ""
   );
   const [location, setLocation] = useState(initialItem.location ?? "");
   const [saving, setSaving]   = useState(false);
   const [comment, setComment] = useState("");
   const [posting, setPosting] = useState(false);
-  const [comments, setComments] = useState(initialItem.sitrep_comments ?? []);
+  const [comments, setComments] = useState<any[]>(initialItem.sitrep_comments ?? []);
   const [delConfirm, setDelConfirm] = useState(false);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
 
@@ -158,7 +160,7 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
 
   const isOverdue = (() => {
     if (item.status === "done" || item.status === "cancelled") return false;
-    const ed = effectiveDate(item);
+    const ed = effectiveDate(item as any);
     if (!ed) return false;
     const ds = ed.includes("T") ? localDateStr(ed) : ed;
     return ds < todayStr();
