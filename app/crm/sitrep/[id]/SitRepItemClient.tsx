@@ -4,6 +4,35 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+type CalSource = { type: string; tenant_id?: string };
+type CalType   = { id: string; name: string; color: string; cal_type: "work"|"family"|"personal"|"custom"; sources: CalSource[] };
+
+const CAL_DOT: Record<string, string> = {
+  blue: "#3b82f6", violet: "#8b5cf6", green: "#22c55e", teal: "#10b981",
+  amber: "#f59e0b", red: "#ef4444", orange: "#f97316", cyan: "#06b6d4",
+  indigo: "#6366f1", rose: "#f43f5e", lime: "#84cc16", slate: "#94a3b8",
+};
+
+function calDot(color: string) { return CAL_DOT[color] ?? "#818cf8"; }
+
+function calVisibility(ct: CalType): string {
+  if (ct.cal_type === "personal") return "private";
+  if (ct.cal_type === "work" || ct.cal_type === "family") return "team";
+  return "assignee_only";
+}
+
+function guessCalId(calTypes: CalType[], tenantId: string, visibility: string): string {
+  if (visibility === "private") {
+    const p = calTypes.find((c) => c.cal_type === "personal");
+    if (p) return p.id;
+  }
+  const byTenant = calTypes.find((c) =>
+    (c.sources ?? []).some((s) => s.type === "tenant" && s.tenant_id === tenantId)
+  );
+  if (byTenant) return byTenant.id;
+  return calTypes[0]?.id ?? "";
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type Assignment = { user_id: string; role: string };
@@ -202,6 +231,9 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
 
   // ── UI state ───────────────────────────────────────────────────────────────
 
+  const [calTypes,  setCalTypes]  = useState<CalType[]>([]);
+  const [calTypeId, setCalTypeId] = useState("");
+
   const [saveState,        setSaveState]        = useState<SaveState>("idle");
   const [showAddUser,      setShowAddUser]       = useState(false);
   const [deleting,         setDeleting]          = useState(false);
@@ -231,6 +263,18 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
 
   const saveTimer  = useRef<ReturnType<typeof setTimeout>|null>(null);
   const addUserRef = useRef<HTMLDivElement>(null);
+
+  // fetch calendar types for the picker
+  useEffect(() => {
+    fetch("/api/user/calendar-types")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: CalType[]) => {
+        setCalTypes(data);
+        setCalTypeId(guessCalId(data, item.tenant_id ?? "", item.visibility));
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // fetch secondary data
   useEffect(() => {
@@ -634,6 +678,41 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
                     {/^https?:\/\//i.test(locationAddr.trim()) ? "🔗" : "📍"}
                   </a>
                 )}
+              </div>
+            ),
+          },
+          calTypes.length > 0 && {
+            label: "Calendar",
+            content: (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {calTypes.map((ct) => {
+                  const dot    = calDot(ct.color);
+                  const active = calTypeId === ct.id;
+                  return (
+                    <button
+                      key={ct.id}
+                      type="button"
+                      onClick={() => {
+                        const newVis = calVisibility(ct);
+                        setCalTypeId(ct.id);
+                        setVisibility(newVis);
+                        patchNow({ visibility: newVis });
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                        cursor: "pointer", transition: "all .12s",
+                        border: active ? `1px solid ${dot}55` : "1px solid rgba(255,255,255,.09)",
+                        background: active ? `${dot}22` : "rgba(255,255,255,.04)",
+                        color: active ? "rgb(148 163 184)" : "rgb(100 116 139)",
+                        boxShadow: active ? `0 0 8px ${dot}20` : "none",
+                      }}
+                    >
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                      {ct.name}
+                    </button>
+                  );
+                })}
               </div>
             ),
           },

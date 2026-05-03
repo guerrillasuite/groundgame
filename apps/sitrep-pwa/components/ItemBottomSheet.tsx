@@ -59,6 +59,24 @@ function defaultCalTypeId(calendarTypes?: CalendarTypeData[]): string {
   return ct?.id ?? "";
 }
 
+function guessCalTypeId(
+  calendarTypes?: CalendarTypeData[],
+  item?: { tenant_id?: string; visibility?: string } | null,
+): string {
+  if (!calendarTypes?.length) return "";
+  if (item?.visibility === "private") {
+    const personal = calendarTypes.find((c) => c.cal_type === "personal");
+    if (personal) return personal.id;
+  }
+  if (item?.tenant_id) {
+    const match = calendarTypes.find((c) =>
+      (c.sources ?? []).some((s) => s.type === "tenant" && s.tenant_id === item.tenant_id)
+    );
+    if (match) return match.id;
+  }
+  return defaultCalTypeId(calendarTypes);
+}
+
 function calPayload(
   calendarTypes: CalendarTypeData[] | undefined,
   selectedId: string,
@@ -101,6 +119,7 @@ export default function ItemBottomSheet({
     } else if (item) {
       setTitle(item.title);
       setTypeSlug(item.item_type);
+      setSelectedCalId(guessCalTypeId(calendarTypes, item as any));
       // Convert stored UTC ISO to local datetime-local input value
       const stored = item.due_date ?? (item as any).start_at ?? null;
       setDueDateLocal(stored ? utcToDatetimeLocal(stored) : "");
@@ -125,7 +144,9 @@ export default function ItemBottomSheet({
     // Convert local datetime-local value → UTC ISO for storage
     const dueDateUtc = dueDateLocal ? localToUtcIso(dueDateLocal) : null;
 
-    const cal = createMode ? calPayload(calendarTypes, selectedCalId, tenantId) : null;
+    const cal = calendarTypes?.length && selectedCalId
+      ? calPayload(calendarTypes, selectedCalId, tenantId)
+      : null;
 
     const payload = {
       title:      title.trim(),
@@ -208,8 +229,8 @@ export default function ItemBottomSheet({
           </button>
         </div>
 
-        {/* Calendar picker — create mode only */}
-        {createMode && calendarTypes && calendarTypes.length > 0 && (
+        {/* Calendar picker */}
+        {calendarTypes && calendarTypes.length > 0 && (
           <div style={{ overflowX: "auto", display: "flex", gap: 6, paddingBottom: 2, scrollbarWidth: "none" }}>
             {calendarTypes.map((ct) => {
               const dot = getFamilyByKey(ct.color)?.shades[3] ?? "#818cf8";
