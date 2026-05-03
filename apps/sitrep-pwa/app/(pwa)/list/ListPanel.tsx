@@ -2,21 +2,26 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import ListRow, { SitRepItem } from "./ListRow";
+import ListRow, { SitRepItem, isItemOverdue } from "./ListRow";
 import ItemBottomSheet from "@/components/ItemBottomSheet";
 import RescheduleSheet from "@/components/RescheduleSheet";
 import CalendarSwitcherDrawer from "@/components/CalendarSwitcherDrawer";
 import { todayStr, addDays, localDateStr, effectiveDate } from "@/lib/date-utils";
 import {
-  filterByVisibleCalendars, loadVisibleIds, saveVisibleIds,
-  type CalendarTypeData, type SharedViewData,
+  filterByVisibleCalendars,
+  loadVisibleIds,
+  saveVisibleIds,
+  type CalendarTypeData,
+  type SharedViewData,
 } from "@/lib/calendar-filter";
 
 const S = {
-  bg:     "rgb(10 13 20)",
-  text:   "rgb(236 240 245)",
-  dim:    "rgb(100 116 139)",
-  border: "rgba(255,255,255,.07)",
+  bg:        "rgb(10 13 20)",
+  surface:   "rgb(14 18 28)",
+  text:      "rgb(236 240 245)",
+  dim:       "rgb(100 116 139)",
+  dimBright: "rgb(148 163 184)",
+  border:    "rgba(255,255,255,.07)",
 } as const;
 
 type ItemType = { id: string; name: string; slug: string; color: string; sort_order: number };
@@ -30,15 +35,15 @@ interface ListPanelProps {
 type Group = {
   key: string;
   label: string;
-  color?: string;
+  color: string;
   items: SitRepItem[];
-  defaultCollapsed?: boolean;
 };
 
 function groupItems(items: SitRepItem[]): Group[] {
   const today    = todayStr();
   const tomorrow = addDays(today, 1);
   const weekEnd  = addDays(today, 7);
+  const muted    = S.dim;
 
   const buckets: Record<string, SitRepItem[]> = {
     overdue: [], today: [], tomorrow: [], week: [],
@@ -58,17 +63,138 @@ function groupItems(items: SitRepItem[]): Group[] {
     buckets.later.push(item);
   }
 
-  const muted = S.dim;
   const result: Group[] = [];
-  if (buckets.overdue.length)   result.push({ key: "overdue",   label: "Overdue",   color: "#ef4444",           items: buckets.overdue });
-  if (buckets.today.length)     result.push({ key: "today",     label: "Today",     color: "rgb(245 158 11)",   items: buckets.today });
-  if (buckets.tomorrow.length)  result.push({ key: "tomorrow",  label: "Tomorrow",  color: muted,               items: buckets.tomorrow });
-  if (buckets.week.length)      result.push({ key: "week",      label: "This Week", color: muted,               items: buckets.week });
-  if (buckets.later.length)     result.push({ key: "later",     label: "Later",     color: muted,               items: buckets.later });
-  if (buckets.nodate.length)    result.push({ key: "nodate",    label: "No Date",   color: muted,               items: buckets.nodate });
-  if (buckets.done.length)      result.push({ key: "done",      label: "Done",      color: "rgb(34 197 94)",    items: buckets.done,      defaultCollapsed: true });
-  if (buckets.cancelled.length) result.push({ key: "cancelled", label: "Cancelled", color: muted,               items: buckets.cancelled, defaultCollapsed: true });
+  if (buckets.overdue.length)   result.push({ key: "overdue",   label: "Overdue",   color: "rgb(239 68 68)",  items: buckets.overdue });
+  if (buckets.today.length)     result.push({ key: "today",     label: "Today",     color: "rgb(245 158 11)", items: buckets.today });
+  if (buckets.tomorrow.length)  result.push({ key: "tomorrow",  label: "Tomorrow",  color: muted,             items: buckets.tomorrow });
+  if (buckets.week.length)      result.push({ key: "week",      label: "This Week", color: muted,             items: buckets.week });
+  if (buckets.later.length)     result.push({ key: "later",     label: "Later",     color: muted,             items: buckets.later });
+  if (buckets.nodate.length)    result.push({ key: "nodate",    label: "No Date",   color: muted,             items: buckets.nodate });
+  if (buckets.done.length)      result.push({ key: "done",      label: "Done",      color: "rgb(34 197 94)",  items: buckets.done });
+  if (buckets.cancelled.length) result.push({ key: "cancelled", label: "Cancelled", color: muted,             items: buckets.cancelled });
   return result;
+}
+
+function FilterPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        padding: "5px 13px",
+        borderRadius: 20,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+        transition: "transform .12s ease, box-shadow .12s ease",
+        transform: !active && hovered ? "translateY(-1px)" : "",
+        border: active
+          ? "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)"
+          : "1px solid rgba(255,255,255,.07)",
+        background: active
+          ? "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)"
+          : "rgba(255,255,255,.03)",
+        color: active
+          ? "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)"
+          : S.dim,
+        boxShadow: active
+          ? "0 0 12px color-mix(in srgb, var(--gg-primary, #2563eb) 22%, transparent), 0 2px 6px rgba(0,0,0,.22)"
+          : hovered
+            ? "0 4px 12px rgba(0,0,0,.32)"
+            : "0 1px 4px rgba(0,0,0,.18)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SearchBar({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "9px 12px",
+        background: "rgba(255,255,255,.04)",
+        border: focused
+          ? "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 55%, transparent)"
+          : "1px solid rgba(255,255,255,.09)",
+        borderRadius: 12,
+        transition: "border-color .15s, box-shadow .15s",
+        boxShadow: focused
+          ? "0 0 0 3px color-mix(in srgb, var(--gg-primary,#2563eb) 14%, transparent)"
+          : "0 2px 8px rgba(0,0,0,.2)",
+      }}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={S.dim}
+        strokeWidth="2"
+        strokeLinecap="round"
+        style={{ flexShrink: 0 }}
+      >
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Search items…"
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={{
+          flex: 1,
+          background: "none",
+          border: "none",
+          outline: "none",
+          color: S.text,
+          fontSize: 13,
+        }}
+      />
+      {value && (
+        <button
+          onClick={() => onChange("")}
+          style={{
+            background: "none",
+            border: "none",
+            color: S.dim,
+            cursor: "pointer",
+            padding: 0,
+            fontSize: 16,
+            lineHeight: 1,
+            display: "flex",
+          }}
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelProps) {
@@ -77,20 +203,28 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   const [tz, setTz] = useState("UTC");
   useEffect(() => { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone); }, []);
 
-  const [items, setItems]             = useState<SitRepItem[]>([]);
-  const [loading, setLoading]         = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(["done", "cancelled"]));
-  const [completing, setCompleting]   = useState<Set<string>>(new Set());
+  const [items, setItems]           = useState<SitRepItem[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set(["done", "cancelled"]),
+  );
+  const [completing, setCompleting] = useState<Set<string>>(new Set());
 
-  // Calendar switcher state
+  // Filters
+  const [search, setSearch]               = useState("");
+  const [scopeFilter, setScopeFilter]     = useState<"mine" | "all">("mine");
+  const [typeFilter, setTypeFilter]       = useState("all");
+  const [statusFilter, setStatusFilter]   = useState<"active" | "done" | "all">("active");
+
+  // Calendar switcher
   const [calendarTypes,  setCalendarTypes]  = useState<CalendarTypeData[]>([]);
   const [sharedViews,    setSharedViews]    = useState<SharedViewData[]>([]);
   const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(new Set());
   const [drawerOpen,     setDrawerOpen]     = useState(false);
 
   // Sheet state
-  const [sheetOpen, setSheetOpen]     = useState(false);
-  const [sheetItem, setSheetItem]     = useState<SitRepItem | null>(null);
+  const [sheetOpen,   setSheetOpen]   = useState(false);
+  const [sheetItem,   setSheetItem]   = useState<SitRepItem | null>(null);
   const [sheetCreate, setSheetCreate] = useState(false);
   const [rescheduleItem, setRescheduleItem] = useState<SitRepItem | null>(null);
 
@@ -100,10 +234,9 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
     return [...types.map((t) => t.id), ...views.map((v) => v.view_id)];
   }
 
-  // Fetch calendar types once on mount
   useEffect(() => {
     fetch("/api/sitrep/calendar-types")
-      .then((r) => r.ok ? r.json() : [])
+      .then((r) => (r.ok ? r.json() : []))
       .then((data: CalendarTypeData[]) => {
         setCalendarTypes(data);
         setVisibleTypeIds(loadVisibleIds(data.map((ct) => ct.id)));
@@ -114,7 +247,7 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/sitrep/items`);
+      const res = await fetch("/api/sitrep/items");
       if (res.ok) {
         const data = await res.json();
         setItems(Array.isArray(data) ? [...data] : []);
@@ -127,7 +260,7 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
 
   function reloadCalendarTypes() {
     fetch("/api/sitrep/calendar-types")
-      .then((r) => r.ok ? r.json() : [])
+      .then((r) => (r.ok ? r.json() : []))
       .then((data: CalendarTypeData[]) => {
         setCalendarTypes(data);
         const ids = allTypeIds(data, sharedViews);
@@ -140,10 +273,9 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
     setSharedViews(views);
     const ids = allTypeIds(calendarTypes, views);
     setVisibleTypeIds(loadVisibleIds(ids));
-
     if (views.length === 0) return;
     fetch("/api/sitrep/calendar-views/shared/items")
-      .then((r) => r.ok ? r.json() : [])
+      .then((r) => (r.ok ? r.json() : []))
       .then((sharedItems: SitRepItem[]) => {
         if (!Array.isArray(sharedItems) || sharedItems.length === 0) return;
         setItems((prev) => {
@@ -181,9 +313,19 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "done", tenantId }),
       });
-      setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, status: "done" } : i));
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, status: "done" } : i)),
+      );
     } catch { /* ignore */ }
-    setTimeout(() => setCompleting((p) => { const n = new Set(p); n.delete(item.id); return n; }), 400);
+    setTimeout(
+      () =>
+        setCompleting((p) => {
+          const n = new Set(p);
+          n.delete(item.id);
+          return n;
+        }),
+      400,
+    );
   }
 
   function openItem(item: SitRepItem) {
@@ -201,7 +343,11 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   function onSheetSaved(updated: SitRepItem) {
     setItems((prev) => {
       const idx = prev.findIndex((i) => i.id === updated.id);
-      if (idx >= 0) { const next = [...prev]; next[idx] = updated; return next; }
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = updated;
+        return next;
+      }
       return [updated, ...prev];
     });
     setSheetOpen(false);
@@ -219,137 +365,442 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ due_date: newDate, tenantId }),
       });
-      setItems((prev) => prev.map((i) => i.id === id ? { ...i, due_date: newDate } : i));
+      setItems((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, due_date: newDate } : i)),
+      );
     } catch { /* ignore */ }
     setRescheduleItem(null);
   }
 
-  // Apply calendar visibility filter
-  const displayItems = calendarTypes.length > 0
+  // Apply calendar visibility filter first
+  const calFiltered = calendarTypes.length > 0
     ? filterByVisibleCalendars(items, calendarTypes, sharedViews, visibleTypeIds, userId)
     : items;
 
-  const hiddenCount = items.length - displayItems.length;
-  const groups = groupItems(displayItems);
+  const hiddenCount  = items.length - calFiltered.length;
+
+  // Compute stats from unfiltered (calendar-visible) items
+  const openCount    = calFiltered.filter((i) => i.status !== "done" && i.status !== "cancelled").length;
+  const overdueCount = calFiltered.filter((i) => isItemOverdue(i)).length;
+
+  // Apply search + scope + type + status filters
+  let filtered = calFiltered;
+  if (scopeFilter === "mine") {
+    filtered = filtered.filter(
+      (i) =>
+        i.created_by === userId ||
+        (i.sitrep_assignments ?? []).some((a) => a.user_id === userId),
+    );
+    // If nothing matches "mine", fall back to all to avoid empty state
+    if (filtered.length === 0 && calFiltered.length > 0) filtered = calFiltered;
+  }
+  if (typeFilter !== "all") {
+    filtered = filtered.filter((i) => i.item_type === typeFilter);
+  }
+  if (statusFilter === "active") {
+    filtered = filtered.filter((i) => i.status !== "done" && i.status !== "cancelled");
+  } else if (statusFilter === "done") {
+    filtered = filtered.filter((i) => i.status === "done");
+  }
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter((i) => i.title.toLowerCase().includes(q));
+  }
+
+  const groups = groupItems(filtered);
 
   return (
     <div style={{ minHeight: "100dvh", background: S.bg }}>
       {/* Sticky header */}
-      <div style={{
-        position: "sticky", top: 0, zIndex: 50,
-        background: S.bg,
-        borderBottom: `1px solid ${S.border}`,
-        padding: "12px 16px",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        paddingTop: "max(12px, env(safe-area-inset-top))",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* Calendar switcher trigger */}
-          <button
-            onClick={() => setDrawerOpen(true)}
-            title="My Calendars"
-            style={{
-              background: "none", border: "none", color: S.dim,
-              fontSize: 18, cursor: "pointer", padding: "4px 6px",
-              lineHeight: 1, display: "flex", alignItems: "center",
-            }}
-          >
-            ☰
-            {hiddenCount > 0 && (
-              <span style={{
-                marginLeft: 3, fontSize: 9, fontWeight: 700,
-                background: "var(--gg-primary,#2563eb)", color: "#fff",
-                borderRadius: 8, padding: "1px 5px",
-              }}>
-                {hiddenCount}
-              </span>
-            )}
-          </button>
-          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em", color: S.text }}>
-            SitRep
-          </span>
-        </div>
-        <button
-          onClick={openCreate}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          background: S.bg,
+          borderBottom: `1px solid ${S.border}`,
+          padding: "12px 16px",
+          paddingTop: "max(12px, env(safe-area-inset-top))",
+          flexShrink: 0,
+        }}
+      >
+        {/* Title row */}
+        <div
           style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "6px 12px", borderRadius: 8,
-            border: "1px solid rgba(255,255,255,.1)",
-            background: "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)",
-            color: "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)",
-            fontSize: 13, fontWeight: 600, cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 8,
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New
-        </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Hamburger */}
+            <button
+              onClick={() => setDrawerOpen(true)}
+              title="My Calendars"
+              style={{
+                background: "none",
+                border: "none",
+                color: S.dim,
+                cursor: "pointer",
+                padding: "4px 6px",
+                display: "flex",
+                alignItems: "center",
+                position: "relative",
+              }}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+              {hiddenCount > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 1,
+                    right: 1,
+                    fontSize: 8,
+                    fontWeight: 700,
+                    background: "var(--gg-primary,#2563eb)",
+                    color: "#fff",
+                    borderRadius: 8,
+                    padding: "0 4px",
+                    lineHeight: "14px",
+                  }}
+                >
+                  {hiddenCount}
+                </span>
+              )}
+            </button>
+
+            {/* Title + stats */}
+            <div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  letterSpacing: "-0.02em",
+                  color: S.text,
+                }}
+              >
+                SitRep
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "baseline",
+                  marginTop: 1,
+                }}
+              >
+                <span style={{ fontSize: 11, color: S.dimBright }}>
+                  <span
+                    style={{
+                      fontWeight: 800,
+                      fontSize: 15,
+                      color: S.text,
+                      marginRight: 2,
+                    }}
+                  >
+                    {openCount}
+                  </span>
+                  open
+                </span>
+                {overdueCount > 0 && (
+                  <span style={{ fontSize: 11, color: "rgba(239,68,68,.7)" }}>
+                    <span
+                      style={{
+                        fontWeight: 800,
+                        fontSize: 14,
+                        color: "rgb(252 165 165)",
+                        marginRight: 2,
+                      }}
+                    >
+                      {overdueCount}
+                    </span>
+                    overdue
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* New button */}
+          <button
+            onClick={openCreate}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "7px 14px",
+              borderRadius: 10,
+              background:
+                "linear-gradient(135deg, var(--gg-primary,#2563eb), color-mix(in srgb, var(--gg-primary,#2563eb) 68%, #7c3aed))",
+              boxShadow:
+                "0 2px 14px color-mix(in srgb, var(--gg-primary,#2563eb) 42%, transparent), inset 0 1px 0 rgba(255,255,255,.18)",
+              border: "none",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New
+          </button>
+        </div>
+
+        {/* Search */}
+        <SearchBar value={search} onChange={setSearch} />
+
+        {/* Filter pills */}
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            marginTop: 8,
+            overflowX: "auto",
+            paddingBottom: 2,
+            scrollbarWidth: "none",
+          }}
+        >
+          <FilterPill active={scopeFilter === "mine"} onClick={() => setScopeFilter("mine")}>
+            Mine
+          </FilterPill>
+          <FilterPill active={scopeFilter === "all"} onClick={() => setScopeFilter("all")}>
+            All
+          </FilterPill>
+
+          {/* Divider */}
+          <div
+            style={{
+              width: 1,
+              height: 18,
+              background: "rgba(255,255,255,.1)",
+              margin: "0 2px",
+              flexShrink: 0,
+              alignSelf: "center",
+            }}
+          />
+
+          <FilterPill active={typeFilter === "all"} onClick={() => setTypeFilter("all")}>
+            All Types
+          </FilterPill>
+          {initialTypes.map((t) => (
+            <FilterPill
+              key={t.slug}
+              active={typeFilter === t.slug}
+              onClick={() => setTypeFilter(t.slug)}
+            >
+              {t.name}
+            </FilterPill>
+          ))}
+
+          {/* Divider */}
+          <div
+            style={{
+              width: 1,
+              height: 18,
+              background: "rgba(255,255,255,.1)",
+              margin: "0 2px",
+              flexShrink: 0,
+              alignSelf: "center",
+            }}
+          />
+
+          <FilterPill active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+            Active
+          </FilterPill>
+          <FilterPill active={statusFilter === "done"} onClick={() => setStatusFilter("done")}>
+            Done
+          </FilterPill>
+          <FilterPill active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
+            All
+          </FilterPill>
+        </div>
       </div>
 
       {/* Body */}
-      <div>
+      <div style={{ padding: "8px 12px 24px" }}>
         {loading && items.length === 0 && (
-          <div style={{ padding: 32, textAlign: "center", color: S.dim, fontSize: 14 }}>Loading…</div>
+          <div
+            style={{
+              padding: 32,
+              textAlign: "center",
+              color: S.dim,
+              fontSize: 14,
+            }}
+          >
+            Loading…
+          </div>
         )}
 
-        {!loading && displayItems.length === 0 && (
-          <div style={{ padding: "64px 24px", textAlign: "center", color: S.dim }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: S.text, marginBottom: 6 }}>
-              {hiddenCount > 0 ? "All items filtered" : "Nothing here yet"}
+        {!loading && filtered.length === 0 && (
+          <div
+            style={{
+              padding: "64px 24px",
+              textAlign: "center",
+              color: S.dim,
+            }}
+          >
+            <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.22 }}>
+              ✓
             </div>
-            <div style={{ fontSize: 14 }}>
-              {hiddenCount > 0 ? "Tap ☰ to adjust your calendar filters." : "Tap + New to add something."}
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: 15,
+                color: S.text,
+                marginBottom: 6,
+              }}
+            >
+              {search.trim() ? "No matches" : hiddenCount > 0 ? "All filtered" : "All clear."}
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+              {search.trim()
+                ? `No items match "${search}".`
+                : hiddenCount > 0
+                  ? "Tap ☰ to adjust your calendar filters."
+                  : "Tap + New to add something."}
             </div>
           </div>
         )}
 
-        {groups.map((group) => {
-          const collapsed = collapsedGroups.has(group.key);
-          return (
-            <div key={group.key}>
-              <div
-                onClick={() => toggleGroup(group.key)}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "10px 16px 6px", cursor: "pointer",
-                }}
-              >
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
-                  textTransform: "uppercase", color: group.color ?? S.dim,
-                }}>
-                  {group.label}{collapsed ? ` (${group.items.length})` : ""}
-                </span>
-                <svg
-                  width="14" height="14" viewBox="0 0 24 24" fill="none"
-                  stroke={S.dim} strokeWidth="2" strokeLinecap="round"
-                  style={{ transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform .2s" }}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {groups.map((group) => {
+            const collapsed = collapsedGroups.has(group.key);
+            return (
+              <div key={group.key}>
+                {/* Group header */}
+                <div
+                  onClick={() => toggleGroup(group.key)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 6,
+                    cursor: "pointer",
+                  }}
                 >
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </div>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "2px 10px 2px 7px",
+                      borderRadius: 20,
+                      flexShrink: 0,
+                      background: `${group.color}12`,
+                      border: `1px solid ${group.color}30`,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 5,
+                        height: 5,
+                        borderRadius: "50%",
+                        background: group.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: "0.09em",
+                        color: group.color,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {group.label}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: group.color,
+                        background: `${group.color}1f`,
+                        borderRadius: 10,
+                        padding: "1px 5px",
+                      }}
+                    >
+                      {group.items.length}
+                    </span>
+                  </div>
 
-              {!collapsed && group.items.map((item) => {
-                const t = typeMap[item.item_type];
-                return (
-                  <ListRow
-                    key={item.id}
-                    item={item}
-                    typeColor={t?.color}
-                    typeName={t?.name}
-                    tz={tz}
-                    onTap={() => openItem(item)}
-                    onComplete={() => handleComplete(item)}
-                    onReschedule={() => setRescheduleItem(item)}
-                    completing={completing.has(item.id)}
+                  {/* Fade line */}
+                  <div
+                    style={{
+                      flex: 1,
+                      height: 1,
+                      background: `linear-gradient(to right, ${group.color}35, transparent)`,
+                    }}
                   />
-                );
-              })}
-            </div>
-          );
-        })}
+
+                  {/* Chevron */}
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={S.dim}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    style={{
+                      transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                      transition: "transform .2s",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
+
+                {/* Items grid */}
+                {!collapsed && (
+                  <div style={{ display: "grid", gap: 4 }}>
+                    {group.items.map((item) => {
+                      const t = typeMap[item.item_type];
+                      return (
+                        <ListRow
+                          key={item.id}
+                          item={item}
+                          typeColor={t?.color}
+                          typeName={t?.name}
+                          tz={tz}
+                          onTap={() => openItem(item)}
+                          onComplete={() => handleComplete(item)}
+                          onReschedule={() => setRescheduleItem(item)}
+                          completing={completing.has(item.id)}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <CalendarSwitcherDrawer
@@ -375,7 +826,10 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
         tz={tz}
         onSaved={onSheetSaved}
         onDeleted={onSheetDeleted}
-        onExpandItem={(id) => { setSheetOpen(false); router.push(`/item/${id}`); }}
+        onExpandItem={(id) => {
+          setSheetOpen(false);
+          router.push(`/item/${id}`);
+        }}
       />
 
       <RescheduleSheet

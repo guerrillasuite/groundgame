@@ -6,12 +6,13 @@ interface SwipeableRowProps {
   children: ReactNode;
   onComplete: () => void;
   onReschedule: () => void;
+  borderRadius?: number;
 }
 
 const TRIGGER_THRESHOLD = 80;
 const START_THRESHOLD = 10;
 
-export default function SwipeableRow({ children, onComplete, onReschedule }: SwipeableRowProps) {
+export default function SwipeableRow({ children, onComplete, onReschedule, borderRadius = 0 }: SwipeableRowProps) {
   const [offset, setOffset] = useState(0);
   const startX = useRef(0);
   const startY = useRef(0);
@@ -62,7 +63,7 @@ export default function SwipeableRow({ children, onComplete, onReschedule }: Swi
 
   return (
     <div
-      style={{ position: "relative", overflow: "hidden" }}
+      style={{ position: "relative", overflow: "hidden", borderRadius }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}

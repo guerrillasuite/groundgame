@@ -16,21 +16,40 @@ const S = {
   dimBrt: "rgb(148 163 184)",
 } as const;
 
-function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+function IOSToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      title={visible ? "Hide" : "Show"}
       style={{
-        background: "none", border: "none", cursor: "pointer",
-        padding: "3px 5px", borderRadius: 5,
-        color: visible ? S.dimBrt : S.dim,
-        fontSize: 16, lineHeight: 1, flexShrink: 0,
-        opacity: visible ? 1 : 0.4,
+        position: "relative",
+        width: 38,
+        height: 21,
+        borderRadius: 11,
+        flexShrink: 0,
+        background: on ? "var(--gg-primary,#2563eb)" : "rgba(255,255,255,.12)",
+        boxShadow: on
+          ? "0 0 8px color-mix(in srgb, var(--gg-primary,#2563eb) 45%, transparent)"
+          : "inset 0 1px 3px rgba(0,0,0,.4)",
+        transition: "background .2s ease, box-shadow .2s ease",
+        border: "none",
+        cursor: "pointer",
+        padding: 0,
       }}
     >
-      {visible ? "◉" : "○"}
+      <div
+        style={{
+          position: "absolute",
+          top: 2,
+          left: on ? 19 : 2,
+          width: 17,
+          height: 17,
+          borderRadius: "50%",
+          background: "#fff",
+          boxShadow: "0 1px 4px rgba(0,0,0,.35)",
+          transition: "left .2s ease",
+        }}
+      />
     </button>
   );
 }
@@ -182,7 +201,7 @@ export default function CalendarSwitcherDrawer({
                   }}>
                     {ct.name}
                   </span>
-                  <EyeToggle visible={isVisible} onToggle={() => onToggleType(ct.id)} />
+                  <IOSToggle on={isVisible} onToggle={() => onToggleType(ct.id)} />
                 </div>
 
                 {!isCollapsed && (ct.user_calendar_views ?? []).length > 0 && (
@@ -257,7 +276,7 @@ export default function CalendarSwitcherDrawer({
                     }}>
                       {sv.role === "editor" ? "ED" : "VW"}
                     </span>
-                    <EyeToggle visible={isVisible} onToggle={() => onToggleType(sv.view_id)} />
+                    <IOSToggle on={isVisible} onToggle={() => onToggleType(sv.view_id)} />
                   </div>
                 );
               })}

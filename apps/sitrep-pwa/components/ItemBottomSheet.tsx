@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import BottomSheet from "./BottomSheet";
 import TypePillSelector, { ItemType } from "./TypePillSelector";
+import MapPicker, { isUrl, locationHref } from "./MapPicker";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 import { utcToDatetimeLocal, localToUtcIso } from "@/lib/date-utils";
 import type { SitRepItem } from "@/app/(pwa)/list/ListRow";
@@ -104,6 +105,7 @@ export default function ItemBottomSheet({
   const [saving, setSaving]             = useState(false);
   const [deleting, setDeleting]         = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const titleRef  = useRef<HTMLInputElement>(null);
   const [titleShake, setTitleShake] = useState(false);
 
@@ -296,20 +298,76 @@ export default function ItemBottomSheet({
 
         {/* Location */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-            <circle cx="12" cy="10" r="3"/>
-          </svg>
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="Add location"
-            style={inputStyle}
-            onFocus={focusIn}
-            onBlur={focusOut}
-          />
+          {/* Icon: link for URLs, pin for addresses */}
+          {isUrl(location) ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+              <circle cx="12" cy="10" r="3"/>
+            </svg>
+          )}
+          <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Add location"
+              style={{ ...inputStyle, paddingRight: location ? 38 : 12 }}
+              onFocus={focusIn}
+              onBlur={focusOut}
+            />
+            {location && (
+              isUrl(location) ? (
+                <a
+                  href={locationHref(location) ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 22, height: 22, borderRadius: 6,
+                    background: "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 35%, transparent)",
+                    color: "var(--gg-primary,#2563eb)", textDecoration: "none",
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <polyline points="15 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                  </svg>
+                </a>
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMapPickerOpen(true); }}
+                  style={{
+                    position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 22, height: 22, borderRadius: 6,
+                    background: "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 35%, transparent)",
+                    color: "var(--gg-primary,#2563eb)", cursor: "pointer",
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                </button>
+              )
+            )}
+          </div>
         </div>
+        {mapPickerOpen && location && !isUrl(location) && (
+          <div style={{ position: "relative" }}>
+            <MapPicker location={location} onClose={() => setMapPickerOpen(false)} />
+          </div>
+        )}
 
         {/* Action bar */}
         <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 12, display: "flex", gap: 8 }}>

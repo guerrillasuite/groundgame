@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 import { utcToDatetimeLocal, localToUtcIso, fmtItemDate, todayStr, localDateStr, effectiveDate } from "@/lib/date-utils";
+import MapPicker, { isUrl, locationHref } from "@/components/MapPicker";
 
 const S = {
   bg:        "rgb(10 13 20)",
@@ -21,13 +22,13 @@ const inputStyle: React.CSSProperties = {
   color: S.text, fontSize: 13, outline: "none",
   transition: "border-color .15s, box-shadow .15s",
 };
-function focusIn(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)";
-  e.currentTarget.style.boxShadow   = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 16%, transparent)";
+function focusIn(e: React.FocusEvent<HTMLElement>) {
+  (e.currentTarget as HTMLElement).style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)";
+  (e.currentTarget as HTMLElement).style.boxShadow   = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 16%, transparent)";
 }
-function focusOut(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  e.currentTarget.style.borderColor = "rgba(255,255,255,.1)";
-  e.currentTarget.style.boxShadow   = "none";
+function focusOut(e: React.FocusEvent<HTMLElement>) {
+  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,.1)";
+  (e.currentTarget as HTMLElement).style.boxShadow   = "none";
 }
 
 type SitRepItemFull = {
@@ -97,6 +98,7 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
   const [posting, setPosting] = useState(false);
   const [comments, setComments] = useState(initialItem.sitrep_comments ?? []);
   const [delConfirm, setDelConfirm] = useState(false);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
 
   useEffect(() => { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone); }, []);
 
@@ -278,15 +280,62 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
               <label style={{ fontSize: 11, fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Location
               </label>
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                onBlur={onLocationBlur}
-                placeholder="Add location"
-                style={inputStyle}
-                onFocus={focusIn}
-              />
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  onBlur={onLocationBlur}
+                  placeholder="Add location"
+                  style={{ ...inputStyle, paddingRight: location ? 40 : 12 }}
+                  onFocus={focusIn}
+                />
+                {location && (
+                  isUrl(location) ? (
+                    <a
+                      href={locationHref(location) ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 24, height: 24, borderRadius: 7,
+                        background: "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 35%, transparent)",
+                        color: "var(--gg-primary,#2563eb)", textDecoration: "none",
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/>
+                        <line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => setMapPickerOpen(true)}
+                      style={{
+                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 24, height: 24, borderRadius: 7,
+                        background: "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 35%, transparent)",
+                        color: "var(--gg-primary,#2563eb)", cursor: "pointer",
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                      </svg>
+                    </button>
+                  )
+                )}
+              </div>
+              {mapPickerOpen && location && !isUrl(location) && (
+                <div style={{ position: "relative", marginTop: 6 }}>
+                  <MapPicker location={location} onClose={() => setMapPickerOpen(false)} />
+                </div>
+              )}
             </div>
           </div>
         </Section>
