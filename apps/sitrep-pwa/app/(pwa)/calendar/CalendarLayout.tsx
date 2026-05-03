@@ -116,7 +116,7 @@ export default function CalendarLayout({ initialItems, types, userId, tenantId }
   const isToday = cursor === todayStr();
 
   return (
-    <div style={{ minHeight: "100dvh", background: S.bg, display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100dvh", background: S.bg, display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{
         position: "sticky", top: 0, zIndex: 50, background: S.bg,
@@ -168,7 +168,7 @@ export default function CalendarLayout({ initialItems, types, userId, tenantId }
       </div>
 
       {/* Active view */}
-      <div style={{ flex: 1, overflow: "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {view === "day" && (
           <DayView
             items={items}

@@ -129,7 +129,7 @@ export default function DayView({ items, types, cursor, tz, onCursorChange, onIt
   }
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Day nav header */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
