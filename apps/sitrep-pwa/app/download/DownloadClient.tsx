@@ -343,7 +343,7 @@ function PlatformCard({
       {/* Collapsible steps body */}
       <div
         style={{
-          maxHeight: isOpen ? "800px" : "0px",
+          maxHeight: isOpen ? "1400px" : "0px",
           overflow: "hidden",
           transition: "max-height 0.35s ease",
         }}
@@ -368,33 +368,40 @@ function PlatformCard({
                   position: "relative",
                 }}
               >
-                {/* Step number badge */}
+                {/* Number + icon row */}
                 <div
                   style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: "50%",
-                    background: S.green,
-                    color: "#000",
-                    fontSize: 13,
-                    fontWeight: 800,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
+                    gap: 10,
                     marginBottom: 14,
-                    boxShadow: "0 0 12px rgba(34,197,94,0.4)",
                   }}
                 >
-                  {step.number}
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      background: S.green,
+                      color: "#000",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      boxShadow: "0 0 12px rgba(34,197,94,0.4)",
+                    }}
+                  >
+                    {step.number}
+                  </div>
+                  <span style={{ fontSize: 24, lineHeight: 1 }}>{step.icon}</span>
                 </div>
-
-                {/* Icon */}
-                <div style={{ fontSize: 26, marginBottom: 10 }}>{step.icon}</div>
 
                 {/* Title */}
                 <div
                   style={{
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: 700,
                     color: S.text,
                     marginBottom: 8,
@@ -406,7 +413,7 @@ function PlatformCard({
 
                 {/* Detail */}
                 <div
-                  style={{ fontSize: 12, color: S.dim, lineHeight: 1.6 }}
+                  style={{ fontSize: 13, fontWeight: 500, color: S.dimBright, lineHeight: 1.65 }}
                 >
                   {step.detail}
                 </div>
