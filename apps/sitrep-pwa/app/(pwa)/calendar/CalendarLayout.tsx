@@ -148,6 +148,21 @@ export default function CalendarLayout({
       views.forEach((sv) => next.add(sv.view_id));
       return next;
     });
+
+    if (views.length === 0) return;
+
+    // Fetch items belonging to shared calendars and merge into local state
+    fetch("/api/sitrep/calendar-views/shared/items")
+      .then((r) => r.ok ? r.json() : [])
+      .then((sharedItems: SitRepItem[]) => {
+        if (!Array.isArray(sharedItems) || sharedItems.length === 0) return;
+        setItems((prev) => {
+          const existingIds = new Set(prev.map((i) => i.id));
+          const newOnes = sharedItems.filter((i) => !existingIds.has(i.id));
+          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
+        });
+      })
+      .catch(() => {});
   }
 
   function onToggleType(id: string) {
