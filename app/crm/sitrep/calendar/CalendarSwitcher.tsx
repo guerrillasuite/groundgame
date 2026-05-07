@@ -1,441 +1,329 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { type CalendarContext, type SitRepView } from "@/lib/sitrep-calendar-filter";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 
+// Re-exported for CalendarLayout legacy compatibility
+export type CalendarTypeData = never;
+export type SharedViewData   = never;
+
 const S = {
-  bg:      "rgb(15 19 28)",
-  border:  "rgba(255,255,255,.07)",
-  text:    "rgb(236 240 245)",
-  dim:     "rgb(100 116 139)",
-  dimBrt:  "rgb(148 163 184)",
-  card:    "rgb(22 28 40)",
+  bg:     "rgb(10 13 20)",
+  panel:  "rgb(15 19 28)",
+  border: "rgba(255,255,255,.07)",
+  text:   "rgb(236 240 245)",
+  dim:    "rgb(100 116 139)",
+  brt:    "rgb(148 163 184)",
+  card:   "rgb(22 28 40)",
 } as const;
 
-export type CalendarView = {
-  id:            string;
-  name:          string;
-  color:         string | null;
-  filter_config: Record<string, unknown>;
-  is_default:    boolean;
-  sort_order:    number;
-};
+type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
 
-export type CalendarTypeData = {
-  id:         string;
-  name:       string;
-  color:      string;
-  cal_type:   "work" | "family" | "personal" | "custom";
-  sources:    { type: string; tenant_id?: string }[];
-  user_calendar_views: CalendarView[];
-};
-
-export type SharedViewData = {
-  share_id:   string;
-  role:       "viewer" | "editor";
-  view_id:    string;
-  view_name:  string;
-  view_color: string | null;
-  type_name:  string;
-  type_color: string;
-  owner_name: string;
-};
-
-type PendingInvite = {
-  id:         string;
-  token:      string;
-  role:       "viewer" | "editor";
-  view_name:  string;
-  view_color: string;
-  type_name:  string;
-  owner_name: string;
-};
-
-// Eye toggle button
-function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
     <button
       type="button"
-      onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      title={visible ? "Hide" : "Show"}
+      onClick={onToggle}
       style={{
+        display: "flex", alignItems: "center", gap: 8,
+        width: "100%", padding: "5px 0",
         background: "none", border: "none", cursor: "pointer",
-        padding: "3px 5px", borderRadius: 5, color: visible ? S.dimBrt : S.dim,
-        fontSize: 14, lineHeight: 1, flexShrink: 0,
-        opacity: visible ? 1 : 0.4,
+        textAlign: "left",
       }}
     >
-      {visible ? "◉" : "○"}
+      <span style={{
+        width: 28, height: 15, borderRadius: 8, flexShrink: 0, position: "relative",
+        background: on ? "rgba(99,102,241,.7)" : "rgba(255,255,255,.1)",
+        transition: "background .12s",
+      }}>
+        <span style={{
+          position: "absolute", top: 2, left: on ? 15 : 2, width: 11, height: 11,
+          borderRadius: "50%", background: on ? "#fff" : "rgba(255,255,255,.5)",
+          transition: "left .12s",
+        }} />
+      </span>
+      <span style={{ fontSize: 12, color: on ? S.brt : S.dim }}>{label}</span>
     </button>
   );
 }
 
-// Invite share slide-in
-function SharePanel({ view, onClose }: { view: CalendarView; onClose: () => void }) {
-  const [email, setEmail] = useState("");
-  const [role, setRole]   = useState<"viewer" | "editor">("viewer");
-  const [sending, setSending] = useState(false);
-  const [sent, setSent]   = useState(false);
-  const [err, setErr]     = useState("");
+function ViewRow({
+  view,
+  active,
+  onSelect,
+  onRename,
+  onDelete,
+}: {
+  view:     SitRepView;
+  active:   boolean;
+  onSelect: () => void;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName]       = useState(view.name);
 
-  async function handleInvite() {
-    if (!email.trim()) return;
-    setSending(true); setErr("");
-    const res = await fetch(`/api/user/calendar-views/${view.id}/shares`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), role }),
-    });
-    setSending(false);
-    if (res.ok) { setSent(true); setEmail(""); }
-    else { const e = await res.json().catch(() => ({})); setErr(e.error ?? "Failed"); }
+  function commit() {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== view.name) onRename(trimmed);
+    setEditing(false);
   }
 
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 70, display: "flex", justifyContent: "flex-end",
+      display: "flex", alignItems: "center", gap: 6,
+      padding: "5px 10px",
+      background: active ? "rgba(255,255,255,.07)" : "transparent",
+      borderRadius: 7,
+      margin: "1px 6px",
     }}>
-      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)" }} onClick={onClose} />
-      <div style={{
-        position: "relative", zIndex: 1, width: 360, maxWidth: "100vw",
-        background: S.card, borderLeft: `1px solid ${S.border}`,
-        padding: 24, display: "flex", flexDirection: "column", gap: 16,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: S.text }}>Share "{view.name}"</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: S.dim, fontSize: 18, cursor: "pointer" }}>✕</button>
-        </div>
-
-        <div style={{ display: "grid", gap: 8 }}>
-          <label style={{ fontSize: 12, color: S.dim, fontWeight: 600 }}>Invite by email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleInvite(); }}
-            placeholder="colleague@example.com"
-            style={{
-              padding: "9px 12px", borderRadius: 9, background: S.bg,
-              border: `1px solid ${S.border}`, color: S.text, fontSize: 13,
-            }}
-          />
-          <div style={{ display: "flex", gap: 6 }}>
-            {(["viewer", "editor"] as const).map((r) => (
-              <button key={r} type="button" onClick={() => setRole(r)} style={{
-                flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                border: `1px solid ${S.border}`, cursor: "pointer",
-                background: role === r ? "rgba(99,102,241,.2)" : "rgba(255,255,255,.04)",
-                borderColor: role === r ? "rgba(99,102,241,.5)" : S.border,
-                color: role === r ? "#a5b4fc" : S.dim,
-              }}>
-                {r.charAt(0).toUpperCase() + r.slice(1)}
-              </button>
-            ))}
-          </div>
-          {err  && <p style={{ margin: 0, fontSize: 12, color: "#fca5a5" }}>{err}</p>}
-          {sent && <p style={{ margin: 0, fontSize: 12, color: "#4ade80" }}>Invite sent ✓</p>}
-          <button
-            onClick={handleInvite}
-            disabled={sending || !email.trim()}
-            className="btn"
-            style={{ padding: "8px 0", fontSize: 13, borderRadius: 8 }}
-          >
-            {sending ? "Sending…" : "Send Invite"}
-          </button>
-        </div>
-
-        <p style={{ margin: 0, fontSize: 11, color: S.dim, lineHeight: 1.5 }}>
-          <strong style={{ color: S.dimBrt }}>Viewer</strong> — can see events you can see.<br/>
-          <strong style={{ color: S.dimBrt }}>Editor</strong> — can also add events and assign you.
-        </p>
-      </div>
+      {editing ? (
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setName(view.name); setEditing(false); } }}
+          style={{
+            flex: 1, padding: "2px 6px", borderRadius: 5, fontSize: 12,
+            background: S.card, border: `1px solid ${S.border}`, color: S.text,
+          }}
+        />
+      ) : (
+        <span
+          onClick={onSelect}
+          style={{ flex: 1, fontSize: 12, color: active ? S.text : S.dim, cursor: "pointer", userSelect: "none" }}
+        >
+          {view.name}
+        </span>
+      )}
+      <button
+        onClick={() => setEditing((v) => !v)}
+        title="Rename"
+        style={{ background: "none", border: "none", cursor: "pointer", color: S.dim, fontSize: 11, padding: "2px 4px", opacity: 0.7, flexShrink: 0 }}
+      >✎</button>
+      {!view.is_default && (
+        <button
+          onClick={onDelete}
+          title="Delete"
+          style={{ background: "none", border: "none", cursor: "pointer", color: S.dim, fontSize: 11, padding: "2px 4px", opacity: 0.5, flexShrink: 0 }}
+        >✕</button>
+      )}
     </div>
   );
 }
 
-// ── Main CalendarSwitcher ──────────────────────────────────────────────────────
-
 export default function CalendarSwitcher({
-  calendarTypes,
-  visibleTypeIds,
-  onToggleType,
-  onTypesChanged,
-  sharedViews = [],
+  views,
+  activeViewId,
+  onSelectView,
+  squads,
+  tenantId,
+  context,
+  onContextChange,
+  onViewsChanged,
 }: {
-  calendarTypes:  CalendarTypeData[];
-  visibleTypeIds: Set<string>;
-  onToggleType:   (id: string) => void;
-  onTypesChanged: () => void;
-  sharedViews?:   SharedViewData[];
+  views:            SitRepView[];
+  activeViewId:     string | null;
+  onSelectView:     (id: string) => void;
+  squads:           SquadInfo[];
+  tenantId:         string;
+  context:          CalendarContext;
+  onContextChange:  (ctx: CalendarContext) => void;
+  onViewsChanged:   () => Promise<void>;
 }) {
-  const [collapsed, setCollapsed]     = useState<Set<string>>(new Set());
-  const [sharingView, setSharingView] = useState<CalendarView | null>(null);
-  const [adding, setAdding]           = useState(false);
-  const [newName, setNewName]         = useState("");
-  const [newType, setNewType]         = useState<"work" | "personal" | "family" | "custom">("custom");
-  const [newColor, setNewColor]       = useState("blue");
-  const [addErr, setAddErr]           = useState("");
-  const [addBusy, setAddBusy]         = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName]   = useState("");
+  const [busy, setBusy]         = useState(false);
 
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
-  const [inviteBusy, setInviteBusy]         = useState<string | null>(null); // invite id being acted on
+  function toggleOrg() {
+    const ids = context.orgIds;
+    const next = ids.includes(tenantId)
+      ? ids.filter((id) => id !== tenantId)
+      : [...ids, tenantId];
+    onContextChange({ ...context, orgIds: next });
+  }
 
-  useEffect(() => {
-    fetch("/api/user/calendar-invites")
-      .then((r) => r.ok ? r.json() : [])
-      .then((d) => setPendingInvites(Array.isArray(d) ? d : []))
-      .catch(() => {});
-  }, []);
+  function togglePersonal() {
+    onContextChange({ ...context, personalOn: !context.personalOn });
+  }
 
-  async function handleInviteAction(invite: PendingInvite, action: "accept" | "decline") {
-    setInviteBusy(invite.id);
-    try {
-      const res = await fetch(`/api/calendar-invite/${invite.token}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      if (res.ok) {
-        setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
-        if (action === "accept") {
-          // Reload so the newly accepted shared view appears in the sidebar
-          window.location.reload();
-        }
-      }
-    } finally {
-      setInviteBusy(null);
+  function toggleSquad(squadId: string) {
+    const ids = context.squadIds;
+    const next = ids.includes(squadId)
+      ? ids.filter((id) => id !== squadId)
+      : [...ids, squadId];
+    onContextChange({ ...context, squadIds: next });
+  }
+
+  async function handleCreate() {
+    const trimmed = newName.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    const res = await fetch("/api/crm/sitrep/views", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name:        trimmed,
+        toggle_state: {
+          org_ids:      context.orgIds,
+          squad_ids:    context.squadIds,
+          personal:     context.personalOn,
+          favorite_ids: context.favoriteIds,
+          filters:      context.filters,
+        },
+        is_default: false,
+        sort_order: views.length,
+      }),
+    });
+    setBusy(false);
+    if (res.ok) {
+      setCreating(false);
+      setNewName("");
+      const data = await res.json();
+      await onViewsChanged();
+      if (data.id) onSelectView(data.id);
     }
   }
 
-  function toggleCollapse(id: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  async function handleAddType() {
-    if (!newName.trim() || addBusy) return;
-    setAddBusy(true); setAddErr("");
-    const res = await fetch("/api/user/calendar-types", {
-      method: "POST",
+  async function handleRename(viewId: string, name: string) {
+    await fetch(`/api/crm/sitrep/views/${viewId}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim(), color: newColor, cal_type: newType }),
+      body: JSON.stringify({ name }),
     });
-    setAddBusy(false);
-    if (res.ok) { setAdding(false); setNewName(""); onTypesChanged(); }
-    else { const e = await res.json().catch(() => ({})); setAddErr(e.error ?? "Failed"); }
+    await onViewsChanged();
   }
 
-  async function handleDeleteType(typeId: string, typeName: string) {
-    if (!confirm(`Remove "${typeName}" from your calendars?`)) return;
-    const res = await fetch(`/api/user/calendar-types/${typeId}`, { method: "DELETE" });
-    if (res.ok) onTypesChanged();
+  async function handleDelete(viewId: string) {
+    if (!confirm("Delete this view?")) return;
+    await fetch(`/api/crm/sitrep/views/${viewId}`, { method: "DELETE" });
+    await onViewsChanged();
+    // If deleted view was active, select first remaining
+    if (viewId === activeViewId) {
+      const remaining = views.filter((v) => v.id !== viewId);
+      if (remaining[0]) onSelectView(remaining[0].id);
+    }
   }
 
-  const TYPE_ICON: Record<string, string> = {
-    work: "🏢", family: "🏠", personal: "👤", custom: "📅",
-  };
+  const workOn  = context.orgIds.includes(tenantId);
 
   return (
     <div style={{
-      width: 220, flexShrink: 0, borderRight: `1px solid ${S.border}`,
-      display: "flex", flexDirection: "column", gap: 0, overflowY: "auto",
+      width: 220, flexShrink: 0,
+      borderRight: `1px solid ${S.border}`,
+      display: "flex", flexDirection: "column",
+      overflowY: "auto",
       paddingBottom: 24,
+      background: S.panel,
     }}>
-      {calendarTypes.map((ct) => {
-        const isCollapsed = collapsed.has(ct.id);
-        const isVisible   = visibleTypeIds.has(ct.id);
-        const dot = getFamilyByKey(ct.color)?.shades[3] ?? "#818cf8";
 
-        return (
-          <div key={ct.id}>
-            {/* Type header */}
-            <div style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "10px 14px 8px", cursor: "pointer",
-            }}
-              onClick={() => toggleCollapse(ct.id)}
-            >
-              <span style={{ fontSize: 12, color: S.dim, lineHeight: 1, flexShrink: 0 }}>
-                {isCollapsed ? "▶" : "▼"}
-              </span>
-              <span style={{ width: 9, height: 9, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: S.dimBrt, letterSpacing: "0.04em", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {ct.name}
-              </span>
-              <EyeToggle visible={isVisible} onToggle={() => onToggleType(ct.id)} />
-            </div>
+      {/* Views */}
+      <div style={{
+        padding: "10px 12px 4px",
+        fontSize: 10, fontWeight: 700, color: S.dim,
+        letterSpacing: "0.07em", textTransform: "uppercase",
+      }}>Views</div>
 
-            {/* Views list */}
-            {!isCollapsed && (
-              <div style={{ paddingBottom: 4 }}>
-                {(ct.user_calendar_views ?? [])
-                  .sort((a, b) => a.sort_order - b.sort_order)
-                  .map((view) => {
-                    const viewDot = view.color
-                      ? getFamilyByKey(view.color)?.shades[3] ?? dot
-                      : dot;
-                    return (
-                      <div key={view.id} style={{
-                        display: "flex", alignItems: "center", gap: 7,
-                        padding: "5px 14px 5px 30px",
-                      }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: viewDot, flexShrink: 0 }} />
-                        <span style={{ flex: 1, fontSize: 12, color: S.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {view.name}
-                        </span>
-                        <button
-                          title="Share this view"
-                          onClick={(e) => { e.stopPropagation(); setSharingView(view); }}
-                          style={{ background: "none", border: "none", cursor: "pointer", color: S.dim, fontSize: 12, padding: "2px 4px", lineHeight: 1, opacity: 0.6, flexShrink: 0 }}
-                        >↗</button>
-                      </div>
-                    );
-                  })
-                }
-                <button
-                  onClick={() => handleDeleteType(ct.id, ct.name)}
-                  style={{
-                    display: "none", // hidden for now — accessible via type context menu
-                  }}
-                />
-              </div>
-            )}
+      {views.map((view) => (
+        <ViewRow
+          key={view.id}
+          view={view}
+          active={view.id === activeViewId}
+          onSelect={() => onSelectView(view.id)}
+          onRename={(name) => handleRename(view.id, name)}
+          onDelete={() => handleDelete(view.id)}
+        />
+      ))}
 
-            <div style={{ height: 1, background: S.border, margin: "2px 14px" }} />
-          </div>
-        );
-      })}
-
-      {/* Pending invites */}
-      {pendingInvites.length > 0 && (
-        <div>
-          <div style={{
-            padding: "10px 14px 6px", fontSize: 10, fontWeight: 700, color: "rgb(251 191 36)",
-            letterSpacing: "0.07em", textTransform: "uppercase",
-          }}>Invites · {pendingInvites.length}</div>
-          {pendingInvites.map((inv) => {
-            const dot  = getFamilyByKey(inv.view_color)?.shades[3] ?? "#818cf8";
-            const busy = inviteBusy === inv.id;
-            return (
-              <div key={inv.id} style={{ padding: "5px 14px 8px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: S.dimBrt, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>{inv.view_name}</div>
-                    <div style={{ fontSize: 10, color: S.dim, opacity: 0.8 }}>{inv.owner_name}</div>
-                  </div>
-                  <span style={{
-                    fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
-                    background: inv.role === "editor" ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.06)",
-                    color: inv.role === "editor" ? "#a5b4fc" : S.dim,
-                  }}>{inv.role === "editor" ? "ED" : "VW"}</span>
-                </div>
-                <div style={{ display: "flex", gap: 5, paddingLeft: 14 }}>
-                  <button
-                    onClick={() => handleInviteAction(inv, "accept")}
-                    disabled={busy}
-                    style={{
-                      flex: 1, padding: "4px 0", fontSize: 11, fontWeight: 700, borderRadius: 5,
-                      border: "none", cursor: busy ? "not-allowed" : "pointer",
-                      background: "var(--gg-primary,#2563eb)", color: "#fff", opacity: busy ? 0.6 : 1,
-                    }}
-                  >{busy ? "…" : "Accept"}</button>
-                  <button
-                    onClick={() => handleInviteAction(inv, "decline")}
-                    disabled={busy}
-                    style={{
-                      padding: "4px 8px", fontSize: 11, fontWeight: 600, borderRadius: 5,
-                      border: `1px solid ${S.border}`, cursor: busy ? "not-allowed" : "pointer",
-                      background: "none", color: S.dim, opacity: busy ? 0.6 : 1,
-                    }}
-                  >✕</button>
-                </div>
-              </div>
-            );
-          })}
-          <div style={{ height: 1, background: S.border, margin: "4px 14px 2px" }} />
-        </div>
-      )}
-
-      {/* Shared with me */}
-      {sharedViews.length > 0 && (
-        <div>
-          <div style={{
-            padding: "10px 14px 6px", fontSize: 10, fontWeight: 700, color: S.dim,
-            letterSpacing: "0.07em", textTransform: "uppercase",
-          }}>Shared with me</div>
-          {sharedViews.map((sv) => {
-            const dot = getFamilyByKey(sv.type_color)?.shades[3] ?? "#818cf8";
-            const isVisible = visibleTypeIds.has(sv.view_id);
-            return (
-              <div key={sv.share_id} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 14px 5px 14px" }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: S.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sv.view_name}</div>
-                  <div style={{ fontSize: 10, color: S.dim, opacity: 0.6 }}>{sv.owner_name}</div>
-                </div>
-                <span style={{
-                  fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
-                  background: sv.role === "editor" ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.06)",
-                  color: sv.role === "editor" ? "#a5b4fc" : S.dim,
-                }}>{sv.role === "editor" ? "ED" : "VW"}</span>
-                <EyeToggle visible={isVisible} onToggle={() => onToggleType(sv.view_id)} />
-              </div>
-            );
-          })}
-          <div style={{ height: 1, background: S.border, margin: "6px 14px" }} />
-        </div>
-      )}
-
-      {/* Add calendar type */}
-      <div style={{ padding: "10px 14px" }}>
-        {!adding ? (
+      {creating ? (
+        <div style={{ padding: "6px 12px", display: "flex", gap: 5 }}>
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") { setCreating(false); setNewName(""); } }}
+            placeholder="View name…"
+            style={{ flex: 1, padding: "4px 8px", borderRadius: 6, fontSize: 11, background: S.card, border: `1px solid ${S.border}`, color: S.text }}
+          />
           <button
-            onClick={() => setAdding(true)}
-            style={{
-              width: "100%", padding: "6px 0", fontSize: 12, fontWeight: 600,
-              background: "none", border: `1px dashed ${S.border}`, borderRadius: 8,
-              color: S.dim, cursor: "pointer", textAlign: "center",
-            }}
-          >+ Add Calendar</button>
-        ) : (
-          <div style={{ display: "grid", gap: 7 }}>
-            <input
-              autoFocus
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAddType(); if (e.key === "Escape") setAdding(false); }}
-              placeholder="Calendar name…"
-              style={{ padding: "6px 9px", borderRadius: 7, background: S.bg, border: `1px solid ${S.border}`, color: S.text, fontSize: 12 }}
-            />
-            <select
-              value={newType}
-              onChange={(e) => setNewType(e.target.value as any)}
-              style={{ padding: "5px 8px", borderRadius: 7, background: S.bg, border: `1px solid ${S.border}`, color: S.dim, fontSize: 11 }}
-            >
-              {(["work","family","personal","custom"] as const).map((t) => (
-                <option key={t} value={t}>{TYPE_ICON[t]} {t.charAt(0).toUpperCase() + t.slice(1)}</option>
-              ))}
-            </select>
-            {addErr && <p style={{ margin: 0, fontSize: 11, color: "#fca5a5" }}>{addErr}</p>}
-            <div style={{ display: "flex", gap: 5 }}>
-              <button onClick={handleAddType} disabled={!newName.trim() || addBusy} style={{ flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11, fontWeight: 700, border: "none", background: "var(--gg-primary,#2563eb)", color: "#fff", cursor: "pointer" }}>
-                {addBusy ? "…" : "Add"}
-              </button>
-              <button onClick={() => { setAdding(false); setNewName(""); setAddErr(""); }} style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, border: `1px solid ${S.border}`, background: "none", color: S.dim, cursor: "pointer" }}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+            onClick={handleCreate}
+            disabled={!newName.trim() || busy}
+            style={{ padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, border: "none", background: "var(--gg-primary,#2563eb)", color: "#fff", cursor: "pointer" }}
+          >{busy ? "…" : "Add"}</button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setCreating(true)}
+          style={{
+            margin: "4px 12px", padding: "4px 0",
+            fontSize: 11, fontWeight: 600,
+            background: "none", border: `1px dashed ${S.border}`, borderRadius: 6,
+            color: S.dim, cursor: "pointer",
+          }}
+        >+ New View</button>
+      )}
+
+      <div style={{ height: 1, background: S.border, margin: "10px 12px 6px" }} />
+
+      {/* Toggles — what the active view shows */}
+      <div style={{
+        padding: "0 12px 4px",
+        fontSize: 10, fontWeight: 700, color: S.dim,
+        letterSpacing: "0.07em", textTransform: "uppercase",
+      }}>Show in View</div>
+
+      <div style={{ padding: "2px 12px" }}>
+        <Toggle on={workOn}              onToggle={toggleOrg}     label="Work" />
+        <Toggle on={context.personalOn}  onToggle={togglePersonal} label="Personal" />
       </div>
 
-      {sharingView && (
-        <SharePanel view={sharingView} onClose={() => setSharingView(null)} />
+      {squads.length > 0 && (
+        <>
+          <div style={{
+            padding: "8px 12px 4px",
+            fontSize: 10, fontWeight: 700, color: S.dim,
+            letterSpacing: "0.07em", textTransform: "uppercase",
+          }}>Squads</div>
+          <div style={{ padding: "2px 12px" }}>
+            {squads.map((sq) => {
+              const dot = getFamilyByKey(sq.color)?.shades[3] ?? "#818cf8";
+              return (
+                <button
+                  key={sq.id}
+                  type="button"
+                  onClick={() => toggleSquad(sq.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    width: "100%", padding: "5px 0",
+                    background: "none", border: "none", cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{
+                    width: 28, height: 15, borderRadius: 8, flexShrink: 0, position: "relative",
+                    background: context.squadIds.includes(sq.id) ? "rgba(99,102,241,.7)" : "rgba(255,255,255,.1)",
+                    transition: "background .12s",
+                  }}>
+                    <span style={{
+                      position: "absolute", top: 2,
+                      left: context.squadIds.includes(sq.id) ? 15 : 2,
+                      width: 11, height: 11,
+                      borderRadius: "50%",
+                      background: context.squadIds.includes(sq.id) ? "#fff" : "rgba(255,255,255,.5)",
+                      transition: "left .12s",
+                    }} />
+                  </span>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: context.squadIds.includes(sq.id) ? S.brt : S.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {sq.name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

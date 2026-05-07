@@ -4,9 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { todayStr } from "@/lib/date-utils";
 import {
-  filterByVisibleCalendars, loadVisibleIds, saveVisibleIds,
-  type CalendarTypeData, type SharedViewData,
-} from "@/lib/calendar-filter";
+  filterItems,
+  defaultContext,
+  contextFromView,
+  loadActiveViewId,
+  saveActiveViewId,
+  type CalendarContext,
+  type SitRepView,
+} from "@/lib/sitrep-calendar-filter";
 import DayView from "./DayView";
 import WeekView from "./WeekView";
 import MonthView from "./MonthView";
@@ -21,16 +26,9 @@ const S = {
   border: "rgba(255,255,255,.07)",
 } as const;
 
-type View = "day" | "week" | "month";
+type View     = "day" | "week" | "month";
 type ItemType = { id: string; name: string; slug: string; color: string; sort_order: number };
-
-interface CalendarLayoutProps {
-  initialItems:         SitRepItem[];
-  types:                ItemType[];
-  userId:               string;
-  tenantId:             string;
-  initialCalendarTypes: CalendarTypeData[];
-}
+type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
 
 function ViewPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -55,8 +53,17 @@ function ViewPill({ active, onClick, children }: { active: boolean; onClick: () 
   );
 }
 
+interface CalendarLayoutProps {
+  initialItems: SitRepItem[];
+  types:        ItemType[];
+  userId:       string;
+  tenantId:     string;
+  views:        SitRepView[];
+  squads:       SquadInfo[];
+}
+
 export default function CalendarLayout({
-  initialItems, types, userId, tenantId, initialCalendarTypes,
+  initialItems, types, userId, tenantId, views: initialViews, squads,
 }: CalendarLayoutProps) {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -74,11 +81,11 @@ export default function CalendarLayout({
   const [cursor, setCursor] = useState(() => searchParams.get("date") ?? todayStr());
   const [items, setItems]   = useState<SitRepItem[]>([...initialItems]);
 
-  // Calendar switcher state
-  const [calendarTypes,  setCalendarTypes]  = useState<CalendarTypeData[]>(initialCalendarTypes);
-  const [sharedViews,    setSharedViews]    = useState<SharedViewData[]>([]);
-  const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(
-    () => loadVisibleIds(initialCalendarTypes.map((ct) => ct.id))
+  // Views / filter state
+  const [views,         setViews]         = useState<SitRepView[]>(initialViews);
+  const [activeViewId,  setActiveViewId]  = useState<string | null>(null);
+  const [context,       setContext]       = useState<CalendarContext>(() =>
+    defaultContext(tenantId ? [tenantId] : [], squads.map((s) => s.id))
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -86,6 +93,21 @@ export default function CalendarLayout({
   const [sheetOpen,   setSheetOpen]   = useState(false);
   const [sheetItem,   setSheetItem]   = useState<SitRepItem | null>(null);
   const [sheetCreate, setSheetCreate] = useState(false);
+
+  // Init active view from localStorage or first default
+  useEffect(() => {
+    const savedId = loadActiveViewId();
+    const v =
+      views.find((x) => x.id === savedId) ??
+      views.find((x) => x.is_default) ??
+      views[0];
+    if (v) {
+      setActiveViewId(v.id);
+      setContext(contextFromView(v));
+      saveActiveViewId(v.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sync view/cursor to URL
   useEffect(() => {
@@ -100,52 +122,40 @@ export default function CalendarLayout({
     if (typeof window !== "undefined") localStorage.setItem("sitrep_cal_view", view);
   }, [view]);
 
-  function allTypeIds(types: CalendarTypeData[], views: SharedViewData[]): string[] {
-    return [...types.map((t) => t.id), ...views.map((v) => v.view_id)];
+  function selectView(id: string) {
+    const v = views.find((x) => x.id === id);
+    if (!v) return;
+    setActiveViewId(id);
+    setContext(contextFromView(v));
+    saveActiveViewId(id);
   }
 
-  // Sync visibleTypeIds from localStorage whenever the set of known IDs changes
-  useEffect(() => {
-    const ids = allTypeIds(calendarTypes, sharedViews);
-    if (ids.length === 0) return;
-    setVisibleTypeIds(loadVisibleIds(ids));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarTypes, sharedViews]);
-
-  function reloadCalendarTypes() {
-    fetch("/api/sitrep/calendar-types")
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: CalendarTypeData[]) => {
-        setCalendarTypes(data);
-      })
-      .catch(() => {});
+  // Immediate filter update + fire-and-forget save
+  function handleContextChange(next: CalendarContext) {
+    setContext(next);
+    if (!activeViewId) return;
+    fetch(`/api/sitrep/views/${activeViewId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toggle_state: {
+          org_ids:      next.orgIds,
+          squad_ids:    next.squadIds,
+          personal:     next.personalOn,
+          favorite_ids: next.favoriteIds,
+          filters:      next.filters,
+        },
+      }),
+    }).catch(() => {});
   }
 
-  function onSharedViewsLoaded(views: SharedViewData[]) {
-    setSharedViews(views);
-
-    if (views.length === 0) return;
-
-    fetch("/api/sitrep/calendar-views/shared/items")
-      .then((r) => r.ok ? r.json() : [])
-      .then((sharedItems: SitRepItem[]) => {
-        if (!Array.isArray(sharedItems) || sharedItems.length === 0) return;
-        setItems((prev) => {
-          const existingIds = new Set(prev.map((i) => i.id));
-          const newOnes = sharedItems.filter((i) => !existingIds.has(i.id));
-          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
-        });
-      })
-      .catch(() => {});
-  }
-
-  function onToggleType(id: string) {
-    setVisibleTypeIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      saveVisibleIds(allTypeIds(calendarTypes, sharedViews), next);
-      return next;
-    });
+  async function handleViewsChanged() {
+    const res = await fetch("/api/sitrep/views");
+    if (!res.ok) return;
+    const data: SitRepView[] = await res.json();
+    setViews(data);
+    const active = data.find((v) => v.id === activeViewId);
+    if (active) setContext(contextFromView(active));
   }
 
   function onItemTap(item: SitRepItem) {
@@ -173,10 +183,9 @@ export default function CalendarLayout({
     setSheetOpen(false);
   }
 
-  const isToday = cursor === todayStr();
-
-  const displayItems = filterByVisibleCalendars(items, calendarTypes, sharedViews, visibleTypeIds, userId);
-  const hiddenCount  = items.length - displayItems.length;
+  const isToday       = cursor === todayStr();
+  const displayItems  = filterItems(items as any[], userId, context) as SitRepItem[];
+  const hiddenCount   = items.length - displayItems.length;
 
   return (
     <div style={{ height: "100dvh", background: S.bg, display: "flex", flexDirection: "column" }}>
@@ -256,12 +265,14 @@ export default function CalendarLayout({
       <CalendarSwitcherDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        calendarTypes={calendarTypes}
-        visibleTypeIds={visibleTypeIds}
-        onToggleType={onToggleType}
-        onTypesChanged={reloadCalendarTypes}
-        sharedViews={sharedViews}
-        onSharedViewsLoaded={onSharedViewsLoaded}
+        views={views}
+        activeViewId={activeViewId}
+        onSelectView={selectView}
+        squads={squads}
+        tenantId={tenantId}
+        context={context}
+        onContextChange={handleContextChange}
+        onViewsChanged={handleViewsChanged}
       />
 
       <ItemBottomSheet
@@ -270,7 +281,6 @@ export default function CalendarLayout({
         item={sheetItem}
         createMode={sheetCreate}
         types={types}
-        calendarTypes={calendarTypes}
         tenantId={tenantId}
         userId={userId}
         tz={tz}

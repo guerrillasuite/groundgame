@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
-import type { CalendarTypeData, SharedViewData } from "@/lib/calendar-filter";
+import { type CalendarContext, type SitRepView } from "@/lib/sitrep-calendar-filter";
 
-// Re-export so consumers can import from one place
-export type { CalendarTypeData, SharedViewData };
+// Legacy re-exports kept for type compatibility during migration
+export type CalendarTypeData = never;
+export type SharedViewData   = never;
 
 const S = {
   bg:     "rgb(15 19 28)",
@@ -16,109 +17,142 @@ const S = {
   dimBrt: "rgb(148 163 184)",
 } as const;
 
-function IOSToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
+
+function IOSToggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
       style={{
-        position: "relative",
-        width: 38,
-        height: 21,
-        borderRadius: 11,
-        flexShrink: 0,
-        background: on ? "var(--gg-primary,#2563eb)" : "rgba(255,255,255,.12)",
-        boxShadow: on
-          ? "0 0 8px color-mix(in srgb, var(--gg-primary,#2563eb) 45%, transparent)"
-          : "inset 0 1px 3px rgba(0,0,0,.4)",
-        transition: "background .2s ease, box-shadow .2s ease",
-        border: "none",
-        cursor: "pointer",
-        padding: 0,
+        display: "flex", alignItems: "center", gap: 10,
+        width: "100%", padding: "9px 0",
+        background: "none", border: "none", cursor: "pointer", textAlign: "left",
       }}
     >
       <div
         style={{
-          position: "absolute",
-          top: 2,
-          left: on ? 19 : 2,
-          width: 17,
-          height: 17,
-          borderRadius: "50%",
-          background: "#fff",
-          boxShadow: "0 1px 4px rgba(0,0,0,.35)",
-          transition: "left .2s ease",
+          position: "relative", width: 38, height: 21, borderRadius: 11, flexShrink: 0,
+          background: on ? "var(--gg-primary,#2563eb)" : "rgba(255,255,255,.12)",
+          boxShadow: on
+            ? "0 0 8px color-mix(in srgb, var(--gg-primary,#2563eb) 45%, transparent)"
+            : "inset 0 1px 3px rgba(0,0,0,.4)",
+          transition: "background .2s ease, box-shadow .2s ease",
         }}
-      />
+      >
+        <div style={{
+          position: "absolute", top: 2, left: on ? 19 : 2, width: 17, height: 17,
+          borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.35)",
+          transition: "left .2s ease",
+        }} />
+      </div>
+      <span style={{ fontSize: 14, color: on ? S.dimBrt : S.dim }}>{label}</span>
     </button>
   );
 }
 
 interface Props {
-  open:           boolean;
-  onClose:        () => void;
-  calendarTypes:  CalendarTypeData[];
-  visibleTypeIds: Set<string>;
-  onToggleType:   (id: string) => void;
-  onTypesChanged: () => void;
-  // Shared views — managed externally so CalendarLayout can filter by them
-  sharedViews:    SharedViewData[];
-  onSharedViewsLoaded: (views: SharedViewData[]) => void;
+  open:             boolean;
+  onClose:          () => void;
+  views:            SitRepView[];
+  activeViewId:     string | null;
+  onSelectView:     (id: string) => void;
+  squads:           SquadInfo[];
+  tenantId:         string;
+  context:          CalendarContext;
+  onContextChange:  (ctx: CalendarContext) => void;
+  onViewsChanged:   () => Promise<void>;
 }
 
-const TYPE_ICON: Record<string, string> = {
-  work: "🏢", family: "🏠", personal: "👤", custom: "📅",
-};
-
 export default function CalendarSwitcherDrawer({
-  open, onClose, calendarTypes, visibleTypeIds, onToggleType, onTypesChanged,
-  sharedViews, onSharedViewsLoaded,
+  open, onClose,
+  views, activeViewId, onSelectView,
+  squads, tenantId,
+  context, onContextChange,
+  onViewsChanged,
 }: Props) {
-  const [mounted,   setMounted]   = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [adding,    setAdding]    = useState(false);
-  const [newName,   setNewName]   = useState("");
-  const [newType,   setNewType]   = useState<"work" | "personal" | "family" | "custom">("custom");
-  const [addErr,    setAddErr]    = useState("");
-  const [addBusy,   setAddBusy]   = useState(false);
+  const [mounted,  setMounted]  = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName,  setNewName]  = useState("");
+  const [busy,     setBusy]     = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName,  setEditName]  = useState("");
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Fetch shared views once on mount
-  useEffect(() => {
-    fetch("/api/sitrep/calendar-views/shared")
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: SharedViewData[]) => {
-        if (Array.isArray(data)) onSharedViewsLoaded(data);
-      })
-      .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function toggleCollapse(id: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  function toggleOrg() {
+    const ids = context.orgIds;
+    const next = ids.includes(tenantId)
+      ? ids.filter((id) => id !== tenantId)
+      : [...ids, tenantId];
+    onContextChange({ ...context, orgIds: next });
   }
 
-  async function handleAddType() {
-    if (!newName.trim() || addBusy) return;
-    setAddBusy(true); setAddErr("");
-    const res = await fetch("/api/sitrep/calendar-types", {
+  function togglePersonal() {
+    onContextChange({ ...context, personalOn: !context.personalOn });
+  }
+
+  function toggleSquad(squadId: string) {
+    const ids = context.squadIds;
+    const next = ids.includes(squadId)
+      ? ids.filter((id) => id !== squadId)
+      : [...ids, squadId];
+    onContextChange({ ...context, squadIds: next });
+  }
+
+  async function handleCreate() {
+    const trimmed = newName.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    const res = await fetch("/api/sitrep/views", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName.trim(), cal_type: newType }),
+      body: JSON.stringify({
+        name: trimmed,
+        toggle_state: {
+          org_ids:      context.orgIds,
+          squad_ids:    context.squadIds,
+          personal:     context.personalOn,
+          favorite_ids: context.favoriteIds,
+          filters:      context.filters,
+        },
+        is_default: false,
+        sort_order: views.length,
+      }),
     });
-    setAddBusy(false);
+    setBusy(false);
     if (res.ok) {
-      setAdding(false); setNewName(""); onTypesChanged();
-    } else {
-      const e = await res.json().catch(() => ({}));
-      setAddErr(e.error ?? "Failed");
+      setCreating(false);
+      setNewName("");
+      const data = await res.json();
+      await onViewsChanged();
+      if (data.id) onSelectView(data.id);
     }
   }
+
+  async function handleRename(viewId: string) {
+    const trimmed = editName.trim();
+    if (!trimmed) { setEditingId(null); return; }
+    await fetch(`/api/sitrep/views/${viewId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    setEditingId(null);
+    await onViewsChanged();
+  }
+
+  async function handleDelete(viewId: string, viewName: string) {
+    if (!confirm(`Delete view "${viewName}"?`)) return;
+    await fetch(`/api/sitrep/views/${viewId}`, { method: "DELETE" });
+    await onViewsChanged();
+    if (viewId === activeViewId) {
+      const remaining = views.filter((v) => v.id !== viewId);
+      if (remaining[0]) onSelectView(remaining[0].id);
+    }
+  }
+
+  const workOn = context.orgIds.includes(tenantId);
 
   if (!mounted) return null;
 
@@ -132,8 +166,7 @@ export default function CalendarSwitcherDrawer({
       <div
         style={{
           position: "absolute", inset: 0, background: "rgba(0,0,0,.6)",
-          opacity: open ? 1 : 0,
-          transition: "opacity .2s",
+          opacity: open ? 1 : 0, transition: "opacity .2s",
         }}
         onClick={onClose}
       />
@@ -166,194 +199,157 @@ export default function CalendarSwitcherDrawer({
           >✕</button>
         </div>
 
-        {/* Scrollable content */}
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: 24 }}>
 
-          {/* ── Own calendar types ── */}
-          {calendarTypes.length === 0 && sharedViews.length === 0 && (
-            <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12, color: S.dim, fontStyle: "italic" }}>
-              No calendars yet.
-            </div>
-          )}
+          {/* Views */}
+          <div style={{
+            padding: "12px 14px 6px",
+            fontSize: 10, fontWeight: 700, color: S.dim,
+            letterSpacing: "0.07em", textTransform: "uppercase",
+          }}>Views</div>
 
-          {calendarTypes.map((ct) => {
-            const isCollapsed = collapsed.has(ct.id);
-            const isVisible   = visibleTypeIds.has(ct.id);
-            const dot = getFamilyByKey(ct.color)?.shades[3] ?? "#818cf8";
-
-            return (
-              <div key={ct.id}>
-                <div
-                  style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    padding: "11px 14px 9px", cursor: "pointer",
-                  }}
-                  onClick={() => toggleCollapse(ct.id)}
-                >
-                  <span style={{ fontSize: 10, color: S.dim, lineHeight: 1, flexShrink: 0 }}>
-                    {isCollapsed ? "▶" : "▼"}
-                  </span>
-                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                  <span style={{
-                    flex: 1, fontSize: 12, fontWeight: 700, color: S.dimBrt,
-                    letterSpacing: "0.05em", textTransform: "uppercase",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {ct.name}
-                  </span>
-                  <IOSToggle on={isVisible} onToggle={() => onToggleType(ct.id)} />
-                </div>
-
-                {!isCollapsed && (ct.user_calendar_views ?? []).length > 0 && (
-                  <div style={{ paddingBottom: 4 }}>
-                    {[...(ct.user_calendar_views ?? [])]
-                      .sort((a, b) => a.sort_order - b.sort_order)
-                      .map((view) => {
-                        const vDot = view.color
-                          ? (getFamilyByKey(view.color)?.shades[3] ?? dot)
-                          : dot;
-                        return (
-                          <div key={view.id} style={{
-                            display: "flex", alignItems: "center", gap: 7,
-                            padding: "5px 14px 5px 36px",
-                          }}>
-                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: vDot, flexShrink: 0 }} />
-                            <span style={{
-                              flex: 1, fontSize: 12, color: S.dim,
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                            }}>
-                              {view.name}
-                            </span>
-                          </div>
-                        );
-                      })}
-                  </div>
-                )}
-
-                <div style={{ height: 1, background: S.border, margin: "2px 14px" }} />
-              </div>
-            );
-          })}
-
-          {/* ── Shared with me ── */}
-          {sharedViews.length > 0 && (
-            <div>
-              <div style={{
-                padding: "10px 14px 6px",
-                fontSize: 10, fontWeight: 700, color: S.dim,
-                letterSpacing: "0.07em", textTransform: "uppercase",
-              }}>
-                Shared with me
-              </div>
-
-              {sharedViews.map((sv) => {
-                const dot = getFamilyByKey(sv.type_color)?.shades[3] ?? "#818cf8";
-                const vDot = sv.view_color
-                  ? (getFamilyByKey(sv.view_color)?.shades[3] ?? dot)
-                  : dot;
-                const isVisible = visibleTypeIds.has(sv.view_id);
-                return (
-                  <div key={sv.share_id} style={{
-                    display: "flex", alignItems: "center", gap: 7,
-                    padding: "7px 14px",
-                  }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: vDot, flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 12, color: S.dimBrt, fontWeight: 500,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                        {sv.view_name}
-                      </div>
-                      <div style={{ fontSize: 10, color: S.dim, marginTop: 1 }}>
-                        {sv.type_name} · {sv.owner_name}
-                      </div>
-                    </div>
-                    <span style={{
-                      fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, flexShrink: 0,
-                      background: sv.role === "editor" ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.06)",
-                      color: sv.role === "editor" ? "#a5b4fc" : S.dim,
-                    }}>
-                      {sv.role === "editor" ? "ED" : "VW"}
-                    </span>
-                    <IOSToggle on={isVisible} onToggle={() => onToggleType(sv.view_id)} />
-                  </div>
-                );
-              })}
-
-              <div style={{ height: 1, background: S.border, margin: "6px 14px" }} />
-            </div>
-          )}
-
-          {/* ── Add calendar ── */}
-          <div style={{ padding: "12px 14px" }}>
-            {!adding ? (
-              <button
-                onClick={() => setAdding(true)}
-                style={{
-                  width: "100%", padding: "8px 0", fontSize: 12, fontWeight: 600,
-                  background: "none", border: `1px dashed ${S.border}`,
-                  borderRadius: 8, color: S.dim, cursor: "pointer", textAlign: "center",
-                }}
-              >+ Add Calendar</button>
-            ) : (
-              <div style={{ display: "grid", gap: 7 }}>
+          {views.map((view) => (
+            <div key={view.id} style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "7px 14px",
+              background: view.id === activeViewId ? "rgba(255,255,255,.06)" : "transparent",
+            }}>
+              {editingId === view.id ? (
                 <input
                   autoFocus
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onBlur={() => handleRename(view.id)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleAddType();
-                    if (e.key === "Escape") { setAdding(false); setNewName(""); }
+                    if (e.key === "Enter") handleRename(view.id);
+                    if (e.key === "Escape") setEditingId(null);
                   }}
-                  placeholder="Calendar name…"
                   style={{
-                    padding: "8px 10px", borderRadius: 7,
-                    background: "rgb(10 13 20)", border: `1px solid ${S.border}`,
-                    color: S.text, fontSize: 13, outline: "none",
+                    flex: 1, padding: "4px 8px", borderRadius: 6, fontSize: 13,
+                    background: "rgba(255,255,255,.08)", border: `1px solid ${S.border}`,
+                    color: S.text, outline: "none",
                   }}
                 />
-                <select
-                  value={newType}
-                  onChange={(e) => setNewType(e.target.value as typeof newType)}
+              ) : (
+                <span
+                  onClick={() => { onSelectView(view.id); onClose(); }}
                   style={{
-                    padding: "6px 9px", borderRadius: 7,
-                    background: "rgb(10 13 20)", border: `1px solid ${S.border}`,
-                    color: S.dim, fontSize: 12,
+                    flex: 1, fontSize: 13, cursor: "pointer",
+                    color: view.id === activeViewId ? S.text : S.dim,
+                    fontWeight: view.id === activeViewId ? 600 : 400,
                   }}
                 >
-                  {(["work", "family", "personal", "custom"] as const).map((t) => (
-                    <option key={t} value={t}>
-                      {TYPE_ICON[t]} {t.charAt(0).toUpperCase() + t.slice(1)}
-                    </option>
-                  ))}
-                </select>
-                {addErr && <p style={{ margin: 0, fontSize: 11, color: "#fca5a5" }}>{addErr}</p>}
-                <div style={{ display: "flex", gap: 5 }}>
-                  <button
-                    onClick={handleAddType}
-                    disabled={!newName.trim() || addBusy}
-                    style={{
-                      flex: 1, padding: "7px 0", borderRadius: 7, fontSize: 12, fontWeight: 700,
-                      border: "none", background: "var(--gg-primary,#2563eb)", color: "#fff",
-                      cursor: !newName.trim() || addBusy ? "not-allowed" : "pointer",
-                      opacity: !newName.trim() || addBusy ? 0.6 : 1,
-                    }}
-                  >{addBusy ? "…" : "Add"}</button>
-                  <button
-                    onClick={() => { setAdding(false); setNewName(""); setAddErr(""); }}
-                    style={{
-                      padding: "7px 12px", borderRadius: 7, fontSize: 12,
-                      border: `1px solid ${S.border}`, background: "none",
-                      color: S.dim, cursor: "pointer",
-                    }}
-                  >Cancel</button>
-                </div>
-              </div>
-            )}
+                  {view.name}
+                </span>
+              )}
+              <button
+                onClick={() => { setEditingId(view.id); setEditName(view.name); }}
+                style={{ background: "none", border: "none", color: S.dim, fontSize: 12, cursor: "pointer", padding: "2px 4px", opacity: 0.7 }}
+              >✎</button>
+              {!view.is_default && (
+                <button
+                  onClick={() => handleDelete(view.id, view.name)}
+                  style={{ background: "none", border: "none", color: S.dim, fontSize: 12, cursor: "pointer", padding: "2px 4px", opacity: 0.5 }}
+                >✕</button>
+              )}
+            </div>
+          ))}
+
+          {creating ? (
+            <div style={{ padding: "6px 14px", display: "flex", gap: 6 }}>
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreate();
+                  if (e.key === "Escape") { setCreating(false); setNewName(""); }
+                }}
+                placeholder="View name…"
+                style={{
+                  flex: 1, padding: "6px 10px", borderRadius: 7, fontSize: 13,
+                  background: "rgba(255,255,255,.08)", border: `1px solid ${S.border}`,
+                  color: S.text, outline: "none",
+                }}
+              />
+              <button
+                onClick={handleCreate}
+                disabled={!newName.trim() || busy}
+                style={{
+                  padding: "6px 12px", borderRadius: 7, fontSize: 12, fontWeight: 700,
+                  border: "none", background: "var(--gg-primary,#2563eb)", color: "#fff",
+                  cursor: "pointer", opacity: !newName.trim() || busy ? 0.6 : 1,
+                }}
+              >{busy ? "…" : "Add"}</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setCreating(true)}
+              style={{
+                margin: "4px 14px", padding: "7px 0",
+                width: "calc(100% - 28px)",
+                fontSize: 12, fontWeight: 600,
+                background: "none", border: `1px dashed ${S.border}`, borderRadius: 8,
+                color: S.dim, cursor: "pointer",
+              }}
+            >+ New View</button>
+          )}
+
+          <div style={{ height: 1, background: S.border, margin: "12px 14px 6px" }} />
+
+          {/* Show toggles */}
+          <div style={{
+            padding: "4px 14px 4px",
+            fontSize: 10, fontWeight: 700, color: S.dim,
+            letterSpacing: "0.07em", textTransform: "uppercase",
+          }}>Show in View</div>
+
+          <div style={{ padding: "0 14px" }}>
+            {tenantId && <IOSToggle on={workOn}             onToggle={toggleOrg}     label="Work" />}
+            <IOSToggle on={context.personalOn} onToggle={togglePersonal} label="Personal" />
           </div>
 
+          {squads.length > 0 && (
+            <>
+              <div style={{
+                padding: "8px 14px 4px",
+                fontSize: 10, fontWeight: 700, color: S.dim,
+                letterSpacing: "0.07em", textTransform: "uppercase",
+              }}>Squads</div>
+              <div style={{ padding: "0 14px" }}>
+                {squads.map((sq) => {
+                  const dot = getFamilyByKey(sq.color)?.shades[3] ?? "#818cf8";
+                  const isOn = context.squadIds.includes(sq.id);
+                  return (
+                    <button
+                      key={sq.id}
+                      type="button"
+                      onClick={() => toggleSquad(sq.id)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        width: "100%", padding: "9px 0",
+                        background: "none", border: "none", cursor: "pointer", textAlign: "left",
+                      }}
+                    >
+                      <div style={{
+                        position: "relative", width: 38, height: 21, borderRadius: 11, flexShrink: 0,
+                        background: isOn ? "var(--gg-primary,#2563eb)" : "rgba(255,255,255,.12)",
+                        transition: "background .2s ease",
+                      }}>
+                        <div style={{
+                          position: "absolute", top: 2, left: isOn ? 19 : 2, width: 17, height: 17,
+                          borderRadius: "50%", background: "#fff",
+                          transition: "left .2s ease",
+                        }} />
+                      </div>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                      <span style={{ fontSize: 14, color: isOn ? S.dimBrt : S.dim }}>{sq.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

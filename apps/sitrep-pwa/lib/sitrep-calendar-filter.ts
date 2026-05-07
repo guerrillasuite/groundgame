@@ -1,25 +1,20 @@
 /**
- * Unified SitRep calendar filter — canonical copy used by both CRM and PWA.
- * PWA copy lives at apps/sitrep-pwa/lib/sitrep-calendar-filter.ts — keep in sync.
- *
- * New model: items belong to an Org (tenant_id), a Squad (squad_id), or neither (Personal).
- * Visibility rules:
- *   private       → only creator. Personal items are always private.
- *   assignee_only → creator + sitrep_assignments members
- *   team / null   → all members of the item's Org or Squad context
+ * Unified SitRep calendar filter — PWA copy.
+ * Canonical source: lib/sitrep-calendar-filter.ts (root)
+ * Keep these two files in sync. Do not diverge.
  */
 
 export type ViewFilters = {
-  item_types:     string[];  // empty = all
-  statuses:       string[];  // empty = all
-  show_completed: boolean;   // false hides done/cancelled
+  item_types:     string[];
+  statuses:       string[];
+  show_completed: boolean;
 };
 
 export type CalendarContext = {
-  orgIds:      string[];  // tenant IDs the user has toggled on
-  squadIds:    string[];  // squad IDs the user has toggled on
+  orgIds:      string[];
+  squadIds:    string[];
   personalOn:  boolean;
-  favoriteIds: string[];  // favorite user IDs toggled on (overlay only, not used in isItemVisible)
+  favoriteIds: string[];
   filters:     ViewFilters;
 };
 
@@ -47,7 +42,7 @@ export type FavoriteData = {
   favorite_user_id: string;
   detail_level:     "busy" | "basic" | "full";
   sort_order:       number;
-  name?:            string;  // resolved display name
+  name?:            string;
 };
 
 export type SitRepView = {
@@ -64,8 +59,6 @@ export type SitRepView = {
   sort_order:  number;
 };
 
-// ── Filter logic ───────────────────────────────────────────────────────────────
-
 const TERMINAL_STATUSES = ["done", "cancelled"];
 
 function isAssigned(item: ItemLike, userId: string): boolean {
@@ -75,7 +68,6 @@ function isAssigned(item: ItemLike, userId: string): boolean {
   );
 }
 
-// null/undefined visibility defaults to "team" — most items have no explicit visibility
 function effectiveVisibility(item: ItemLike): string {
   return item.visibility ?? "team";
 }
@@ -96,30 +88,23 @@ function passesFilters(item: ItemLike, filters: ViewFilters): boolean {
 export function isItemVisible(item: ItemLike, userId: string, context: CalendarContext): boolean {
   const vis = effectiveVisibility(item);
 
-  // View filters apply to everything first
   if (!passesFilters(item, context.filters)) return false;
 
-  // Private items always go to the Personal bucket regardless of tenant_id.
-  // Existing items may have tenant_id set but visibility='private' — treat them as personal.
   if (vis === "private") {
     if (!context.personalOn) return false;
     return item.created_by === userId;
   }
 
-  // Personal items with no context (new personal items going forward)
   if (!item.tenant_id && !item.squad_id) {
     return context.personalOn;
   }
 
-  // Squad item
   if (item.squad_id) {
     if (!context.squadIds.includes(item.squad_id)) return false;
-    // vis is team (already handled private above)
     if (vis === "assignee_only") return isAssigned(item, userId);
     return true;
   }
 
-  // Org item
   if (item.tenant_id) {
     if (!context.orgIds.includes(item.tenant_id)) return false;
     if (vis === "assignee_only") return isAssigned(item, userId);
@@ -137,7 +122,6 @@ export function filterItems<T extends ItemLike>(
   return items.filter((item) => isItemVisible(item, userId, context));
 }
 
-// Build a CalendarContext from a SitRepView's toggle_state
 export function contextFromView(view: SitRepView): CalendarContext {
   const ts = view.toggle_state;
   return {
@@ -153,7 +137,6 @@ export function contextFromView(view: SitRepView): CalendarContext {
   };
 }
 
-// Default "show everything" context — used when no Views are loaded yet
 export function defaultContext(orgIds: string[], squadIds: string[]): CalendarContext {
   return {
     orgIds,
@@ -163,9 +146,6 @@ export function defaultContext(orgIds: string[], squadIds: string[]): CalendarCo
     filters: { item_types: [], statuses: [], show_completed: true },
   };
 }
-
-// ── localStorage persistence ───────────────────────────────────────────────────
-// Persists which view is active by ID
 
 const LS_ACTIVE_VIEW_KEY = "sitrep_active_view_id";
 

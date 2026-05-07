@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { getCrmUser } from "@/lib/crm-auth";
+
+export const dynamic = "force-dynamic";
+
+const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+function sb() { return createClient(URL_, KEY); }
+
+const SELECT = "id, favorite_user_id, detail_level, sort_order";
+
+// GET — list favorites, resolved with names
+export async function GET(_req: NextRequest) {
+  const user = await getCrmUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { data, error } = await sb()
+    .from("sitrep_favorites")
+    .select(SELECT)
+    .eq("owner_user_id", user.userId)
+    .order("sort_order");
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const favorites = data ?? [];
+  if (favorites.length === 0) return NextResponse.json([]);
+
+  // Resolve display names
+  let nameMap: Record<string, string> = {};
+  try {
+    const res = await fetch(`${URL_}/auth/v1/admin/users?per_page=1000`, {
+      headers: { Authorization: `Bearer ${KEY}`, apikey: KEY },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      for (const u of json.users ?? []) {
+        nameMap[u.id] = u.user_metadata?.name ?? u.user_metadata?.full_name ?? u.email ?? u.id;
+      }
+    }
+  } catch { /* best-effort */ }
+
+  return NextResponse.json(favorites.map((f: any) => ({ ...f, name: nameMap[f.favorite_user_id] ?? f.favorite_user_id })));
+}
+
+// POST — add a favorite
+export async function POST(req: NextRequest) {
+  const user = await getCrmUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json().catch(() => null);
+  if (!body?.favorite_user_id) return NextResponse.json({ error: "favorite_user_id required" }, { status: 400 });
+
+  const db = sb();
+  const { data: maxOrder } = await db
+    .from("sitrep_favorites")
+    .select("sort_order")
+    .eq("owner_user_id", user.userId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .single();
+
+  const { data, error } = await db
+    .from("sitrep_favorites")
+    .upsert({
+      owner_user_id:    user.userId,
+      favorite_user_id: body.favorite_user_id,
+      detail_level:     body.detail_level ?? "busy",
+      sort_order:       ((maxOrder as any)?.sort_order ?? 0) + 1,
+    }, { onConflict: "owner_user_id,favorite_user_id" })
+    .select(SELECT)
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data);
+}

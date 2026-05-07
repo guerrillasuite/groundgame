@@ -3,7 +3,6 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { getFamilyByKey, SYSTEM_TYPE_FAMILIES, COLOR_FAMILIES } from "@/lib/sitrep-colors";
-import { SitRepViewToggle } from "../_components/SitRepViewToggle";
 import type { SitRepItem, Props } from "../SitRepPanel";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -165,14 +164,6 @@ export default function SitRepTimeline({
     <div style={{ minHeight: "100vh", background: S.bg, padding: "24px 24px 60px" }}>
       <div style={{ maxWidth: 1440, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
 
-        {/* Page header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: S.text }}>SitRep</h1>
-            <p style={{ margin: "2px 0 0", fontSize: 13, color: S.dim }}>Timeline</p>
-          </div>
-          <SitRepViewToggle />
-        </div>
 
         {/* Controls */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

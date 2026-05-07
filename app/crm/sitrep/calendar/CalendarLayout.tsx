@@ -1,11 +1,21 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import CalendarSwitcher, { type CalendarTypeData, type SharedViewData } from "./CalendarSwitcher";
-import { filterByVisibleCalendars, loadVisibleIds, saveVisibleIds } from "@/lib/sitrep-calendar-filter";
+import { useEffect, useState } from "react";
+import {
+  filterItems,
+  defaultContext,
+  contextFromView,
+  loadActiveViewId,
+  saveActiveViewId,
+  type CalendarContext,
+  type SitRepView,
+} from "@/lib/sitrep-calendar-filter";
+import CalendarSwitcher from "./CalendarSwitcher";
 import SitRepCalendar from "./SitRepCalendar";
 
 type SitRepItem = Parameters<typeof SitRepCalendar>[0]["initialItems"][number];
+
+type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
 
 export default function CalendarLayout({
   initialItems,
@@ -14,9 +24,9 @@ export default function CalendarLayout({
   currentUserId,
   hasMissions,
   typeColors,
-  calendarTypes,
   tenantId,
-  sharedViews = [],
+  views: initialViews,
+  squads,
 }: {
   initialItems:   SitRepItem[];
   missions:       any[];
@@ -24,70 +34,78 @@ export default function CalendarLayout({
   currentUserId:  string;
   hasMissions:    boolean;
   typeColors:     Record<string, string>;
-  calendarTypes:  CalendarTypeData[];
   tenantId:       string;
-  sharedViews?:   SharedViewData[];
+  views:          SitRepView[];
+  squads:         SquadInfo[];
 }) {
-  const allIds = [
-    ...calendarTypes.map((ct) => ct.id),
-    ...sharedViews.map((sv) => sv.view_id),
-  ];
-
-  const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(
-    () => loadVisibleIds(allIds)
+  const [views, setViews]           = useState<SitRepView[]>(initialViews);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const [context, setContext]       = useState<CalendarContext>(() =>
+    defaultContext([tenantId], squads.map((s) => s.id))
   );
-  const [calTypes, setCalTypes]   = useState<CalendarTypeData[]>(calendarTypes);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  function toggleType(typeId: string) {
-    setVisibleTypeIds((prev) => {
-      const next = new Set(prev);
-      next.has(typeId) ? next.delete(typeId) : next.add(typeId);
-      saveVisibleIds([...calTypes.map((c) => c.id), ...sharedViews.map((s) => s.view_id)], next);
-      return next;
-    });
+  // Init active view from localStorage or first default
+  useEffect(() => {
+    const savedId = loadActiveViewId();
+    const view =
+      views.find((v) => v.id === savedId) ??
+      views.find((v) => v.is_default) ??
+      views[0];
+    if (view) {
+      setActiveViewId(view.id);
+      setContext(contextFromView(view));
+      saveActiveViewId(view.id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function selectView(id: string) {
+    const view = views.find((v) => v.id === id);
+    if (!view) return;
+    setActiveViewId(id);
+    setContext(contextFromView(view));
+    saveActiveViewId(id);
   }
 
-  const refreshCalendarTypes = useCallback(async () => {
-    const res = await fetch("/api/user/calendar-types");
-    if (res.ok) {
-      const data: CalendarTypeData[] = await res.json();
-      setCalTypes(data);
-      const newIds = data.map((ct) => ct.id);
-      setVisibleTypeIds((prev) => {
-        const updated = loadVisibleIds([...newIds, ...sharedViews.map((s) => s.view_id)]);
-        return updated;
-      });
-    }
-  }, [sharedViews]);
+  // Immediate filter update + fire-and-forget save
+  function handleContextChange(next: CalendarContext) {
+    setContext(next);
+    if (!activeViewId) return;
+    const toggle_state = {
+      org_ids:      next.orgIds,
+      squad_ids:    next.squadIds,
+      personal:     next.personalOn,
+      favorite_ids: next.favoriteIds,
+      filters:      next.filters,
+    };
+    fetch(`/api/crm/sitrep/views/${activeViewId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ toggle_state }),
+    }).catch(() => {});
+  }
 
-  // CRM shared view items arrive pre-tagged with _source_tenant_id.
-  // Convert to the shape filterByVisibleCalendars expects (type_sources).
-  const sharedViewsForFilter = sharedViews.map((sv) => ({
-    ...sv,
-    type_sources: (sv as any).type_sources ?? [],
-  }));
+  async function handleViewsChanged() {
+    const res = await fetch("/api/crm/sitrep/views");
+    if (!res.ok) return;
+    const data: SitRepView[] = await res.json();
+    setViews(data);
+    // Re-sync context if active view changed
+    const active = data.find((v) => v.id === activeViewId);
+    if (active) setContext(contextFromView(active));
+  }
 
-  // Cross-tenant items (_source_tenant_id set) show when the matching shared view is visible.
-  // Own-tenant items go through isItemInCalendar as normal.
-  const anySharedVisible = sharedViews.some((sv) => visibleTypeIds.has(sv.view_id));
-
-  const displayItems = initialItems.filter((item) => {
-    if ((item as any)._source_tenant_id) {
-      return anySharedVisible;
-    }
-    return filterByVisibleCalendars([item], calTypes as any, sharedViewsForFilter as any, visibleTypeIds, currentUserId).length > 0;
-  });
+  const displayItems = filterItems(initialItems as any[], currentUserId, context);
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "rgb(10 13 20)" }}>
-      {/* Sidebar toggle button */}
+    <div style={{ display: "flex", height: "100%", overflow: "hidden", background: "rgb(10 13 20)" }}>
+      {/* Sidebar toggle */}
       <button
         onClick={() => setSidebarOpen((v) => !v)}
-        title={sidebarOpen ? "Hide calendar list" : "Show calendar list"}
+        title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
         style={{
-          position: "absolute", left: sidebarOpen ? 220 : 0, top: "50%", zIndex: 20,
-          transform: "translateY(-50%)",
+          position: "absolute", left: sidebarOpen ? 220 : 0, top: "calc(50% - 24px)", zIndex: 20,
           width: 16, height: 48, background: "rgb(22 28 40)",
           border: "1px solid rgba(255,255,255,.07)", borderLeft: "none",
           borderRadius: "0 6px 6px 0", cursor: "pointer", color: "rgb(100 116 139)",
@@ -98,18 +116,19 @@ export default function CalendarLayout({
         {sidebarOpen ? "‹" : "›"}
       </button>
 
-      {/* Calendar switcher sidebar */}
       {sidebarOpen && (
         <CalendarSwitcher
-          calendarTypes={calTypes}
-          visibleTypeIds={visibleTypeIds}
-          onToggleType={toggleType}
-          onTypesChanged={refreshCalendarTypes}
-          sharedViews={sharedViews}
+          views={views}
+          activeViewId={activeViewId}
+          onSelectView={selectView}
+          squads={squads}
+          tenantId={tenantId}
+          context={context}
+          onContextChange={handleContextChange}
+          onViewsChanged={handleViewsChanged}
         />
       )}
 
-      {/* Main calendar */}
       <div style={{ flex: 1, overflow: "auto", minWidth: 0 }}>
         <SitRepCalendar
           initialItems={displayItems}

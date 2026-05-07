@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { COLOR_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
-import { SitRepViewToggle } from "../_components/SitRepViewToggle";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -459,18 +458,8 @@ export default function SitRepKanban({ initialItems, types, currentUserId, noHea
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: S.surface, padding: "24px 24px 60px" }}>
+    <div style={{ flex: 1, background: S.surface, padding: "24px 24px 60px" }}>
       <div style={{ maxWidth: 1400, margin: "0 auto" }}>
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          flexWrap: "wrap", gap: 12, marginBottom: 20,
-        }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: S.text }}>SitRep</h1>
-            <p style={{ margin: "2px 0 0", fontSize: 13, color: S.dim }}>Kanban Board</p>
-          </div>
-          <SitRepViewToggle />
-        </div>
         {board}
       </div>
     </div>

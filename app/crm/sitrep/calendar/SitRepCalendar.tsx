@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
 import type { SitRepItem, Props } from "../SitRepPanel";
-import { SitRepViewToggle } from "../_components/SitRepViewToggle";
 
 type View = "month" | "week" | "day";
 
@@ -1069,29 +1068,20 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
     <div className="stack" style={{ maxWidth: 1100 }}>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>SitRep</h1>
-          <div style={{ fontSize: 13, color: S.dim, marginTop: 4 }}>
-            {filtered.length} items shown
-          </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ fontSize: 13, color: S.dim }}>
+          {filtered.length} items shown
         </div>
-
-        {/* + New button */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={openCalCreate} style={{
-            padding: "8px 18px", borderRadius: 10, fontSize: 13, fontWeight: 700,
-            background: "linear-gradient(135deg, var(--gg-primary, #2563eb), color-mix(in srgb, var(--gg-primary, #2563eb) 68%, #7c3aed))",
-            border: "none", color: "#fff", cursor: "pointer",
-            boxShadow: "0 2px 14px color-mix(in srgb, var(--gg-primary, #2563eb) 42%, transparent)",
-            transition: "transform .12s ease, box-shadow .15s ease",
-          }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1.5px)"; e.currentTarget.style.boxShadow = "0 6px 20px color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 14px color-mix(in srgb, var(--gg-primary, #2563eb) 42%, transparent)"; }}
-          >+ New</button>
-
-        <SitRepViewToggle />
-        </div>
+        <button onClick={openCalCreate} style={{
+          padding: "8px 18px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+          background: "linear-gradient(135deg, var(--gg-primary, #2563eb), color-mix(in srgb, var(--gg-primary, #2563eb) 68%, #7c3aed))",
+          border: "none", color: "#fff", cursor: "pointer",
+          boxShadow: "0 2px 14px color-mix(in srgb, var(--gg-primary, #2563eb) 42%, transparent)",
+          transition: "transform .12s ease, box-shadow .15s ease",
+        }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1.5px)"; e.currentTarget.style.boxShadow = "0 6px 20px color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 14px color-mix(in srgb, var(--gg-primary, #2563eb) 42%, transparent)"; }}
+        >+ New</button>
       </div>
 
       {/* Filter bar */}

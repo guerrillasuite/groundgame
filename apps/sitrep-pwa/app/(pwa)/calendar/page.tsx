@@ -7,8 +7,12 @@ import CalendarLayout from "./CalendarLayout";
 
 export const dynamic = "force-dynamic";
 
-const CAL_SELECT = "id, tenant_id, item_type, title, status, priority, due_date, start_at, end_at, is_all_day, visibility, created_by, sitrep_assignments(user_id, role)";
-const CAL_TYPE_SELECT = "id, name, color, cal_type, sources, sort_order, user_calendar_views(id, name, color, is_default, sort_order)";
+const CAL_SELECT = [
+  "id", "tenant_id", "squad_id", "item_type", "title",
+  "status", "priority", "due_date", "start_at", "end_at", "is_all_day",
+  "visibility", "created_by",
+  "sitrep_assignments(user_id, role)",
+].join(", ");
 
 function makeAdminSb() {
   return createClient(
@@ -17,38 +21,71 @@ function makeAdminSb() {
   );
 }
 
-async function fetchCalItemsByIds(sb: ReturnType<typeof makeAdminSb>, ids: string[]): Promise<any[]> {
-  const CHUNK = 150;
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
-  const results = await Promise.all(
-    chunks.map((chunk) => sb.from("sitrep_items").select(CAL_SELECT).in("id", chunk).limit(CHUNK))
-  );
-  return results.flatMap((r) => r.data ?? []);
+async function seedDefaultViews(
+  userId: string,
+  tenantId: string,
+  squadIds: string[],
+  db: ReturnType<typeof makeAdminSb>,
+) {
+  const { count } = await db
+    .from("sitrep_views")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", userId);
+
+  if ((count ?? 0) > 0) return;
+
+  await db.from("sitrep_views").insert({
+    owner_user_id: userId,
+    name:          "All",
+    toggle_state: {
+      org_ids:      tenantId ? [tenantId] : [],
+      squad_ids:    squadIds,
+      personal:     true,
+      favorite_ids: [],
+      filters:      { item_types: [], statuses: [], show_completed: true },
+    },
+    is_default:  true,
+    sort_order:  0,
+  });
 }
 
 export default async function CalendarPage() {
   const user = await getCrmUser();
   if (!user) redirect("/login");
 
-  const sb = makeAdminSb();
-
+  const sb     = makeAdminSb();
   const tenant = await getTenant(user.userId);
 
-  const { data: assignments } = await sb
-    .from("sitrep_assignments")
-    .select("item_id")
+  const squadsRes = await sb
+    .from("squad_members")
+    .select("squad_id, role, squads(id, name, color, tenant_id)")
     .eq("user_id", user.userId);
 
-  const assignedIds = [...new Set((assignments ?? []).map((a: any) => a.item_id as string))];
+  const squads = ((squadsRes.data ?? []) as any[]).map((sm) => ({
+    id:       sm.squads?.id       ?? sm.squad_id,
+    name:     sm.squads?.name     ?? "Unknown",
+    color:    sm.squads?.color    ?? "blue",
+    tenantId: sm.squads?.tenant_id ?? tenant?.id ?? "",
+    role:     sm.role,
+  }));
 
-  const [assignedItems, createdRes, typesRes, calTypesRes] = await Promise.all([
-    fetchCalItemsByIds(sb, assignedIds),
+  await seedDefaultViews(
+    user.userId,
+    tenant?.id ?? "",
+    squads.map((s) => s.id),
+    sb,
+  );
 
-    sb.from("sitrep_items")
-      .select(CAL_SELECT)
-      .eq("created_by", user.userId)
-      .limit(500),
+  const [itemsRes, typesRes, viewsRes] = await Promise.all([
+    tenant
+      ? makeServiceSb(tenant.id)
+          .from("sitrep_items")
+          .select(CAL_SELECT)
+          .eq("tenant_id", tenant.id)
+          .order("start_at", { ascending: true, nullsFirst: false })
+          .order("due_date",  { ascending: true, nullsFirst: false })
+          .limit(1000)
+      : Promise.resolve({ data: [] as any[], error: null }),
 
     tenant
       ? makeServiceSb(tenant.id)
@@ -58,31 +95,21 @@ export default async function CalendarPage() {
           .order("sort_order")
       : Promise.resolve({ data: [] as any[], error: null }),
 
-    // User's calendar types (personal calendar groupings)
-    sb.from("user_calendar_types")
-      .select(CAL_TYPE_SELECT)
+    sb.from("sitrep_views")
+      .select("id, name, toggle_state, is_default, sort_order")
       .eq("owner_user_id", user.userId)
       .order("sort_order"),
   ]);
 
-  // Merge items and dedup
-  const seen = new Set<string>();
-  const allItems: any[] = [];
-  for (const item of [...assignedItems, ...(createdRes.data ?? [])]) {
-    if (!seen.has(item.id)) {
-      seen.add(item.id);
-      allItems.push(item);
-    }
-  }
-
   return (
     <Suspense>
       <CalendarLayout
-        initialItems={allItems}
-        types={typesRes.data ?? []}
+        initialItems={(itemsRes.data ?? []) as any[]}
+        types={(typesRes.data ?? []) as any[]}
         userId={user.userId}
         tenantId={tenant?.id ?? ""}
-        initialCalendarTypes={calTypesRes.data ?? []}
+        views={(viewsRes.data ?? []) as any[]}
+        squads={squads}
       />
     </Suspense>
   );
