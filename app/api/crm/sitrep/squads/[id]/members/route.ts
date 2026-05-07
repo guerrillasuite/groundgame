@@ -108,3 +108,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   return NextResponse.json({ ok: true });
 }
+
+// DELETE — remove a member (owner removes anyone; any member removes themselves)
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getCrmUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+
+  const body = await req.json().catch(() => null);
+  const targetUserId: string = body?.user_id ?? user.userId;
+
+  if (targetUserId !== user.userId) {
+    const { data: self } = await sb()
+      .from("squad_members")
+      .select("role")
+      .eq("squad_id", id)
+      .eq("user_id", user.userId)
+      .single();
+    if (!self || self.role === "viewer") return NextResponse.json({ error: "Insufficient role" }, { status: 403 });
+  }
+
+  const { error } = await sb()
+    .from("squad_members")
+    .delete()
+    .eq("squad_id", id)
+    .eq("user_id", targetUserId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

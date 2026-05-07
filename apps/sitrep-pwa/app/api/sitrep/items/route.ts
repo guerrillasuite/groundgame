@@ -6,7 +6,7 @@ import { makeServiceSb } from "@/lib/tenant";
 export const dynamic = "force-dynamic";
 
 const SELECT = `
-  id, tenant_id, item_type, title, description, location, status, priority,
+  id, tenant_id, squad_id, item_type, title, description, location, status, priority,
   due_date, start_at, end_at, is_all_day,
   mission_id, parent_item_id, depth,
   visibility, created_by, created_at,
@@ -36,41 +36,44 @@ async function fetchItemsByIds(sb: ReturnType<typeof makeAdminSb>, ids: string[]
 }
 
 // GET /api/sitrep/items
-// SitRep is NOT tenant-scoped. Returns every item this user is assigned to
-// OR created, across ALL tenants. The user's assignment relationship is the
-// only filter — tenant membership is irrelevant.
+// Returns every item this user can see: assigned, created, or in a squad they belong to.
 export async function GET(_req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const sb = makeAdminSb();
 
-  // Every item this user is explicitly assigned to, across all tenants
-  const { data: assignments, error: aErr } = await sb
-    .from("sitrep_assignments")
-    .select("item_id")
-    .eq("user_id", user.userId);
+  // Fetch assignments + squad memberships in parallel
+  const [assignRes, squadRes] = await Promise.all([
+    sb.from("sitrep_assignments").select("item_id").eq("user_id", user.userId),
+    sb.from("squad_members").select("squad_id").eq("user_id", user.userId),
+  ]);
 
-  if (aErr) return NextResponse.json({ error: aErr.message }, { status: 500 });
+  if (assignRes.error) return NextResponse.json({ error: assignRes.error.message }, { status: 500 });
 
-  const assignedIds = [...new Set((assignments ?? []).map((a: any) => a.item_id as string))];
+  const assignedIds = [...new Set((assignRes.data ?? []).map((a: any) => a.item_id as string))];
+  const squadIds    = (squadRes.data ?? []).map((m: any) => m.squad_id as string);
 
-  // Parallel: fetch assigned items (chunked) + items created by this user
-  const [assignedItems, createdRes] = await Promise.all([
+  // Parallel: assigned items + created by user + squad items (non-private)
+  const [assignedItems, createdRes, ...squadResults] = await Promise.all([
     assignedIds.length > 0
       ? fetchItemsByIds(sb, assignedIds)
       : Promise.resolve([] as any[]),
-    sb
-      .from("sitrep_items")
-      .select(SELECT)
-      .eq("created_by", user.userId)
-      .limit(500),
+    sb.from("sitrep_items").select(SELECT).eq("created_by", user.userId).limit(500),
+    ...squadIds.map((squadId) =>
+      sb.from("sitrep_items")
+        .select(SELECT)
+        .eq("squad_id", squadId)
+        .neq("visibility", "private")
+        .limit(500)
+        .then((r) => r.data ?? [])
+    ),
   ]);
 
   // Merge and dedup
   const seen = new Set<string>();
   const items: any[] = [];
-  for (const item of [...assignedItems, ...(createdRes.data ?? [])]) {
+  for (const item of [...assignedItems, ...(createdRes.data ?? []), ...squadResults.flat()]) {
     if (!seen.has(item.id)) {
       seen.add(item.id);
       items.push(item);

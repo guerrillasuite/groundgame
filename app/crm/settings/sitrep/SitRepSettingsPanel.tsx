@@ -151,6 +151,25 @@ type PendingCalInvite = {
   owner_name: string;
 };
 
+type SquadData = {
+  id:         string;
+  name:       string;
+  color:      string;
+  is_default: boolean;
+  sort_order: number;
+  org_id:     string | null;
+  role:       string;
+};
+
+type SquadMember = {
+  id:        string;
+  user_id:   string;
+  name:      string;
+  email:     string;
+  role:      string;
+  joined_at: string;
+};
+
 // ── Style constants ───────────────────────────────────────────────────────────
 
 const S = {
@@ -1641,13 +1660,18 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
   const [editingBooking, setEditingBooking] = useState<BookingType | "new" | null>(null);
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([]);
 
-  const [myCals,          setMyCals]          = useState<MyCal[]>([]);
-  const [myCalsLoading,   setMyCalsLoading]   = useState(true);
-  const [sharedViews,     setSharedViews]     = useState<SharedView[]>([]);
-  const [pendingInvites,  setPendingInvites]  = useState<PendingCalInvite[]>([]);
-  const [inviteBusy,      setInviteBusy]      = useState<string | null>(null);
-  const [editingCalView, setEditingCalView] = useState<{ view: MyCalView | null; typeId: string } | null>(null);
-  const [calTypeExpanded, setCalTypeExpanded] = useState<Set<string>>(new Set());
+  const [squads,         setSquads]         = useState<SquadData[]>([]);
+  const [squadsLoading,  setSquadsLoading]  = useState(true);
+  const [expandedSquad,  setExpandedSquad]  = useState<string | null>(null);
+  const [squadMembers,   setSquadMembers]   = useState<Record<string, SquadMember[]>>({});
+  const [membersLoading, setMembersLoading] = useState<string | null>(null);
+  const [inviteEmail,    setInviteEmail]    = useState<Record<string, string>>({});
+  const [inviteRole,     setInviteRole]     = useState<Record<string, "collaborator" | "viewer">>({});
+  const [inviteSending,  setInviteSending]  = useState<string | null>(null);
+  const [inviteErr,      setInviteErr]      = useState<Record<string, string>>({});
+  const [inviteSent,     setInviteSent]     = useState<Record<string, boolean>>({});
+  const [newSquadName,   setNewSquadName]   = useState("");
+  const [creatingSquad,  setCreatingSquad]  = useState(false);
 
   const [calendars, setCalendars] = useState<PublicCalendar[]>([]);
   const [calsLoading, setCalsLoading] = useState(true);
@@ -1686,21 +1710,11 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
         .catch(() => {});
     }
 
-    fetch("/api/user/calendar-types")
-      .then((r) => r.json())
-      .then((data) => setMyCals(Array.isArray(data) ? data : []))
-      .catch(() => {})
-      .finally(() => setMyCalsLoading(false));
-
-    fetch("/api/user/calendar-views/shared")
-      .then((r) => r.json())
-      .then((data) => setSharedViews(Array.isArray(data) ? data : []))
-      .catch(() => {});
-
-    fetch("/api/user/calendar-invites")
+    fetch("/api/crm/sitrep/squads")
       .then((r) => r.ok ? r.json() : [])
-      .then((data) => setPendingInvites(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .then((data) => setSquads(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setSquadsLoading(false));
 
     fetch("/api/crm/sitrep/public-calendars")
       .then((r) => r.json())
@@ -1715,27 +1729,88 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
       .finally(() => setWidgetLoading(false));
   }, []);
 
-  async function handlePendingInviteAction(invite: PendingCalInvite, action: "accept" | "decline") {
-    setInviteBusy(invite.id);
+  async function loadSquadMembers(squadId: string) {
+    if (squadMembers[squadId] || membersLoading === squadId) return;
+    setMembersLoading(squadId);
     try {
-      const res = await fetch(`/api/calendar-invite/${invite.token}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
+      const res = await fetch(`/api/crm/sitrep/squads/${squadId}/members`);
       if (res.ok) {
-        setPendingInvites((prev) => prev.filter((i) => i.id !== invite.id));
-        if (action === "accept") {
-          // Refresh shared views so it appears immediately
-          fetch("/api/user/calendar-views/shared")
-            .then((r) => r.json())
-            .then((d) => setSharedViews(Array.isArray(d) ? d : []))
-            .catch(() => {});
-        }
+        const data = await res.json();
+        setSquadMembers((prev) => ({ ...prev, [squadId]: Array.isArray(data) ? data : [] }));
       }
     } finally {
-      setInviteBusy(null);
+      setMembersLoading(null);
     }
+  }
+
+  function toggleSquadExpand(squadId: string) {
+    if (expandedSquad === squadId) {
+      setExpandedSquad(null);
+    } else {
+      setExpandedSquad(squadId);
+      loadSquadMembers(squadId);
+    }
+  }
+
+  async function handleCreateSquad() {
+    const name = newSquadName.trim();
+    if (!name || creatingSquad) return;
+    setCreatingSquad(true);
+    try {
+      const res = await fetch("/api/crm/sitrep/squads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setSquads((prev) => [...prev, created]);
+        setNewSquadName("");
+        setExpandedSquad(created.id);
+      }
+    } finally {
+      setCreatingSquad(false);
+    }
+  }
+
+  async function handleInviteToSquad(squadId: string) {
+    const email = (inviteEmail[squadId] ?? "").trim();
+    if (!email || inviteSending === squadId) return;
+    setInviteSending(squadId);
+    setInviteErr((p) => ({ ...p, [squadId]: "" }));
+    setInviteSent((p) => ({ ...p, [squadId]: false }));
+    try {
+      const res = await fetch(`/api/crm/sitrep/squads/${squadId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role: inviteRole[squadId] ?? "collaborator" }),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setInviteSent((p) => ({ ...p, [squadId]: true }));
+        setInviteEmail((p) => ({ ...p, [squadId]: "" }));
+        // Refresh member list
+        setSquadMembers((prev) => { const n = { ...prev }; delete n[squadId]; return n; });
+        loadSquadMembers(squadId);
+      } else {
+        setInviteErr((p) => ({ ...p, [squadId]: json.error ?? "Failed" }));
+      }
+    } finally {
+      setInviteSending(null);
+    }
+  }
+
+  async function handleRemoveFromSquad(squadId: string, userId: string) {
+    if (!confirm("Remove this member from the squad?")) return;
+    await fetch(`/api/crm/sitrep/squads/${squadId}/members`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId }),
+    });
+    setSquadMembers((prev) => ({
+      ...prev,
+      [squadId]: (prev[squadId] ?? []).filter((m) => m.user_id !== userId),
+    }));
   }
 
   async function saveWidget() {
@@ -2008,201 +2083,162 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
           )}
         </div>
 
-        {/* My Calendars card */}
+        {/* Squads card */}
         <div style={{
           background: S.card, border: `1px solid ${S.border}`,
           borderRadius: 16, padding: 24, display: "grid", gap: 20,
         }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>My Calendars</h2>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Squads</h2>
               <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
-                Configure views, filters, and sharing for each of your calendars.
+                Share your SitRep calendar with teammates. Invite someone to a squad — they'll see all items tagged with that squad.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={async () => {
-                const name = prompt("Calendar name:");
-                if (!name?.trim()) return;
-                const res = await fetch("/api/user/calendar-types", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name: name.trim(), color: "blue", cal_type: "custom" }),
-                });
-                if (res.ok) {
-                  const created = await res.json();
-                  setMyCals((prev) => [...prev, created]);
-                }
-              }}
-              className="btn"
-              style={{ padding: "7px 16px", fontSize: 13, borderRadius: 8, flexShrink: 0 }}
-            >+ Add Calendar</button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                type="text"
+                value={newSquadName}
+                onChange={(e) => setNewSquadName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreateSquad(); }}
+                placeholder="New squad name…"
+                style={{
+                  padding: "7px 12px", borderRadius: 8, fontSize: 13,
+                  background: S.surface, border: `1px solid ${S.border}`,
+                  color: S.text, outline: "none", width: 160,
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleCreateSquad}
+                disabled={!newSquadName.trim() || creatingSquad}
+                className="btn"
+                style={{ padding: "7px 16px", fontSize: 13, borderRadius: 8, flexShrink: 0, opacity: !newSquadName.trim() || creatingSquad ? 0.6 : 1 }}
+              >{creatingSquad ? "Creating…" : "+ Create"}</button>
+            </div>
           </div>
 
-          {myCalsLoading ? (
+          {squadsLoading ? (
             <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
-          ) : myCals.length === 0 ? (
-            <div style={{ background: S.surface, border: `1px dashed ${S.border}`, borderRadius: 12, padding: "20px", textAlign: "center" }}>
-              <p style={{ margin: 0, fontSize: 13, color: S.dim }}>No calendars yet. Your Work and Personal calendars are created the first time you visit the Calendar page.</p>
+          ) : squads.length === 0 ? (
+            <div style={{ background: S.surface, border: `1px dashed ${S.border}`, borderRadius: 12, padding: "24px 20px", textAlign: "center" }}>
+              <p style={{ margin: "0 0 4px", fontSize: 14, color: S.text }}>No squads yet.</p>
+              <p style={{ margin: 0, fontSize: 12, color: S.dim }}>
+                Create a squad and invite a teammate — they'll see your squad items in their SitRep.
+              </p>
             </div>
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {myCals.map((cal) => {
-                const dot = getFamilyByKey(cal.color)?.shades[2] ?? "#818cf8";
-                const expanded = calTypeExpanded.has(cal.id);
-                const views = cal.user_calendar_views ?? [];
+            <div style={{ display: "grid", gap: 6 }}>
+              {squads.map((squad) => {
+                const dot      = getFamilyByKey(squad.color)?.shades[2] ?? "#818cf8";
+                const isOwner  = squad.role === "owner";
+                const isOpen   = expandedSquad === squad.id;
+                const members  = squadMembers[squad.id] ?? [];
+                const loading  = membersLoading === squad.id;
+
                 return (
-                  <div key={cal.id} style={{ background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12, overflow: "hidden" }}>
-                    {/* Type header row */}
+                  <div key={squad.id} style={{ background: S.surface, border: `1px solid ${S.border}`, borderRadius: 12, overflow: "hidden" }}>
+                    {/* Squad header row */}
                     <div
-                      onClick={() => setCalTypeExpanded((p) => { const n = new Set(p); n.has(cal.id) ? n.delete(cal.id) : n.add(cal.id); return n; })}
+                      onClick={() => toggleSquadExpand(squad.id)}
                       style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", cursor: "pointer" }}
                     >
-                      <span style={{ fontSize: 11, color: S.dim }}>{expanded ? "▼" : "▶"}</span>
+                      <span style={{ fontSize: 10, color: S.dim }}>{isOpen ? "▼" : "▶"}</span>
                       <span style={{ width: 11, height: 11, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: S.text }}>{cal.name}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 7px", borderRadius: 4, background: "rgba(255,255,255,.07)", color: S.dim }}>
-                        {cal.cal_type.toUpperCase()}
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: S.text }}>{squad.name}</span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 7px", borderRadius: 4, flexShrink: 0,
+                        background: isOwner ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.06)",
+                        color: isOwner ? "#a5b4fc" : S.dim,
+                      }}>
+                        {isOwner ? "YOUR SQUAD" : squad.role.toUpperCase()}
                       </span>
-                      <span style={{ fontSize: 12, color: S.dim }}>{views.length} view{views.length !== 1 ? "s" : ""}</span>
                     </div>
 
-                    {/* Views list */}
-                    {expanded && (
-                      <div style={{ borderTop: `1px solid ${S.border}`, padding: "8px 0" }}>
-                        {views.sort((a, b) => a.sort_order - b.sort_order).map((view) => (
-                          <div key={view.id} style={{
-                            display: "flex", alignItems: "center", gap: 10,
-                            padding: "7px 16px 7px 36px",
-                          }}>
-                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                            <span style={{ flex: 1, fontSize: 13, color: S.dim }}>{view.name}</span>
-                            {view.is_default && (
-                              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "rgba(255,255,255,.06)", color: S.dim }}>DEFAULT</span>
-                            )}
-                            {/* Show active filters as badges */}
-                            {(view.filter_config?.item_type_slugs ?? []).length > 0 && (
-                              <span style={{ fontSize: 10, color: "#a5b4fc", background: "rgba(99,102,241,.1)", borderRadius: 4, padding: "1px 6px" }}>
-                                {(view.filter_config.item_type_slugs as string[]).length} type{(view.filter_config.item_type_slugs as string[]).length !== 1 ? "s" : ""}
-                              </span>
-                            )}
-                            {view.filter_config?.location_city && (
-                              <span style={{ fontSize: 10, color: "#6ee7b7", background: "rgba(16,185,129,.1)", borderRadius: 4, padding: "1px 6px" }}>
-                                {view.filter_config.location_city as string}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setEditingCalView({ view, typeId: cal.id })}
-                              style={{
-                                padding: "4px 12px", fontSize: 12, borderRadius: 7, cursor: "pointer",
-                                border: `1px solid ${S.border}`, background: "rgba(255,255,255,.05)", color: S.text,
-                              }}
-                            >Configure</button>
-                          </div>
-                        ))}
-                        <div style={{ padding: "6px 16px 4px 36px" }}>
-                          <button
-                            type="button"
-                            onClick={() => setEditingCalView({ view: null, typeId: cal.id })}
-                            style={{
-                              fontSize: 12, color: S.dim, background: "none",
-                              border: "none", cursor: "pointer", padding: "2px 0",
-                            }}
-                          >+ Add view to this calendar</button>
+                    {/* Expanded: members + invite */}
+                    {isOpen && (
+                      <div style={{ borderTop: `1px solid ${S.border}` }}>
+                        {/* Members list */}
+                        <div style={{ padding: "8px 0" }}>
+                          {loading ? (
+                            <div style={{ padding: "8px 16px 8px 36px", fontSize: 12, color: S.dim }}>Loading members…</div>
+                          ) : members.length === 0 ? (
+                            <div style={{ padding: "8px 16px 8px 36px", fontSize: 12, color: S.dim }}>No members yet.</div>
+                          ) : members.map((m) => (
+                            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 16px 6px 36px" }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, color: S.text, fontWeight: 500 }}>{m.name || m.email}</div>
+                                {m.name && <div style={{ fontSize: 11, color: S.dim }}>{m.email}</div>}
+                              </div>
+                              <span style={{
+                                fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, flexShrink: 0,
+                                background: m.role === "owner" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.06)",
+                                color: m.role === "owner" ? "#a5b4fc" : S.dim,
+                              }}>{m.role.toUpperCase()}</span>
+                              {isOwner && m.role !== "owner" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFromSquad(squad.id, m.user_id)}
+                                  style={{
+                                    padding: "2px 8px", fontSize: 11, borderRadius: 5, cursor: "pointer", flexShrink: 0,
+                                    border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)", color: "#fca5a5",
+                                  }}
+                                >Remove</button>
+                              )}
+                            </div>
+                          ))}
                         </div>
+
+                        {/* Invite form */}
+                        {(isOwner || squad.role === "collaborator") && (
+                          <div style={{ padding: "8px 16px 14px 36px", borderTop: `1px solid ${S.border}` }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>
+                              Invite by email
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <input
+                                type="email"
+                                value={inviteEmail[squad.id] ?? ""}
+                                onChange={(e) => setInviteEmail((p) => ({ ...p, [squad.id]: e.target.value }))}
+                                onKeyDown={(e) => { if (e.key === "Enter") handleInviteToSquad(squad.id); }}
+                                placeholder="teammate@example.com"
+                                style={{
+                                  flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 7, fontSize: 12,
+                                  background: S.card, border: `1px solid ${S.border}`, color: S.text, outline: "none",
+                                }}
+                              />
+                              <select
+                                value={inviteRole[squad.id] ?? "collaborator"}
+                                onChange={(e) => setInviteRole((p) => ({ ...p, [squad.id]: e.target.value as any }))}
+                                style={{
+                                  padding: "6px 10px", borderRadius: 7, fontSize: 12,
+                                  background: S.card, border: `1px solid ${S.border}`, color: S.dim,
+                                }}
+                              >
+                                <option value="collaborator">Collaborator</option>
+                                <option value="viewer">Viewer</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => handleInviteToSquad(squad.id)}
+                                disabled={inviteSending === squad.id || !(inviteEmail[squad.id] ?? "").trim()}
+                                className="btn"
+                                style={{ padding: "6px 14px", fontSize: 12, borderRadius: 7, opacity: inviteSending === squad.id ? 0.6 : 1 }}
+                              >{inviteSending === squad.id ? "…" : "Invite"}</button>
+                            </div>
+                            {inviteErr[squad.id] && (
+                              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#fca5a5" }}>{inviteErr[squad.id]}</p>
+                            )}
+                            {inviteSent[squad.id] && (
+                              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#4ade80" }}>Added to squad successfully.</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* Pending invites */}
-          {pendingInvites.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "rgb(251 191 36)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
-                Pending Invites · {pendingInvites.length}
-              </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {pendingInvites.map((inv) => {
-                  const dot  = getFamilyByKey(inv.view_color)?.shades[2] ?? "#818cf8";
-                  const busy = inviteBusy === inv.id;
-                  return (
-                    <div key={inv.id} style={{
-                      background: "rgba(251,191,36,.05)", border: "1px solid rgba(251,191,36,.15)",
-                      borderRadius: 10, padding: "12px 14px",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: S.text }}>{inv.view_name}</div>
-                          <div style={{ fontSize: 11, color: S.dim, marginTop: 1 }}>
-                            {inv.type_name} · from {inv.owner_name}
-                          </div>
-                        </div>
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
-                          background: inv.role === "editor" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.07)",
-                          color: inv.role === "editor" ? "#a5b4fc" : S.dim,
-                        }}>{inv.role.toUpperCase()}</span>
-                      </div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          onClick={() => handlePendingInviteAction(inv, "accept")}
-                          disabled={busy}
-                          className="btn"
-                          style={{ flex: 1, padding: "7px 0", fontSize: 12, borderRadius: 8, opacity: busy ? 0.6 : 1 }}
-                        >{busy ? "…" : "Accept"}</button>
-                        <button
-                          onClick={() => handlePendingInviteAction(inv, "decline")}
-                          disabled={busy}
-                          style={{
-                            padding: "7px 12px", fontSize: 12, fontWeight: 600, borderRadius: 8,
-                            border: `1px solid ${S.border}`, background: "none", color: S.dim,
-                            cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
-                          }}
-                        >Decline</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Shared with you */}
-          {sharedViews.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
-                Shared with you
-              </div>
-              <div style={{ display: "grid", gap: 6 }}>
-                {sharedViews.map((sv) => {
-                  const dot = getFamilyByKey(sv.type_color)?.shades[2] ?? "#818cf8";
-                  return (
-                    <div key={sv.share_id} style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      background: S.surface, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 14px",
-                    }}>
-                      <span style={{ width: 9, height: 9, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: S.text }}>{sv.view_name}</div>
-                        <div style={{ fontSize: 11, color: S.dim, marginTop: 1 }}>
-                          {sv.type_name} · from {sv.owner_name}
-                        </div>
-                      </div>
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
-                        background: sv.role === "editor" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.07)",
-                        color: sv.role === "editor" ? "#a5b4fc" : S.dim,
-                      }}>{sv.role.toUpperCase()}</span>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           )}
         </div>
@@ -2498,39 +2534,6 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
         />
       )}
 
-      {/* Calendar view editor slide-in */}
-      {editingCalView && (
-        <CalendarViewEditor
-          view={editingCalView.view}
-          typeId={editingCalView.typeId}
-          types={types}
-          onClose={() => setEditingCalView(null)}
-          onSaved={(updated) => {
-            setMyCals((prev) => prev.map((cal) =>
-              cal.id === editingCalView.typeId
-                ? { ...cal, user_calendar_views: cal.user_calendar_views.map((v) => v.id === updated.id ? updated : v) }
-                : cal
-            ));
-            setEditingCalView(null);
-          }}
-          onCreated={(created) => {
-            setMyCals((prev) => prev.map((cal) =>
-              cal.id === editingCalView.typeId
-                ? { ...cal, user_calendar_views: [...cal.user_calendar_views, created] }
-                : cal
-            ));
-            setEditingCalView(null);
-          }}
-          onDeleted={(viewId) => {
-            setMyCals((prev) => prev.map((cal) =>
-              cal.id === editingCalView.typeId
-                ? { ...cal, user_calendar_views: cal.user_calendar_views.filter((v) => v.id !== viewId) }
-                : cal
-            ));
-            setEditingCalView(null);
-          }}
-        />
-      )}
     </>
   );
 }
