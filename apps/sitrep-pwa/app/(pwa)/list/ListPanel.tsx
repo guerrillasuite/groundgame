@@ -8,12 +8,14 @@ import RescheduleSheet from "@/components/RescheduleSheet";
 import CalendarSwitcherDrawer from "@/components/CalendarSwitcherDrawer";
 import { todayStr, addDays, localDateStr, effectiveDate } from "@/lib/date-utils";
 import {
-  filterByVisibleCalendars,
-  loadVisibleIds,
-  saveVisibleIds,
-  type CalendarTypeData,
-  type SharedViewData,
-} from "@/lib/calendar-filter";
+  filterItems,
+  defaultContext,
+  contextFromView,
+  loadActiveViewId,
+  saveActiveViewId,
+  type CalendarContext,
+  type SitRepView,
+} from "@/lib/sitrep-calendar-filter";
 
 const S = {
   bg:        "rgb(10 13 20)",
@@ -24,7 +26,8 @@ const S = {
   border:    "rgba(255,255,255,.07)",
 } as const;
 
-type ItemType = { id: string; name: string; slug: string; color: string; sort_order: number };
+type ItemType  = { id: string; name: string; slug: string; color: string; sort_order: number };
+type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
 
 interface ListPanelProps {
   userId: string;
@@ -217,10 +220,13 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   const [statusFilter, setStatusFilter]   = useState<"active" | "done" | "all">("active");
 
   // Calendar switcher
-  const [calendarTypes,  setCalendarTypes]  = useState<CalendarTypeData[]>([]);
-  const [sharedViews,    setSharedViews]    = useState<SharedViewData[]>([]);
-  const [visibleTypeIds, setVisibleTypeIds] = useState<Set<string>>(new Set());
-  const [drawerOpen,     setDrawerOpen]     = useState(false);
+  const [views,        setViews]        = useState<SitRepView[]>([]);
+  const [squads,       setSquads]       = useState<SquadInfo[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const [context,      setContext]      = useState<CalendarContext>(() =>
+    defaultContext(tenantId ? [tenantId] : [], [])
+  );
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Sheet state
   const [sheetOpen,   setSheetOpen]   = useState(false);
@@ -230,18 +236,34 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
 
   const typeMap = Object.fromEntries(initialTypes.map((t) => [t.slug, t]));
 
-  function allTypeIds(types: CalendarTypeData[], views: SharedViewData[]): string[] {
-    return [...types.map((t) => t.id), ...views.map((v) => v.view_id)];
-  }
-
+  // Load views + squads, then init context from saved active view
   useEffect(() => {
-    fetch("/api/sitrep/calendar-types")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: CalendarTypeData[]) => {
-        setCalendarTypes(data);
-        setVisibleTypeIds(loadVisibleIds(data.map((ct) => ct.id)));
-      })
-      .catch(() => {});
+    Promise.all([
+      fetch("/api/sitrep/views").then((r) => r.ok ? r.json() : []),
+      fetch("/api/sitrep/squads").then((r) => r.ok ? r.json() : []),
+    ]).then(([viewData, squadData]: [SitRepView[], any[]]) => {
+      setViews(viewData);
+      const mappedSquads: SquadInfo[] = squadData.map((s: any) => ({
+        id:       s.id,
+        name:     s.name,
+        color:    s.color ?? "blue",
+        tenantId: s.org_id ?? tenantId,
+        role:     s.role ?? "member",
+      }));
+      setSquads(mappedSquads);
+
+      const savedId = loadActiveViewId();
+      const active =
+        viewData.find((v) => v.id === savedId) ??
+        viewData.find((v) => v.is_default) ??
+        viewData[0];
+      if (active) {
+        setActiveViewId(active.id);
+        setContext(contextFromView(active));
+        saveActiveViewId(active.id);
+      }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchItems = useCallback(async () => {
@@ -258,46 +280,39 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  // Sync visibleTypeIds from localStorage whenever the set of known IDs changes
-  useEffect(() => {
-    const ids = allTypeIds(calendarTypes, sharedViews);
-    if (ids.length === 0) return;
-    setVisibleTypeIds(loadVisibleIds(ids));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarTypes, sharedViews]);
-
-  function reloadCalendarTypes() {
-    fetch("/api/sitrep/calendar-types")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: CalendarTypeData[]) => {
-        setCalendarTypes(data);
-      })
-      .catch(() => {});
+  function selectView(id: string) {
+    const v = views.find((x) => x.id === id);
+    if (!v) return;
+    setActiveViewId(id);
+    setContext(contextFromView(v));
+    saveActiveViewId(id);
   }
 
-  function onSharedViewsLoaded(views: SharedViewData[]) {
-    setSharedViews(views);
-    if (views.length === 0) return;
-    fetch("/api/sitrep/calendar-views/shared/items")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((sharedItems: SitRepItem[]) => {
-        if (!Array.isArray(sharedItems) || sharedItems.length === 0) return;
-        setItems((prev) => {
-          const existingIds = new Set(prev.map((i) => i.id));
-          const newOnes = sharedItems.filter((i) => !existingIds.has(i.id));
-          return newOnes.length > 0 ? [...prev, ...newOnes] : prev;
-        });
-      })
-      .catch(() => {});
+  function handleContextChange(next: CalendarContext) {
+    setContext(next);
+    if (!activeViewId) return;
+    fetch(`/api/sitrep/views/${activeViewId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        toggle_state: {
+          org_ids:      next.orgIds,
+          squad_ids:    next.squadIds,
+          personal:     next.personalOn,
+          favorite_ids: next.favoriteIds,
+          filters:      next.filters,
+        },
+      }),
+    }).catch(() => {});
   }
 
-  function onToggleType(id: string) {
-    setVisibleTypeIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      saveVisibleIds(allTypeIds(calendarTypes, sharedViews), next);
-      return next;
-    });
+  async function handleViewsChanged() {
+    const res = await fetch("/api/sitrep/views");
+    if (!res.ok) return;
+    const data: SitRepView[] = await res.json();
+    setViews(data);
+    const active = data.find((v) => v.id === activeViewId);
+    if (active) setContext(contextFromView(active));
   }
 
   function toggleGroup(key: string) {
@@ -377,10 +392,7 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   }
 
   // Apply calendar visibility filter first
-  const calFiltered = calendarTypes.length > 0
-    ? filterByVisibleCalendars(items, calendarTypes, sharedViews, visibleTypeIds, userId)
-    : items;
-
+  const calFiltered  = filterItems(items as any[], userId, context) as SitRepItem[];
   const hiddenCount  = items.length - calFiltered.length;
 
   // Compute stats from unfiltered (calendar-visible) items
@@ -810,12 +822,14 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
       <CalendarSwitcherDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        calendarTypes={calendarTypes}
-        visibleTypeIds={visibleTypeIds}
-        onToggleType={onToggleType}
-        onTypesChanged={reloadCalendarTypes}
-        sharedViews={sharedViews}
-        onSharedViewsLoaded={onSharedViewsLoaded}
+        views={views}
+        activeViewId={activeViewId}
+        onSelectView={selectView}
+        squads={squads}
+        tenantId={tenantId}
+        context={context}
+        onContextChange={handleContextChange}
+        onViewsChanged={handleViewsChanged}
       />
 
       <ItemBottomSheet
@@ -824,7 +838,6 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
         item={sheetItem}
         createMode={sheetCreate}
         types={initialTypes}
-        calendarTypes={calendarTypes}
         tenantId={tenantId}
         userId={userId}
         tz={tz}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
-import { type CalendarContext, type SitRepView } from "@/lib/sitrep-calendar-filter";
+import { type CalendarContext, type SitRepView, defaultContext } from "@/lib/sitrep-calendar-filter";
 
 // Legacy re-exports kept for type compatibility during migration
 export type CalendarTypeData = never;
@@ -54,23 +54,28 @@ function IOSToggle({ on, onToggle, label }: { on: boolean; onToggle: () => void;
 interface Props {
   open:             boolean;
   onClose:          () => void;
-  views:            SitRepView[];
-  activeViewId:     string | null;
-  onSelectView:     (id: string) => void;
-  squads:           SquadInfo[];
-  tenantId:         string;
-  context:          CalendarContext;
-  onContextChange:  (ctx: CalendarContext) => void;
-  onViewsChanged:   () => Promise<void>;
+  views?:           SitRepView[];
+  activeViewId?:    string | null;
+  onSelectView?:    (id: string) => void;
+  squads?:          SquadInfo[];
+  tenantId?:        string;
+  context?:         CalendarContext;
+  onContextChange?: (ctx: CalendarContext) => void;
+  onViewsChanged?:  () => Promise<void>;
 }
 
 export default function CalendarSwitcherDrawer({
   open, onClose,
-  views, activeViewId, onSelectView,
-  squads, tenantId,
-  context, onContextChange,
-  onViewsChanged,
+  views = [],
+  activeViewId = null,
+  onSelectView = () => {},
+  squads = [],
+  tenantId = "",
+  context: contextProp,
+  onContextChange = () => {},
+  onViewsChanged = async () => {},
 }: Props) {
+  const ctx = contextProp ?? defaultContext(tenantId ? [tenantId] : [], squads.map((s) => s.id));
   const [mounted,  setMounted]  = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName,  setNewName]  = useState("");
@@ -81,23 +86,23 @@ export default function CalendarSwitcherDrawer({
   useEffect(() => { setMounted(true); }, []);
 
   function toggleOrg() {
-    const ids = context.orgIds;
+    const ids = ctx.orgIds;
     const next = ids.includes(tenantId)
       ? ids.filter((id) => id !== tenantId)
       : [...ids, tenantId];
-    onContextChange({ ...context, orgIds: next });
+    onContextChange({ ...ctx, orgIds: next });
   }
 
   function togglePersonal() {
-    onContextChange({ ...context, personalOn: !context.personalOn });
+    onContextChange({ ...ctx, personalOn: !ctx.personalOn });
   }
 
   function toggleSquad(squadId: string) {
-    const ids = context.squadIds;
+    const ids = ctx.squadIds;
     const next = ids.includes(squadId)
       ? ids.filter((id) => id !== squadId)
       : [...ids, squadId];
-    onContextChange({ ...context, squadIds: next });
+    onContextChange({ ...ctx, squadIds: next });
   }
 
   async function handleCreate() {
@@ -110,11 +115,11 @@ export default function CalendarSwitcherDrawer({
       body: JSON.stringify({
         name: trimmed,
         toggle_state: {
-          org_ids:      context.orgIds,
-          squad_ids:    context.squadIds,
-          personal:     context.personalOn,
-          favorite_ids: context.favoriteIds,
-          filters:      context.filters,
+          org_ids:      ctx.orgIds,
+          squad_ids:    ctx.squadIds,
+          personal:     ctx.personalOn,
+          favorite_ids: ctx.favoriteIds,
+          filters:      ctx.filters,
         },
         is_default: false,
         sort_order: views.length,
@@ -152,7 +157,7 @@ export default function CalendarSwitcherDrawer({
     }
   }
 
-  const workOn = context.orgIds.includes(tenantId);
+  const workOn = ctx.orgIds.includes(tenantId);
 
   if (!mounted) return null;
 
@@ -306,7 +311,7 @@ export default function CalendarSwitcherDrawer({
 
           <div style={{ padding: "0 14px" }}>
             {tenantId && <IOSToggle on={workOn}             onToggle={toggleOrg}     label="Work" />}
-            <IOSToggle on={context.personalOn} onToggle={togglePersonal} label="Personal" />
+            <IOSToggle on={ctx.personalOn} onToggle={togglePersonal} label="Personal" />
           </div>
 
           {squads.length > 0 && (
@@ -319,7 +324,7 @@ export default function CalendarSwitcherDrawer({
               <div style={{ padding: "0 14px" }}>
                 {squads.map((sq) => {
                   const dot = getFamilyByKey(sq.color)?.shades[3] ?? "#818cf8";
-                  const isOn = context.squadIds.includes(sq.id);
+                  const isOn = ctx.squadIds.includes(sq.id);
                   return (
                     <button
                       key={sq.id}
