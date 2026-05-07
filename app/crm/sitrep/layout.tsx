@@ -1,87 +1,107 @@
-"use client";
+// app/crm/sitrep/layout.tsx  — server component
+export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
+import { getTenant } from "@/lib/tenant";
+import { getCrmUser } from "@/lib/crm-auth";
+import { redirect } from "next/navigation";
+import type { SitRepView } from "@/lib/sitrep-calendar-filter";
+import SitRepShell from "./_components/SitRepShell";
 
-const S = {
-  bg:     "rgb(10 13 20)",
-  border: "rgba(255,255,255,.07)",
-  text:   "rgb(236 240 245)",
-  dim:    "rgb(100 116 139)",
-} as const;
+const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-const VIEWS = [
-  { key: "list",     label: "List",     href: "/crm/sitrep" },
-  { key: "kanban",   label: "Kanban",   href: "/crm/sitrep/kanban" },
-  { key: "timeline", label: "Timeline", href: "/crm/sitrep/timeline" },
-  { key: "calendar", label: "Calendar", href: "/crm/sitrep/calendar" },
-] as const;
-
-function NavBar() {
-  const pathname = usePathname();
-
-  const active =
-    pathname.startsWith("/crm/sitrep/calendar") ? "calendar" :
-    pathname.startsWith("/crm/sitrep/timeline") ? "timeline" :
-    pathname.startsWith("/crm/sitrep/kanban")   ? "kanban"   :
-    "list";
-
-  return (
-    <div style={{
-      position: "sticky", top: 0, zIndex: 40,
-      height: 48, flexShrink: 0,
-      background: S.bg,
-      borderBottom: `1px solid ${S.border}`,
-      display: "flex", alignItems: "center",
-      padding: "0 20px", gap: 16,
-    }}>
-      {/* Wordmark */}
-      <span style={{ fontSize: 14, fontWeight: 800, color: S.text, letterSpacing: "0.04em", marginRight: 4 }}>
-        SitRep
-      </span>
-
-      <div style={{ width: 1, height: 18, background: S.border }} />
-
-      {/* Nav pills */}
-      <div style={{
-        display: "flex",
-        background: "rgba(255,255,255,.06)",
-        borderRadius: 10, padding: 3, gap: 2,
-        border: `1px solid ${S.border}`,
-      }}>
-        {VIEWS.map((v) => (
-          <Link
-            key={v.key}
-            href={v.href}
-            style={{
-              padding: "4px 14px", borderRadius: 7,
-              fontSize: 12, fontWeight: 600,
-              textDecoration: "none",
-              transition: "background .12s, color .12s",
-              background: active === v.key ? "rgba(255,255,255,.12)" : "transparent",
-              color: active === v.key ? S.text : S.dim,
-            }}
-          >
-            {v.label}
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
+function sbRaw() { return createClient(URL_, KEY); }
+function sbTenant(tenantId: string) {
+  return createClient(URL_, KEY, { global: { headers: { "X-Tenant-Id": tenantId } } });
 }
 
-export default function SitRepLayout({ children }: { children: React.ReactNode }) {
+async function seedDefaultViews(userId: string, tenantId: string, squadIds: string[]) {
+  const db = sbRaw();
+  const { count } = await db
+    .from("sitrep_views")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", userId);
+  if ((count ?? 0) > 0) return;
+  await db.from("sitrep_views").insert({
+    owner_user_id: userId,
+    name:          "All",
+    toggle_state: {
+      org_ids:      [tenantId],
+      squad_ids:    squadIds,
+      personal:     true,
+      favorite_ids: [],
+      filters:      { item_types: [], statuses: [], show_completed: true },
+    },
+    is_default: true,
+    sort_order: 0,
+  });
+}
+
+const SYSTEM_TYPES = [
+  { slug: "task",    name: "Task",    color: "blue"   },
+  { slug: "event",   name: "Event",   color: "violet" },
+  { slug: "meeting", name: "Meeting", color: "teal"   },
+];
+
+export default async function SitRepLayout({ children }: { children: React.ReactNode }) {
+  const tenant  = await getTenant();
+  const crmUser = await getCrmUser();
+  if (!crmUser) redirect("/crm/login");
+
+  const db = sbRaw();
+  const sb = sbTenant(tenant.id);
+
+  const [squadsRes, typesRes] = await Promise.all([
+    db.from("squad_members")
+      .select("squad_id, role, squads(id, name, color, tenant_id)")
+      .eq("user_id", crmUser.userId),
+    sb.from("sitrep_item_types")
+      .select("slug, name, color")
+      .eq("tenant_id", tenant.id)
+      .order("sort_order"),
+  ]);
+
+  const squads = ((squadsRes.data ?? []) as any[]).map((sm) => ({
+    id:       sm.squads?.id        ?? sm.squad_id,
+    name:     sm.squads?.name      ?? "Unknown",
+    color:    sm.squads?.color     ?? "blue",
+    tenantId: sm.squads?.tenant_id ?? tenant.id,
+    role:     sm.role,
+  }));
+
+  await seedDefaultViews(crmUser.userId, tenant.id, squads.map((s) => s.id));
+
+  const viewsRes = await db
+    .from("sitrep_views")
+    .select("id, name, toggle_state, is_default, sort_order")
+    .eq("owner_user_id", crmUser.userId)
+    .order("sort_order");
+
+  const views: SitRepView[] = (viewsRes.data ?? []) as SitRepView[];
+
+  const rawTypes = (typesRes.data ?? []) as any[];
+  const existingSlugs = new Set(rawTypes.map((t: any) => t.slug));
+  const allTypes = [
+    ...SYSTEM_TYPES.filter((t) => !existingSlugs.has(t.slug)),
+    ...rawTypes,
+  ];
+
+  const tenantName = tenant.branding?.appName ?? tenant.slug;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: S.bg }}>
-      <Suspense fallback={
-        <div style={{ height: 48, flexShrink: 0, background: S.bg, borderBottom: `1px solid ${S.border}` }} />
-      }>
-        <NavBar />
-      </Suspense>
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <Suspense fallback={<div style={{ minHeight: "100vh", background: "rgb(10 13 20)" }} />}>
+      <SitRepShell
+        initialViews={views}
+        squads={squads}
+        tenantId={tenant.id}
+        tenantName={tenantName}
+        currentUserId={crmUser.userId}
+        allTypes={allTypes}
+      >
         {children}
-      </div>
-    </div>
+      </SitRepShell>
+    </Suspense>
   );
 }

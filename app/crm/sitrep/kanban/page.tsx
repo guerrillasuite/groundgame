@@ -27,7 +27,7 @@ export default async function KanbanPage() {
     sb
       .from("sitrep_items")
       .select(
-        "id, item_type, title, status, priority, due_date, start_at, parent_item_id, depth, visibility, created_by, sitrep_assignments(user_id, role)"
+        "id, tenant_id, squad_id, item_type, title, status, priority, due_date, start_at, parent_item_id, depth, visibility, created_by, sitrep_assignments(user_id, role)"
       )
       .eq("tenant_id", tenant.id)
       .order("due_date", { ascending: true, nullsFirst: false })

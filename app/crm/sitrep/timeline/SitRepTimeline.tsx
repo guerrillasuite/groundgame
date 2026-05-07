@@ -4,6 +4,8 @@ import { useState, useRef } from "react";
 import Link from "next/link";
 import { getFamilyByKey, SYSTEM_TYPE_FAMILIES, COLOR_FAMILIES } from "@/lib/sitrep-colors";
 import type { SitRepItem, Props } from "../SitRepPanel";
+import { filterItems } from "@/lib/sitrep-calendar-filter";
+import { useSitRepFilter } from "../SitRepFilterContext";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -79,7 +81,10 @@ export default function SitRepTimeline({
 
   // ── Filter ────────────────────────────────────────────────────────────────
 
-  let filtered = initialItems.filter(
+  const { context } = useSitRepFilter();
+  const contextItems = filterItems(initialItems as any[], currentUserId, context) as SitRepItem[];
+
+  let filtered = contextItems.filter(
     (i) => itemStart(i) !== null || itemEnd(i) !== null
   );
   if (scope === "mine") {

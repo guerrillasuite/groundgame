@@ -50,7 +50,24 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => null);
-  if (!body?.favorite_user_id) return NextResponse.json({ error: "favorite_user_id required" }, { status: 400 });
+  let favoriteUserId: string | null = body?.favorite_user_id ?? null;
+
+  // Allow adding by email (look up user_id from auth admin)
+  if (!favoriteUserId && body?.email?.trim()) {
+    try {
+      const res = await fetch(`${URL_}/auth/v1/admin/users?per_page=1000`, {
+        headers: { Authorization: `Bearer ${KEY}`, apikey: KEY },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const match = (json.users ?? []).find((u: any) => u.email === body.email.trim().toLowerCase());
+        favoriteUserId = match?.id ?? null;
+      }
+    } catch { /* ignore */ }
+    if (!favoriteUserId) return NextResponse.json({ error: "No account found with that email" }, { status: 404 });
+  }
+
+  if (!favoriteUserId) return NextResponse.json({ error: "favorite_user_id or email required" }, { status: 400 });
 
   const db = sb();
   const { data: maxOrder } = await db
@@ -65,7 +82,7 @@ export async function POST(req: NextRequest) {
     .from("sitrep_favorites")
     .upsert({
       owner_user_id:    user.userId,
-      favorite_user_id: body.favorite_user_id,
+      favorite_user_id: favoriteUserId,
       detail_level:     body.detail_level ?? "busy",
       sort_order:       ((maxOrder as any)?.sort_order ?? 0) + 1,
     }, { onConflict: "owner_user_id,favorite_user_id" })

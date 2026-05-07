@@ -28,7 +28,7 @@ export default async function SitRepTimelinePage() {
     sb
       .from("sitrep_items")
       .select(
-        "id, item_type, title, description, location, location_address, status, priority, due_date, start_at, end_at, is_all_day, mission_id, parent_item_id, depth, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
+        "id, tenant_id, squad_id, item_type, title, description, location, location_address, status, priority, due_date, start_at, end_at, is_all_day, mission_id, parent_item_id, depth, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
       )
       .eq("tenant_id", tenant.id)
       .order("start_at", { ascending: true, nullsFirst: false })

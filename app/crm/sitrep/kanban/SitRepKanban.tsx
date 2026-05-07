@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { COLOR_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
+import { filterItems as applyContextFilter } from "@/lib/sitrep-calendar-filter";
+import { useSitRepFilter } from "../SitRepFilterContext";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,8 @@ type KanbanItem = {
   depth: number;
   created_by: string;
   sitrep_assignments: { user_id: string; role: string }[];
+  tenant_id?: string | null;
+  squad_id?:  string | null;
 };
 
 type Props = {
@@ -328,6 +332,10 @@ function TypeRow({
 
 export default function SitRepKanban({ initialItems, types, currentUserId, noHeader, mineOnly: mineOnlyProp, showTerminal: showTerminalProp }: Props) {
   const [items, setItems] = useState<KanbanItem[]>(initialItems);
+
+  const { context } = useSitRepFilter();
+  const contextItems = applyContextFilter(items as any[], currentUserId, context) as KanbanItem[];
+
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draggingType, setDraggingType] = useState<string | null>(null);
   const [localShowTerminal, setLocalShowTerminal] = useState(false);
@@ -339,7 +347,7 @@ export default function SitRepKanban({ initialItems, types, currentUserId, noHea
   const kanbanTypes = types.filter((t) => t.show_in_kanban);
 
   function filterItems(typeSlug: string): KanbanItem[] {
-    let filtered = items.filter((i) => i.item_type === typeSlug);
+    let filtered = contextItems.filter((i) => i.item_type === typeSlug);
     if (mineOnly) {
       filtered = filtered.filter(
         (i) => i.created_by === currentUserId ||

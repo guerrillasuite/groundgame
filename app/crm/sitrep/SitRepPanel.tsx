@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
 import SitRepKanban from "./kanban/SitRepKanban";
+import { filterItems } from "@/lib/sitrep-calendar-filter";
+import { useSitRepFilter } from "./SitRepFilterContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -30,6 +32,7 @@ export type SitRepItem = {
   created_by: string;
   created_at: string;
   sitrep_assignments: Assignment[];
+  squad_id?: string | null;
   // set only on items fetched from a shared cross-tenant calendar
   _source_tenant_id?: string;
 };
@@ -313,6 +316,10 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   useEffect(() => { setViewerTz(Intl.DateTimeFormat().resolvedOptions().timeZone); }, []);
 
   const [items, setItems]               = useState<SitRepItem[]>(initialItems);
+
+  const { context } = useSitRepFilter();
+  const contextItems = filterItems(items as any[], currentUserId, context) as SitRepItem[];
+
   const [scope, setScope]               = useState<"mine" | "all">(
     (searchParams.get("scope") as "mine" | "all") || "mine"
   );
@@ -370,8 +377,8 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
 
   const customTypeSlugs = Object.keys(typeNames ?? {}).filter((s) => !["task","event","meeting"].includes(s));
 
-  const openItems    = items.filter((i) => i.status !== "done" && i.status !== "cancelled");
-  const overdueItems = items.filter((i) => isOverdue(i));
+  const openItems    = contextItems.filter((i) => i.status !== "done" && i.status !== "cancelled");
+  const overdueItems = contextItems.filter((i) => isOverdue(i));
 
   const userMap = new Map(users.map((u) => [u.id, u]));
 
@@ -382,7 +389,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
       .map(([slug]) => slug)
   );
 
-  let filtered = items;
+  let filtered = contextItems;
   if (scope === "mine") {
     filtered = filtered.filter(
       (i) => i.created_by === currentUserId || i.sitrep_assignments.some((a) => a.user_id === currentUserId)
@@ -555,7 +562,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
               </span>
             )}
             <span style={{ fontSize: 13, color: S.dimBright }}>
-              <span style={{ fontWeight: 600, fontSize: 15, color: S.text, marginRight: 3 }}>{items.length}</span>total
+              <span style={{ fontWeight: 600, fontSize: 15, color: S.text, marginRight: 3 }}>{contextItems.length}</span>total
             </span>
           </div>
         </div>
