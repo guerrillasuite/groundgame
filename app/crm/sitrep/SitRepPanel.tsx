@@ -32,6 +32,7 @@ export type SitRepItem = {
   created_by: string;
   created_at: string;
   sitrep_assignments: Assignment[];
+  tenant_id?: string | null;
   squad_id?: string | null;
   // set only on items fetched from a shared cross-tenant calendar
   _source_tenant_id?: string;
@@ -391,9 +392,13 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
 
   let filtered = contextItems;
   if (scope === "mine") {
-    filtered = filtered.filter(
-      (i) => i.created_by === currentUserId || i.sitrep_assignments.some((a) => a.user_id === currentUserId)
-    );
+    filtered = filtered.filter((i) => {
+      if (i.sitrep_assignments.some((a) => a.user_id === currentUserId)) return true;
+      if (i.created_by !== currentUserId) return false;
+      // Items I created that are not public team items
+      const vis = i.visibility ?? "team";
+      return vis === "private" || vis === "assignee_only" || (!i.tenant_id && !i.squad_id);
+    });
   }
   if (typeFilter !== "all") filtered = filtered.filter((i) => i.item_type === typeFilter);
   if (statusFilter === "active") filtered = filtered.filter((i) => i.status !== "done" && i.status !== "cancelled");

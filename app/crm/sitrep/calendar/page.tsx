@@ -17,6 +17,9 @@ function makeSb(tenantId: string) {
     global: { headers: { "X-Tenant-Id": tenantId } },
   });
 }
+function makeAdminSb() {
+  return createClient(SUPABASE_URL, SERVICE_KEY);
+}
 
 const ITEM_SELECT = [
   "id", "item_type", "title", "description",
@@ -33,12 +36,23 @@ export default async function SitRepCalendarPage() {
   const crmUser = await getCrmUser();
   if (!crmUser) redirect("/crm/login");
 
-  const sb = makeSb(tenant.id);
+  const sb    = makeSb(tenant.id);
+  const admin = makeAdminSb();
+
+  const userTenantsRes = await admin
+    .from("user_tenants")
+    .select("tenant_id")
+    .eq("user_id", crmUser.userId)
+    .in("status", ["active", "invited"]);
+  const allTenantIds = [...new Set([
+    tenant.id,
+    ...((userTenantsRes.data ?? []) as any[]).map((r) => r.tenant_id as string),
+  ])];
 
   const [itemsRes, typesRes] = await Promise.all([
-    sb.from("sitrep_items")
+    admin.from("sitrep_items")
       .select(ITEM_SELECT)
-      .eq("tenant_id", tenant.id)
+      .in("tenant_id", allTenantIds)
       .order("start_at", { ascending: true, nullsFirst: false })
       .order("due_date",  { ascending: true, nullsFirst: false })
       .limit(1000),

@@ -9,12 +9,14 @@ import { hasFeature } from "@/lib/features";
 import { redirect } from "next/navigation";
 import SitRepPanel from "./SitRepPanel";
 
+const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
 function makeSb(tenantId: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { "X-Tenant-Id": tenantId } } }
-  );
+  return createClient(URL_, KEY, { global: { headers: { "X-Tenant-Id": tenantId } } });
+}
+function makeAdminSb() {
+  return createClient(URL_, KEY);
 }
 
 export default async function SitRepPage() {
@@ -23,18 +25,30 @@ export default async function SitRepPage() {
   const crmUser = await getCrmUser();
   if (!crmUser) redirect("/crm/login");
 
-  const sb = makeSb(tenant.id);
+  const sb    = makeSb(tenant.id);
+  const admin = makeAdminSb();
+
+  // Resolve all tenant IDs this user belongs to
+  const userTenantsRes = await admin
+    .from("user_tenants")
+    .select("tenant_id")
+    .eq("user_id", crmUser.userId)
+    .in("status", ["active", "invited"]);
+  const allTenantIds = [...new Set([
+    tenant.id,
+    ...((userTenantsRes.data ?? []) as any[]).map((r) => r.tenant_id as string),
+  ])];
 
   const [itemsRes, typesRes] = await Promise.all([
-    sb
+    admin
       .from("sitrep_items")
       .select(
         "id, tenant_id, squad_id, item_type, title, description, location, location_address, status, priority, due_date, start_at, end_at, is_all_day, mission_id, parent_item_id, depth, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
       )
-      .eq("tenant_id", tenant.id)
+      .in("tenant_id", allTenantIds)
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("start_at", { ascending: true, nullsFirst: false })
-      .limit(500),
+      .limit(1000),
     sb
       .from("sitrep_item_types")
       .select("slug, color, name, stages, is_mission_type, show_in_kanban, booking_enabled")

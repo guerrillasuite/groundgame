@@ -408,13 +408,12 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   // Apply search + scope + type + status filters
   let filtered = calFiltered;
   if (scopeFilter === "mine") {
-    filtered = filtered.filter(
-      (i) =>
-        i.created_by === userId ||
-        (i.sitrep_assignments ?? []).some((a) => a.user_id === userId),
-    );
-    // If nothing matches "mine", fall back to all to avoid empty state
-    if (filtered.length === 0 && calFiltered.length > 0) filtered = calFiltered;
+    filtered = filtered.filter((i) => {
+      if ((i.sitrep_assignments ?? []).some((a) => a.user_id === userId)) return true;
+      if (i.created_by !== userId) return false;
+      const vis = (i as any).visibility ?? "team";
+      return vis === "private" || vis === "assignee_only" || (!(i as any).tenant_id && !(i as any).squad_id);
+    });
   }
   if (typeFilter !== "all") {
     filtered = filtered.filter((i) => i.item_type === typeFilter);
