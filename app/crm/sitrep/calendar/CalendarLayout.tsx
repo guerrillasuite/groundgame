@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { filterItems } from "@/lib/sitrep-calendar-filter";
 import { useSitRepFilter } from "../SitRepFilterContext";
 import SitRepCalendar from "./SitRepCalendar";
@@ -22,7 +23,11 @@ export default function CalendarLayout({
   typeColors:    Record<string, string>;
 }) {
   const { context } = useSitRepFilter();
-  const displayItems = filterItems(initialItems as any[], currentUserId, context);
+  const displayItems = useMemo(
+    () => filterItems(initialItems as any[], currentUserId, context),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initialItems, currentUserId, JSON.stringify(context)]
+  );
 
   return (
     <SitRepCalendar

@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data, error } = await sb()
     .from("squad_members")
-    .select("id, user_id, role, joined_at")
+    .select("id, user_id, role, share_level, joined_at")
     .eq("squad_id", id)
     .order("joined_at");
 
@@ -106,6 +106,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  return NextResponse.json({ ok: true });
+}
+
+// PATCH — update own share_level
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getCrmUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+
+  const body = await req.json().catch(() => null);
+  const shareLevel = body?.share_level;
+  if (!["full", "basic", "busy"].includes(shareLevel)) {
+    return NextResponse.json({ error: "share_level must be full, basic, or busy" }, { status: 400 });
+  }
+
+  const { error } = await sb()
+    .from("squad_members")
+    .update({ share_level: shareLevel })
+    .eq("squad_id", id)
+    .eq("user_id", user.userId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
 

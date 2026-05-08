@@ -1672,18 +1672,8 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
   const [inviteSent,     setInviteSent]     = useState<Record<string, boolean>>({});
   const [newSquadName,   setNewSquadName]   = useState("");
   const [creatingSquad,  setCreatingSquad]  = useState(false);
-  // Per-squad share level: "team" (full) | "assignee_only" — stored in localStorage
-  const [squadShareLevel, setSquadShareLevel] = useState<Record<string, string>>(() => {
-    if (typeof window === "undefined") return {};
-    const result: Record<string, string> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i) ?? "";
-      if (k.startsWith("sitrep_squad_share_")) {
-        result[k.replace("sitrep_squad_share_", "")] = localStorage.getItem(k) ?? "team";
-      }
-    }
-    return result;
-  });
+  // Per-squad share level: "full" | "basic" | "busy" — the current user's row in squad_members
+  const [squadShareLevel, setSquadShareLevel] = useState<Record<string, string>>({});
 
   const [calendars, setCalendars] = useState<PublicCalendar[]>([]);
   const [calsLoading, setCalsLoading] = useState(true);
@@ -1749,6 +1739,11 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
       if (res.ok) {
         const data = await res.json();
         setSquadMembers((prev) => ({ ...prev, [squadId]: Array.isArray(data) ? data : [] }));
+        // Seed own share_level from the returned member row
+        const me = (Array.isArray(data) ? data : []).find((m: any) => m.user_id === currentUserId);
+        if (me?.share_level) {
+          setSquadShareLevel((p) => ({ ...p, [squadId]: me.share_level }));
+        }
       }
     } finally {
       setMembersLoading(null);
@@ -2204,26 +2199,31 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
                         {/* Sharing section */}
                         <div style={{ padding: "12px 16px 12px 36px", borderTop: `1px solid ${S.border}` }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 10 }}>
-                            Sharing
+                            What Squad Members See of Your Items
                           </div>
                           <p style={{ margin: "0 0 10px", fontSize: 12, color: S.dim, lineHeight: 1.5 }}>
-                            Items you tag with this squad and set to <strong style={{ color: S.dimBrt }}>Team</strong> visibility are visible to all squad members. Items set to <strong style={{ color: S.dimBrt }}>Assignee Only</strong> are visible only to people explicitly assigned.
+                            When your squad mates view their calendar, choose how much detail they can see of the items you create in this squad.
                           </p>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             {[
-                              { key: "team",          label: "Team — full details", desc: "Members see your item titles, dates, and descriptions" },
-                              { key: "assignee_only", label: "Assignee only",       desc: "Only people you explicitly assign can see the item details" },
+                              { key: "full",  label: "Full details", desc: "Title, description, location, dates — everything" },
+                              { key: "basic", label: "Title only",   desc: "Squad mates see the item title and type, but not description or location" },
+                              { key: "busy",  label: "Busy only",    desc: "Squad mates just see a time block — no item title or details" },
                             ].map((opt) => {
-                              const current = squadShareLevel[squad.id] ?? "team";
+                              const current = squadShareLevel[squad.id] ?? "full";
                               const active  = current === opt.key;
                               return (
                                 <button
                                   key={opt.key}
                                   type="button"
                                   title={opt.desc}
-                                  onClick={() => {
-                                    try { localStorage.setItem(`sitrep_squad_share_${squad.id}`, opt.key); } catch { /* */ }
+                                  onClick={async () => {
                                     setSquadShareLevel((p) => ({ ...p, [squad.id]: opt.key }));
+                                    await fetch(`/api/crm/sitrep/squads/${squad.id}/members`, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ share_level: opt.key }),
+                                    });
                                   }}
                                   style={{
                                     padding: "5px 11px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer",
@@ -2237,7 +2237,7 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
                             })}
                           </div>
                           <p style={{ margin: "8px 0 0", fontSize: 11, color: S.dim, opacity: 0.7 }}>
-                            This sets the default visibility when you create new items tagged with this squad.
+                            Full details is the default. This preference is enforced when squad mates view your items via this squad's calendar.
                           </p>
                         </div>
 

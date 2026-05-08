@@ -62,7 +62,7 @@ export default async function SitRepLayout({ children }: { children: React.React
       .eq("tenant_id", tenant.id)
       .order("sort_order"),
     db.from("user_tenants")
-      .select("tenant_id, tenants(id, slug)")
+      .select("tenant_id")
       .eq("user_id", crmUser.userId)
       .in("status", ["active", "invited"]),
   ]);
@@ -75,18 +75,26 @@ export default async function SitRepLayout({ children }: { children: React.React
     role:     sm.role,
   }));
 
-  const orgs: { id: string; name: string }[] = (() => {
-    const rows = (userTenantsRes.data ?? []) as any[];
-    const tenantName_ = tenant.branding?.appName ?? tenant.slug;
-    const list = rows.map((r) => ({
-      id:   r.tenant_id as string,
-      name: r.tenant_id === tenant.id ? tenantName_ : (r.tenants?.slug ?? r.tenant_id),
-    }));
-    if (!list.find((o) => o.id === tenant.id)) {
-      list.unshift({ id: tenant.id, name: tenantName_ });
-    }
-    return list;
-  })();
+  const allTenantIds = [...new Set([
+    tenant.id,
+    ...((userTenantsRes.data ?? []) as any[]).map((r) => r.tenant_id as string),
+  ])];
+
+  // Fetch names for all tenants (separate query avoids PostgREST join FK dependency)
+  const tenantNamesRes = await db
+    .from("tenants")
+    .select("id, slug, branding")
+    .in("id", allTenantIds);
+
+  const tenantNameMap: Record<string, string> = {};
+  for (const t of (tenantNamesRes.data ?? []) as any[]) {
+    tenantNameMap[t.id] = t.branding?.appName ?? t.slug ?? t.id;
+  }
+
+  const orgs: { id: string; name: string }[] = allTenantIds.map((id) => ({
+    id,
+    name: tenantNameMap[id] ?? (id === tenant.id ? (tenant.branding?.appName ?? tenant.slug) : id),
+  }));
 
   await seedDefaultViews(crmUser.userId, tenant.id, squads.map((s) => s.id));
 

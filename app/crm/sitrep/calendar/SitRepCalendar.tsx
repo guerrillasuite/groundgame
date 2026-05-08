@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
@@ -532,6 +532,8 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
   const [statusFilter, setStatusFilter] = useState<"active" | "done" | "all">("active");
 
   const [items, setItems] = useState<SitRepItem[]>(initialItems);
+  // Sync items when the filtered set changes (context filter toggled from CalendarLayout)
+  useEffect(() => { setItems(initialItems); }, [initialItems]);
   const [modalItem, setModalItem] = useState<SitRepItem | null>(null);
   const [togglePending, setTogglePending] = useState<Record<string, boolean>>({});
   const [draggingItem, setDraggingItem] = useState<SitRepItem | null>(null);

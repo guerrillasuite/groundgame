@@ -31,23 +31,25 @@ export default async function ListPage() {
       .order("sort_order"),
     admin
       .from("user_tenants")
-      .select("tenant_id, tenants(id, slug)")
+      .select("tenant_id")
       .eq("user_id", user.userId)
       .in("status", ["active", "invited"]),
   ]);
 
-  const tenantName = (tenant as any).branding?.appName ?? (tenant as any).slug ?? tenant.id;
-  const orgs: { id: string; name: string }[] = (() => {
-    const rows = (userTenantsRes.data ?? []) as any[];
-    const list = rows.map((r) => ({
-      id:   r.tenant_id as string,
-      name: r.tenant_id === tenant.id ? tenantName : (r.tenants?.slug ?? r.tenant_id),
-    }));
-    if (!list.find((o) => o.id === tenant.id)) {
-      list.unshift({ id: tenant.id, name: tenantName });
-    }
-    return list;
-  })();
+  const allTenantIds = [...new Set([
+    tenant.id,
+    ...((userTenantsRes.data ?? []) as any[]).map((r) => r.tenant_id as string),
+  ])];
+
+  const tenantNamesRes = await admin.from("tenants").select("id, slug, branding").in("id", allTenantIds);
+  const tenantNameMap: Record<string, string> = {};
+  for (const t of (tenantNamesRes.data ?? []) as any[]) {
+    tenantNameMap[t.id] = t.branding?.appName ?? t.slug ?? t.id;
+  }
+  const orgs: { id: string; name: string }[] = allTenantIds.map((id) => ({
+    id,
+    name: tenantNameMap[id] ?? id,
+  }));
 
   return (
     <ListPanel
