@@ -7,12 +7,14 @@ import { getCrmUser } from "@/lib/crm-auth";
 import { redirect } from "next/navigation";
 import SitRepItemClient from "./SitRepItemClient";
 
+const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
 function makeSb(tenantId: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { "X-Tenant-Id": tenantId } } }
-  );
+  return createClient(URL_, KEY, { global: { headers: { "X-Tenant-Id": tenantId } } });
+}
+function makeAdminSb() {
+  return createClient(URL_, KEY);
 }
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -23,22 +25,40 @@ export default async function SitRepItemPage({ params }: Ctx) {
   const crmUser = await getCrmUser();
   if (!crmUser) redirect("/crm/login");
 
-  const sb = makeSb(tenant.id);
+  const admin = makeAdminSb();
 
-  const [itemRes, typesRes] = await Promise.all([
-    sb
-      .from("sitrep_items")
-      .select("*, sitrep_assignments(user_id, role), sitrep_links(id, record_type, record_id, display_label)")
-      .eq("id", id)
-      .eq("tenant_id", tenant.id)
-      .single(),
-    sb
-      .from("sitrep_item_types")
-      .select("slug, name, color, stages, is_mission_type, show_in_kanban, booking_enabled")
-      .eq("tenant_id", tenant.id),
-  ]);
+  // Resolve all tenants this user belongs to (for cross-tenant item access)
+  const userTenantsRes = await admin
+    .from("user_tenants")
+    .select("tenant_id")
+    .eq("user_id", crmUser.userId)
+    .in("status", ["active", "invited"]);
+  const allTenantIds = [...new Set([
+    tenant.id,
+    ...((userTenantsRes.data ?? []) as any[]).map((r) => r.tenant_id as string),
+  ])];
+
+  // Look up item without tenant restriction — admin client bypasses RLS
+  const itemRes = await admin
+    .from("sitrep_items")
+    .select("*, sitrep_assignments(user_id, role), sitrep_links(id, record_type, record_id, display_label)")
+    .eq("id", id)
+    .single();
 
   if (!itemRes.data) redirect("/crm/sitrep");
+
+  // Verify this item belongs to one of the user's tenants
+  const itemTenantId = (itemRes.data as any).tenant_id;
+  if (itemTenantId && !allTenantIds.includes(itemTenantId)) redirect("/crm/sitrep");
+
+  // Use tenant-scoped sb for types (use item's actual tenant if different)
+  const effectiveTenantId = itemTenantId ?? tenant.id;
+  const sb = makeSb(effectiveTenantId);
+
+  const typesRes = await sb
+    .from("sitrep_item_types")
+    .select("slug, name, color, stages, is_mission_type, show_in_kanban, booking_enabled")
+    .eq("tenant_id", effectiveTenantId);
 
   const item = itemRes.data as any;
 

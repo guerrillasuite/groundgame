@@ -336,6 +336,30 @@ function ItemDetailPanel({
         {/* Scrollable body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "grid", gap: 16 }}>
 
+          {/* Status + priority row — always visible */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{
+              fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+              padding: "4px 10px", borderRadius: 20,
+              background: isDone ? "rgba(34,197,94,.15)" : isCancelled ? "rgba(100,116,139,.15)" : isConfirmed ? "rgba(59,130,246,.15)" : `${S.accent}22`,
+              color: isDone ? "#86efac" : isCancelled ? "#94a3b8" : isConfirmed ? "#93c5fd" : S.accent,
+              border: isDone ? "1px solid rgba(34,197,94,.3)" : isCancelled ? "1px solid rgba(100,116,139,.3)" : isConfirmed ? "1px solid rgba(59,130,246,.3)" : `1px solid ${S.accent}44`,
+            }}>
+              {item.status}
+            </span>
+            {item.priority && item.priority !== "normal" && item.priority !== "low" && (
+              <span style={{
+                fontSize: 11, fontWeight: 800, letterSpacing: "0.05em",
+                padding: "4px 10px", borderRadius: 20,
+                background: item.priority === "urgent" ? "rgba(239,68,68,.15)" : "rgba(245,158,11,.15)",
+                color: item.priority === "urgent" ? "#fca5a5" : "#fcd34d",
+                border: item.priority === "urgent" ? "1px solid rgba(239,68,68,.3)" : "1px solid rgba(245,158,11,.3)",
+              }}>
+                {item.priority === "urgent" ? "!! Urgent" : "↑ High"}
+              </span>
+            )}
+          </div>
+
           {/* Date / time */}
           {effectiveDate(item) && (
             <Row icon="📅">
@@ -345,20 +369,6 @@ function ItemDetailPanel({
                   <span style={{ color: S.dim }}> → {fmtTime(item.end_at)}</span>
                 )}
                 {item.is_all_day && <span style={{ color: S.dim, marginLeft: 6, fontSize: 11 }}>(all day)</span>}
-              </span>
-            </Row>
-          )}
-
-          {/* Priority */}
-          {item.priority && item.priority !== "normal" && item.priority !== "low" && (
-            <Row icon="⚑">
-              <span style={{
-                fontSize: 11, fontWeight: 800, letterSpacing: "0.05em",
-                padding: "2px 8px", borderRadius: 4,
-                background: item.priority === "urgent" ? "#fee2e2" : "#fef3c7",
-                color: item.priority === "urgent" ? "#991b1b" : "#78350f",
-              }}>
-                {item.priority === "urgent" ? "!! URGENT" : "HIGH"}
               </span>
             </Row>
           )}
@@ -412,17 +422,17 @@ function ItemDetailPanel({
             </Row>
           )}
 
-          {/* Description */}
-          {item.description && (
-            <div style={{
-              fontSize: 13, color: S.text, lineHeight: 1.65,
-              background: "rgba(255,255,255,.04)", borderRadius: 10,
-              padding: "12px 16px", border: `1px solid ${S.border}`,
-              whiteSpace: "pre-wrap",
-            }}>
-              {item.description}
-            </div>
-          )}
+          {/* Description — always visible */}
+          <div style={{
+            fontSize: 13, lineHeight: 1.65,
+            background: "rgba(255,255,255,.04)", borderRadius: 10,
+            padding: "12px 16px", border: `1px solid ${S.border}`,
+            whiteSpace: "pre-wrap",
+            color: item.description ? S.text : S.dim,
+            fontStyle: item.description ? "normal" : "italic",
+          }}>
+            {item.description || "No description"}
+          </div>
 
           {/* Agenda (meetings) */}
           {(item as any).agenda && (

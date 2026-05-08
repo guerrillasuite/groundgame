@@ -202,8 +202,14 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
 
       {/* Content */}
       <div style={{ padding: "16px 16px 32px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {/* Title */}
-        <div style={{ boxShadow: `inset 3px 0 0 0 ${accent}`, paddingLeft: 12 }}>
+        {/* Hero banner */}
+        <div style={{
+          padding: "20px 20px 16px",
+          background: `linear-gradient(150deg, ${accent}1e 0%, rgba(10,13,20,0) 75%)`,
+          border: `1px solid ${accent}22`,
+          borderRadius: 14,
+          boxShadow: `0 4px 24px rgba(0,0,0,.35), 0 0 36px ${accent}0d`,
+        }}>
           <input
             type="text"
             value={title}
@@ -211,32 +217,30 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
             onBlur={onTitleBlur}
             style={{
               width: "100%", background: "none", border: "none", outline: "none",
-              color: S.text, fontSize: 20, fontWeight: 700, padding: "4px 0",
-              letterSpacing: "-0.01em",
+              color: S.text, fontSize: 21, fontWeight: 700, padding: "0 0 12px",
+              letterSpacing: "-0.01em", lineHeight: 1.25,
             }}
           />
-        </div>
-
-        {/* Status pill */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{
-            fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
-            padding: "4px 10px", borderRadius: 20,
-            background: item.status === "done" ? "rgba(34,197,94,.15)" : `${accent}22`,
-            color: item.status === "done" ? "#86efac" : accent,
-            border: item.status === "done" ? "1px solid rgba(34,197,94,.3)" : `1px solid ${accent}44`,
-          }}>
-            {item.status}
-          </span>
-          {isOverdue && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{
-              fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20,
-              background: "rgba(239,68,68,.15)", color: "#fca5a5",
-              border: "1px solid rgba(239,68,68,.3)",
+              fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+              padding: "4px 10px", borderRadius: 20,
+              background: item.status === "done" ? "rgba(34,197,94,.15)" : `${accent}22`,
+              color: item.status === "done" ? "#86efac" : accent,
+              border: item.status === "done" ? "1px solid rgba(34,197,94,.3)" : `1px solid ${accent}44`,
             }}>
-              Overdue
+              {item.status}
             </span>
-          )}
+            {isOverdue && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20,
+                background: "rgba(239,68,68,.15)", color: "#fca5a5",
+                border: "1px solid rgba(239,68,68,.3)",
+              }}>
+                Overdue
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Details section */}
