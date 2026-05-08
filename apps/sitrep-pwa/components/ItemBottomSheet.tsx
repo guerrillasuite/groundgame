@@ -16,6 +16,8 @@ const S = {
   border:    "rgba(255,255,255,.08)",
 } as const;
 
+type SquadOption = { id: string; name: string; color: string };
+
 interface ItemBottomSheetProps {
   open: boolean;
   onClose: () => void;
@@ -23,6 +25,7 @@ interface ItemBottomSheetProps {
   createMode: boolean;
   types: ItemType[];
   calendarTypes?: CalendarTypeData[];
+  squads?: SquadOption[];
   tenantId: string;
   userId: string;
   tz: string;
@@ -92,13 +95,17 @@ function calPayload(
   return { tenantId: tid, visibility: "assignee_only" };
 }
 
+// "personal" = private + no squad; "work" = team + no squad; squad id = squad context
+type CalendarChoice = "personal" | "work" | string;
+
 export default function ItemBottomSheet({
-  open, onClose, item, createMode, types, calendarTypes, tenantId, userId, tz,
+  open, onClose, item, createMode, types, calendarTypes, squads = [], tenantId, userId, tz,
   onSaved, onDeleted, onExpandItem,
 }: ItemBottomSheetProps) {
   const [title, setTitle]               = useState("");
   const [typeSlug, setTypeSlug]         = useState(types[0]?.slug ?? "task");
   const [selectedCalId, setSelectedCalId] = useState(() => defaultCalTypeId(calendarTypes));
+  const [calChoice, setCalChoice]       = useState<CalendarChoice>("work");
   // Stored as datetime-local string (local time) for the <input>
   const [dueDateLocal, setDueDateLocal] = useState("");
   const [location, setLocation]         = useState("");
@@ -116,12 +123,21 @@ export default function ItemBottomSheet({
       setTitle("");
       setTypeSlug(types[0]?.slug ?? "task");
       setSelectedCalId(defaultCalTypeId(calendarTypes));
+      setCalChoice("work");
       setDueDateLocal("");
       setLocation("");
     } else if (item) {
       setTitle(item.title);
       setTypeSlug(item.item_type);
       setSelectedCalId(guessCalTypeId(calendarTypes, item as any));
+      // Infer calChoice from item
+      if ((item as any).visibility === "private") {
+        setCalChoice("personal");
+      } else if ((item as any).squad_id) {
+        setCalChoice((item as any).squad_id);
+      } else {
+        setCalChoice("work");
+      }
       // Convert stored UTC ISO to local datetime-local input value
       const stored = item.due_date ?? (item as any).start_at ?? null;
       setDueDateLocal(stored ? utcToDatetimeLocal(stored) : "");
@@ -150,6 +166,13 @@ export default function ItemBottomSheet({
       ? calPayload(calendarTypes, selectedCalId, tenantId)
       : null;
 
+    // When no calendarTypes provided, derive visibility + squad from calChoice
+    const choicePayload = !cal ? (() => {
+      if (calChoice === "personal") return { visibility: "private", squad_id: null };
+      if (calChoice === "work")     return { visibility: "team", squad_id: null };
+      return { visibility: "team", squad_id: calChoice };
+    })() : null;
+
     const payload = {
       title:      title.trim(),
       item_type:  typeSlug,
@@ -158,6 +181,7 @@ export default function ItemBottomSheet({
       tenantId:   cal?.tenantId ?? tenantId,
       created_by: userId,
       ...(cal ? { visibility: cal.visibility } : {}),
+      ...(choicePayload ?? {}),
     };
 
     try {
@@ -234,7 +258,42 @@ export default function ItemBottomSheet({
           </button>
         </div>
 
-        {/* Calendar picker */}
+        {/* Simple calendar/visibility picker (when no calendarTypes provided) */}
+        {(!calendarTypes || calendarTypes.length === 0) && (
+          <div style={{ overflowX: "auto", display: "flex", gap: 6, paddingBottom: 2, scrollbarWidth: "none" }}>
+            {[
+              { key: "personal", label: "Personal", color: "#94a3b8" },
+              { key: "work",     label: "Work",      color: "#818cf8" },
+              ...squads.map((sq) => ({
+                key:   sq.id,
+                label: sq.name,
+                color: getFamilyByKey(sq.color)?.shades[3] ?? "#818cf8",
+              })),
+            ].map((opt) => {
+              const active = calChoice === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => setCalChoice(opt.key as CalendarChoice)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    flexShrink: 0, padding: "5px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    cursor: "pointer",
+                    border: active ? `1px solid ${opt.color}55` : "1px solid rgba(255,255,255,.08)",
+                    background: active ? `${opt.color}22` : "rgba(255,255,255,.03)",
+                    color: active ? S.dimBright : S.dim,
+                    transition: "all .12s",
+                  }}
+                >
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: opt.color, flexShrink: 0 }} />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Calendar picker (legacy calendarTypes) */}
         {calendarTypes && calendarTypes.length > 0 && (
           <div style={{ overflowX: "auto", display: "flex", gap: 6, paddingBottom: 2, scrollbarWidth: "none" }}>
             {calendarTypes.map((ct) => {

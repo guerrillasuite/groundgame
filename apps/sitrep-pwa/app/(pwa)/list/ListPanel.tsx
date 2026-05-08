@@ -28,11 +28,13 @@ const S = {
 
 type ItemType  = { id: string; name: string; slug: string; color: string; sort_order: number };
 type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
+type OrgInfo   = { id: string; name: string };
 
 interface ListPanelProps {
   userId: string;
   tenantId: string;
   initialTypes: ItemType[];
+  initialOrgs?: OrgInfo[];
 }
 
 type Group = {
@@ -200,7 +202,7 @@ function SearchBar({
   );
 }
 
-export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelProps) {
+export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs = [] }: ListPanelProps) {
   const router = useRouter();
 
   const [tz, setTz] = useState("UTC");
@@ -222,9 +224,13 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
   // Calendar switcher
   const [views,        setViews]        = useState<SitRepView[]>([]);
   const [squads,       setSquads]       = useState<SquadInfo[]>([]);
+  const [orgs,         setOrgs]         = useState<OrgInfo[]>(initialOrgs);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [context,      setContext]      = useState<CalendarContext>(() =>
-    defaultContext(tenantId ? [tenantId] : [], [])
+    defaultContext(
+      initialOrgs.length > 0 ? initialOrgs.map((o) => o.id) : (tenantId ? [tenantId] : []),
+      []
+    )
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -841,7 +847,7 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
         activeViewId={activeViewId}
         onSelectView={selectView}
         squads={squads}
-        tenantId={tenantId}
+        orgs={orgs}
         context={context}
         onContextChange={handleContextChange}
         onViewsChanged={handleViewsChanged}
@@ -853,6 +859,7 @@ export default function ListPanel({ userId, tenantId, initialTypes }: ListPanelP
         item={sheetItem}
         createMode={sheetCreate}
         types={initialTypes}
+        squads={squads.map((s) => ({ id: s.id, name: s.name, color: s.color }))}
         tenantId={tenantId}
         userId={userId}
         tz={tz}

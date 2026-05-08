@@ -56,18 +56,38 @@ export default async function CalendarPage() {
   const sb     = makeAdminSb();
   const tenant = await getTenant(user.userId);
 
-  const squadsRes = await sb
-    .from("squad_members")
-    .select("squad_id, role, squads(id, name, color, tenant_id)")
-    .eq("user_id", user.userId);
+  const [squadsRes, userTenantsRes] = await Promise.all([
+    sb
+      .from("squad_members")
+      .select("squad_id, role, squads(id, name, color, org_id)")
+      .eq("user_id", user.userId),
+    sb
+      .from("user_tenants")
+      .select("tenant_id, tenants(id, slug)")
+      .eq("user_id", user.userId)
+      .in("status", ["active", "invited"]),
+  ]);
 
   const squads = ((squadsRes.data ?? []) as any[]).map((sm) => ({
-    id:       sm.squads?.id       ?? sm.squad_id,
-    name:     sm.squads?.name     ?? "Unknown",
-    color:    sm.squads?.color    ?? "blue",
-    tenantId: sm.squads?.tenant_id ?? tenant?.id ?? "",
+    id:       sm.squads?.id     ?? sm.squad_id,
+    name:     sm.squads?.name   ?? "Unknown",
+    color:    sm.squads?.color  ?? "blue",
+    tenantId: sm.squads?.org_id ?? tenant?.id ?? "",
     role:     sm.role,
   }));
+
+  const tenantName = (tenant as any)?.branding?.appName ?? (tenant as any)?.slug ?? tenant?.id ?? "";
+  const orgs: { id: string; name: string }[] = (() => {
+    const rows = (userTenantsRes.data ?? []) as any[];
+    const list = rows.map((r) => ({
+      id:   r.tenant_id as string,
+      name: r.tenant_id === tenant?.id ? tenantName : (r.tenants?.slug ?? r.tenant_id),
+    }));
+    if (tenant?.id && !list.find((o) => o.id === tenant.id)) {
+      list.unshift({ id: tenant.id, name: tenantName });
+    }
+    return list;
+  })();
 
   await seedDefaultViews(
     user.userId,
@@ -108,6 +128,7 @@ export default async function CalendarPage() {
         types={(typesRes.data ?? []) as any[]}
         userId={user.userId}
         tenantId={tenant?.id ?? ""}
+        orgs={orgs}
         views={(viewsRes.data ?? []) as any[]}
         squads={squads}
       />

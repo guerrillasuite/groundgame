@@ -29,6 +29,7 @@ const S = {
 type View     = "day" | "week" | "month";
 type ItemType = { id: string; name: string; slug: string; color: string; sort_order: number };
 type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
+type OrgInfo  = { id: string; name: string };
 
 function ViewPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -58,12 +59,13 @@ interface CalendarLayoutProps {
   types:        ItemType[];
   userId:       string;
   tenantId:     string;
+  orgs?:        OrgInfo[];
   views:        SitRepView[];
   squads:       SquadInfo[];
 }
 
 export default function CalendarLayout({
-  initialItems, types, userId, tenantId, views: initialViews, squads,
+  initialItems, types, userId, tenantId, orgs = [], views: initialViews, squads,
 }: CalendarLayoutProps) {
   const router       = useRouter();
   const searchParams = useSearchParams();
@@ -85,7 +87,10 @@ export default function CalendarLayout({
   const [views,         setViews]         = useState<SitRepView[]>(initialViews);
   const [activeViewId,  setActiveViewId]  = useState<string | null>(null);
   const [context,       setContext]       = useState<CalendarContext>(() =>
-    defaultContext(tenantId ? [tenantId] : [], squads.map((s) => s.id))
+    defaultContext(
+      orgs.length > 0 ? orgs.map((o) => o.id) : (tenantId ? [tenantId] : []),
+      squads.map((s) => s.id)
+    )
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -269,7 +274,7 @@ export default function CalendarLayout({
         activeViewId={activeViewId}
         onSelectView={selectView}
         squads={squads}
-        tenantId={tenantId}
+        orgs={orgs.length > 0 ? orgs : (tenantId ? [{ id: tenantId, name: "Work" }] : [])}
         context={context}
         onContextChange={handleContextChange}
         onViewsChanged={handleViewsChanged}

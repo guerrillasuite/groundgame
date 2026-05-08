@@ -1672,6 +1672,18 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
   const [inviteSent,     setInviteSent]     = useState<Record<string, boolean>>({});
   const [newSquadName,   setNewSquadName]   = useState("");
   const [creatingSquad,  setCreatingSquad]  = useState(false);
+  // Per-squad share level: "team" (full) | "assignee_only" — stored in localStorage
+  const [squadShareLevel, setSquadShareLevel] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    const result: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) ?? "";
+      if (k.startsWith("sitrep_squad_share_")) {
+        result[k.replace("sitrep_squad_share_", "")] = localStorage.getItem(k) ?? "team";
+      }
+    }
+    return result;
+  });
 
   const [calendars, setCalendars] = useState<PublicCalendar[]>([]);
   const [calsLoading, setCalsLoading] = useState(true);
@@ -2187,6 +2199,46 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
                               )}
                             </div>
                           ))}
+                        </div>
+
+                        {/* Sharing section */}
+                        <div style={{ padding: "12px 16px 12px 36px", borderTop: `1px solid ${S.border}` }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 10 }}>
+                            Sharing
+                          </div>
+                          <p style={{ margin: "0 0 10px", fontSize: 12, color: S.dim, lineHeight: 1.5 }}>
+                            Items you tag with this squad and set to <strong style={{ color: S.dimBrt }}>Team</strong> visibility are visible to all squad members. Items set to <strong style={{ color: S.dimBrt }}>Assignee Only</strong> are visible only to people explicitly assigned.
+                          </p>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {[
+                              { key: "team",          label: "Team — full details", desc: "Members see your item titles, dates, and descriptions" },
+                              { key: "assignee_only", label: "Assignee only",       desc: "Only people you explicitly assign can see the item details" },
+                            ].map((opt) => {
+                              const current = squadShareLevel[squad.id] ?? "team";
+                              const active  = current === opt.key;
+                              return (
+                                <button
+                                  key={opt.key}
+                                  type="button"
+                                  title={opt.desc}
+                                  onClick={() => {
+                                    try { localStorage.setItem(`sitrep_squad_share_${squad.id}`, opt.key); } catch { /* */ }
+                                    setSquadShareLevel((p) => ({ ...p, [squad.id]: opt.key }));
+                                  }}
+                                  style={{
+                                    padding: "5px 11px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                    border: active ? "1px solid rgba(99,102,241,.45)" : `1px solid ${S.border}`,
+                                    background: active ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.03)",
+                                    color: active ? "#a5b4fc" : S.dim,
+                                    transition: "all .12s",
+                                  }}
+                                >{opt.label}</button>
+                              );
+                            })}
+                          </div>
+                          <p style={{ margin: "8px 0 0", fontSize: 11, color: S.dim, opacity: 0.7 }}>
+                            This sets the default visibility when you create new items tagged with this squad.
+                          </p>
                         </div>
 
                         {/* Invite form */}

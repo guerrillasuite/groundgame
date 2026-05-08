@@ -53,23 +53,40 @@ export default async function SitRepLayout({ children }: { children: React.React
   const db = sbRaw();
   const sb = sbTenant(tenant.id);
 
-  const [squadsRes, typesRes] = await Promise.all([
+  const [squadsRes, typesRes, userTenantsRes] = await Promise.all([
     db.from("squad_members")
-      .select("squad_id, role, squads(id, name, color, tenant_id)")
+      .select("squad_id, role, squads(id, name, color, org_id)")
       .eq("user_id", crmUser.userId),
     sb.from("sitrep_item_types")
       .select("slug, name, color")
       .eq("tenant_id", tenant.id)
       .order("sort_order"),
+    db.from("user_tenants")
+      .select("tenant_id, tenants(id, slug)")
+      .eq("user_id", crmUser.userId)
+      .in("status", ["active", "invited"]),
   ]);
 
   const squads = ((squadsRes.data ?? []) as any[]).map((sm) => ({
-    id:       sm.squads?.id        ?? sm.squad_id,
-    name:     sm.squads?.name      ?? "Unknown",
-    color:    sm.squads?.color     ?? "blue",
-    tenantId: sm.squads?.tenant_id ?? tenant.id,
+    id:       sm.squads?.id     ?? sm.squad_id,
+    name:     sm.squads?.name   ?? "Unknown",
+    color:    sm.squads?.color  ?? "blue",
+    tenantId: sm.squads?.org_id ?? tenant.id,
     role:     sm.role,
   }));
+
+  const orgs: { id: string; name: string }[] = (() => {
+    const rows = (userTenantsRes.data ?? []) as any[];
+    const tenantName_ = tenant.branding?.appName ?? tenant.slug;
+    const list = rows.map((r) => ({
+      id:   r.tenant_id as string,
+      name: r.tenant_id === tenant.id ? tenantName_ : (r.tenants?.slug ?? r.tenant_id),
+    }));
+    if (!list.find((o) => o.id === tenant.id)) {
+      list.unshift({ id: tenant.id, name: tenantName_ });
+    }
+    return list;
+  })();
 
   await seedDefaultViews(crmUser.userId, tenant.id, squads.map((s) => s.id));
 
@@ -88,15 +105,12 @@ export default async function SitRepLayout({ children }: { children: React.React
     ...rawTypes,
   ];
 
-  const tenantName = tenant.branding?.appName ?? tenant.slug;
-
   return (
     <Suspense fallback={<div style={{ minHeight: "100vh", background: "rgb(10 13 20)" }} />}>
       <SitRepShell
         initialViews={views}
         squads={squads}
-        tenantId={tenant.id}
-        tenantName={tenantName}
+        orgs={orgs}
         currentUserId={crmUser.userId}
         allTypes={allTypes}
       >

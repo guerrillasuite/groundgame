@@ -18,6 +18,7 @@ const S = {
 } as const;
 
 type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
+type OrgInfo   = { id: string; name: string };
 
 function IOSToggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
@@ -58,7 +59,7 @@ interface Props {
   activeViewId?:    string | null;
   onSelectView?:    (id: string) => void;
   squads?:          SquadInfo[];
-  tenantId?:        string;
+  orgs?:            OrgInfo[];
   context?:         CalendarContext;
   onContextChange?: (ctx: CalendarContext) => void;
   onViewsChanged?:  () => Promise<void>;
@@ -70,12 +71,12 @@ export default function CalendarSwitcherDrawer({
   activeViewId = null,
   onSelectView = () => {},
   squads = [],
-  tenantId = "",
+  orgs = [],
   context: contextProp,
   onContextChange = () => {},
   onViewsChanged = async () => {},
 }: Props) {
-  const ctx = contextProp ?? defaultContext(tenantId ? [tenantId] : [], squads.map((s) => s.id));
+  const ctx = contextProp ?? defaultContext(orgs.map((o) => o.id), squads.map((s) => s.id));
   const [mounted,  setMounted]  = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName,  setNewName]  = useState("");
@@ -85,11 +86,11 @@ export default function CalendarSwitcherDrawer({
 
   useEffect(() => { setMounted(true); }, []);
 
-  function toggleOrg() {
+  function toggleOrg(orgId: string) {
     const ids = ctx.orgIds;
-    const next = ids.includes(tenantId)
-      ? ids.filter((id) => id !== tenantId)
-      : [...ids, tenantId];
+    const next = ids.includes(orgId)
+      ? ids.filter((id) => id !== orgId)
+      : [...ids, orgId];
     onContextChange({ ...ctx, orgIds: next });
   }
 
@@ -156,8 +157,6 @@ export default function CalendarSwitcherDrawer({
       if (remaining[0]) onSelectView(remaining[0].id);
     }
   }
-
-  const workOn = ctx.orgIds.includes(tenantId);
 
   if (!mounted) return null;
 
@@ -302,15 +301,37 @@ export default function CalendarSwitcherDrawer({
 
           <div style={{ height: 1, background: S.border, margin: "12px 14px 6px" }} />
 
-          {/* Show toggles */}
-          <div style={{
-            padding: "4px 14px 4px",
-            fontSize: 10, fontWeight: 700, color: S.dim,
-            letterSpacing: "0.07em", textTransform: "uppercase",
-          }}>Show in View</div>
+          {/* Work / Org toggles */}
+          {orgs.length > 0 && (
+            <>
+              <div style={{
+                padding: "4px 14px 4px",
+                fontSize: 10, fontWeight: 700, color: S.dim,
+                letterSpacing: "0.07em", textTransform: "uppercase",
+              }}>Work</div>
+              <div style={{ padding: "0 14px" }}>
+                {orgs.length === 1 ? (
+                  <IOSToggle
+                    on={ctx.orgIds.includes(orgs[0].id)}
+                    onToggle={() => toggleOrg(orgs[0].id)}
+                    label={orgs[0].name}
+                  />
+                ) : (
+                  orgs.map((org) => (
+                    <IOSToggle
+                      key={org.id}
+                      on={ctx.orgIds.includes(org.id)}
+                      onToggle={() => toggleOrg(org.id)}
+                      label={org.name}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )}
 
+          {/* Personal toggle */}
           <div style={{ padding: "0 14px" }}>
-            {tenantId && <IOSToggle on={workOn}             onToggle={toggleOrg}     label="Work" />}
             <IOSToggle on={ctx.personalOn} onToggle={togglePersonal} label="Personal" />
           </div>
 

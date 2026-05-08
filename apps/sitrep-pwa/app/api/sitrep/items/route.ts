@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
     .from("sitrep_items")
     .insert({
       tenant_id:   body.tenantId,
+      squad_id:    body.squad_id ?? null,
       item_type:   body.item_type,
       title:       body.title.trim(),
       status:      "open",
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
       due_date:    body.item_type === "task" ? (body.due_date ?? null) : null,
       start_at:    body.item_type !== "task" ? (body.due_date ?? null) : null,
       location:    body.location ?? null,
-      visibility:  body.visibility ?? "assignee_only",
+      visibility:  body.visibility ?? "team",
       created_by:  user.userId,
       depth:       0,
     })

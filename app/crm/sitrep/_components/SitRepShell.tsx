@@ -79,16 +79,14 @@ function NavBar({ sidebarOpen, onToggle }: { sidebarOpen: boolean; onToggle: () 
 export default function SitRepShell({
   initialViews,
   squads,
-  tenantId,
-  tenantName,
+  orgs,
   currentUserId,
   allTypes,
   children,
 }: {
   initialViews:  SitRepView[];
   squads:        SquadInfo[];
-  tenantId:      string;
-  tenantName:    string;
+  orgs:          OrgInfo[];
   currentUserId: string;
   allTypes:      TypeInfo[];
   children:      React.ReactNode;
@@ -96,11 +94,9 @@ export default function SitRepShell({
   const [views, setViews]               = useState<SitRepView[]>(initialViews);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [context, setContext]           = useState<CalendarContext>(() =>
-    defaultContext([tenantId], squads.map((s) => s.id))
+    defaultContext(orgs.map((o) => o.id), squads.map((s) => s.id))
   );
   const [sidebarOpen, setSidebarOpen]   = useState(true);
-
-  const orgs: OrgInfo[] = [{ id: tenantId, name: tenantName }];
 
   // Init active view from localStorage on mount
   useEffect(() => {
