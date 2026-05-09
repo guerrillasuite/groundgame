@@ -16,7 +16,8 @@ const S = {
   border:    "rgba(255,255,255,.08)",
 } as const;
 
-type SquadOption = { id: string; name: string; color: string };
+type SquadOption = { id: string; name: string; color: string; tenantId?: string };
+type OrgOption   = { id: string; name: string };
 
 interface ItemBottomSheetProps {
   open: boolean;
@@ -26,6 +27,7 @@ interface ItemBottomSheetProps {
   types: ItemType[];
   calendarTypes?: CalendarTypeData[];
   squads?: SquadOption[];
+  orgs?: OrgOption[];
   tenantId: string;
   userId: string;
   tz: string;
@@ -99,13 +101,15 @@ function calPayload(
 type CalendarChoice = "personal" | "work" | string;
 
 export default function ItemBottomSheet({
-  open, onClose, item, createMode, types, calendarTypes, squads = [], tenantId, userId, tz,
+  open, onClose, item, createMode, types, calendarTypes, squads = [], orgs = [], tenantId, userId, tz,
   onSaved, onDeleted, onExpandItem,
 }: ItemBottomSheetProps) {
+  const firstOrgId = orgs[0]?.id ?? tenantId ?? "";
+
   const [title, setTitle]               = useState("");
   const [typeSlug, setTypeSlug]         = useState(types[0]?.slug ?? "task");
   const [selectedCalId, setSelectedCalId] = useState(() => defaultCalTypeId(calendarTypes));
-  const [calChoice, setCalChoice]       = useState<CalendarChoice>("work");
+  const [calChoice, setCalChoice]       = useState<CalendarChoice>(() => firstOrgId || "personal");
   // Stored as datetime-local string (local time) for the <input>
   const [dueDateLocal, setDueDateLocal] = useState("");
   const [location, setLocation]         = useState("");
@@ -123,7 +127,7 @@ export default function ItemBottomSheet({
       setTitle("");
       setTypeSlug(types[0]?.slug ?? "task");
       setSelectedCalId(defaultCalTypeId(calendarTypes));
-      setCalChoice("work");
+      setCalChoice(firstOrgId || "personal");
       setDueDateLocal("");
       setLocation("");
     } else if (item) {
@@ -136,7 +140,7 @@ export default function ItemBottomSheet({
       } else if ((item as any).squad_id) {
         setCalChoice((item as any).squad_id);
       } else {
-        setCalChoice("work");
+        setCalChoice((item as any).tenant_id ?? firstOrgId ?? "personal");
       }
       // Convert stored UTC ISO to local datetime-local input value
       const stored = item.due_date ?? (item as any).start_at ?? null;
@@ -166,11 +170,18 @@ export default function ItemBottomSheet({
       ? calPayload(calendarTypes, selectedCalId, tenantId)
       : null;
 
-    // When no calendarTypes provided, derive visibility + squad from calChoice
+    // When no calendarTypes provided, derive visibility + squad + tenantId from calChoice
     const choicePayload = !cal ? (() => {
-      if (calChoice === "personal") return { visibility: "private", squad_id: null };
-      if (calChoice === "work")     return { visibility: "team", squad_id: null };
-      return { visibility: "team", squad_id: calChoice };
+      if (calChoice === "personal") {
+        return { visibility: "private", squad_id: null, tenantId: null };
+      }
+      const isOrg = orgs.some((o) => o.id === calChoice);
+      if (isOrg) {
+        return { visibility: "team", squad_id: null, tenantId: calChoice };
+      }
+      // squad
+      const sq = squads.find((s) => s.id === calChoice);
+      return { visibility: "team", squad_id: calChoice, tenantId: sq?.tenantId ?? firstOrgId ?? null };
     })() : null;
 
     const payload = {
@@ -178,10 +189,10 @@ export default function ItemBottomSheet({
       item_type:  typeSlug,
       due_date:   dueDateUtc,
       location:   location.trim() || null,
-      tenantId:   cal?.tenantId ?? tenantId,
+      tenantId:   cal?.tenantId ?? choicePayload?.tenantId ?? tenantId ?? null,
       created_by: userId,
       ...(cal ? { visibility: cal.visibility } : {}),
-      ...(choicePayload ?? {}),
+      ...(choicePayload ? { visibility: choicePayload.visibility, squad_id: choicePayload.squad_id } : {}),
     };
 
     try {
@@ -258,12 +269,12 @@ export default function ItemBottomSheet({
           </button>
         </div>
 
-        {/* Simple calendar/visibility picker (when no calendarTypes provided) */}
+        {/* Context picker: Personal | per-org | per-squad */}
         {(!calendarTypes || calendarTypes.length === 0) && (
           <div style={{ overflowX: "auto", display: "flex", gap: 6, paddingBottom: 2, scrollbarWidth: "none" }}>
             {[
               { key: "personal", label: "Personal", color: "#94a3b8" },
-              { key: "work",     label: "Work",      color: "#818cf8" },
+              ...orgs.map((org) => ({ key: org.id, label: org.name, color: "#818cf8" })),
               ...squads.map((sq) => ({
                 key:   sq.id,
                 label: sq.name,

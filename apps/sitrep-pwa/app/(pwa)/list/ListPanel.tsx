@@ -880,7 +880,8 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
         item={sheetItem}
         createMode={sheetCreate}
         types={initialTypes}
-        squads={squads.map((s) => ({ id: s.id, name: s.name, color: s.color }))}
+        squads={squads.map((s) => ({ id: s.id, name: s.name, color: s.color, tenantId: s.tenantId }))}
+        orgs={orgs}
         tenantId={tenantId}
         userId={userId}
         tz={tz}

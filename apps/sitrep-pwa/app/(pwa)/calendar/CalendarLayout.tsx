@@ -308,6 +308,8 @@ export default function CalendarLayout({
         item={sheetItem}
         createMode={sheetCreate}
         types={types}
+        squads={squads.map((s) => ({ id: s.id, name: s.name, color: s.color, tenantId: s.tenantId }))}
+        orgs={orgs.length > 0 ? orgs : (tenantId ? [{ id: tenantId, name: "Work" }] : [])}
         tenantId={tenantId}
         userId={userId}
         tz={tz}
