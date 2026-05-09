@@ -418,7 +418,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   let filtered = contextItems;
   if (scope === "mine") {
     filtered = filtered.filter((i) => {
-      if ((i as any)._is_overlay) return true;
+      if ((i as any)._is_overlay) return false;
       if (i.sitrep_assignments.some((a) => a.user_id === currentUserId)) return true;
       if (i.created_by !== currentUserId) return false;
       // Items I created that are not public team items

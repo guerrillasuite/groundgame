@@ -430,7 +430,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   let filtered = calFiltered;
   if (scopeFilter === "mine") {
     filtered = filtered.filter((i) => {
-      if ((i as any)._is_overlay) return true;
+      if ((i as any)._is_overlay) return false;
       if ((i.sitrep_assignments ?? []).some((a) => a.user_id === userId)) return true;
       if (i.created_by !== userId) return false;
       const vis = (i as any).visibility ?? "team";
