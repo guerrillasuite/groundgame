@@ -152,7 +152,7 @@ type PendingCalInvite = {
 };
 
 type FavoriteInfo = {
-  id:               string;
+  id:               string | null;
   favorite_user_id: string;
   detail_level:     "busy" | "basic" | "full";
   sort_order:       number | null;
@@ -1901,12 +1901,24 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
     }
   }
 
-  async function handleRemoveFavorite(favId: string) {
-    await fetch(`/api/crm/sitrep/favorites/${favId}`, { method: "DELETE" });
-    setFavorites((p) => p.filter((f) => f.id !== favId));
+  async function handleRemoveFavorite(favId: string | null, favUserId: string) {
+    if (favId) await fetch(`/api/crm/sitrep/favorites/${favId}`, { method: "DELETE" });
+    setFavorites((p) => p.filter((f) => f.favorite_user_id !== favUserId));
   }
 
-  async function handleFavDetailLevel(favId: string, level: "busy" | "basic" | "full") {
+  async function handleFavDetailLevel(favId: string | null, favUserId: string, level: "busy" | "basic" | "full") {
+    if (!favId) {
+      const res = await fetch("/api/crm/sitrep/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite_user_id: favUserId, detail_level: level }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFavorites((p) => p.map((f) => f.favorite_user_id === favUserId ? { ...f, id: data.id, detail_level: level } : f));
+      }
+      return;
+    }
     await fetch(`/api/crm/sitrep/favorites/${favId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -2393,7 +2405,7 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
                     <label style={{ fontSize: 11, color: S.dim }}>Show</label>
                     <select
                       value={fav.detail_level}
-                      onChange={(e) => handleFavDetailLevel(fav.id, e.target.value as "busy" | "basic" | "full")}
+                      onChange={(e) => handleFavDetailLevel(fav.id, fav.favorite_user_id, e.target.value as "busy" | "basic" | "full")}
                       style={{
                         padding: "4px 8px", borderRadius: 6, fontSize: 12,
                         background: S.bg, border: `1px solid ${S.border}`,
@@ -2405,7 +2417,7 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
                       <option value="full">Full details</option>
                     </select>
                     <button
-                      onClick={() => handleRemoveFavorite(fav.id)}
+                      onClick={() => handleRemoveFavorite(fav.id, fav.favorite_user_id)}
                       style={{
                         padding: "4px 10px", borderRadius: 6, fontSize: 12,
                         background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)",

@@ -11,24 +11,45 @@ function sb() { return createClient(URL_, KEY); }
 
 const SELECT = "id, favorite_user_id, detail_level, sort_order";
 
-// GET — list favorites, resolved with names
+// GET — list contacts: all tenant co-members + explicit favorites
 export async function GET(_req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data, error } = await sb()
+  const db = sb();
+
+  const { data: myTenants } = await db
+    .from("user_tenants")
+    .select("tenant_id")
+    .eq("user_id", user.userId)
+    .in("status", ["active", "invited"]);
+  const myTenantIds = (myTenants ?? []).map((r: any) => r.tenant_id as string);
+
+  const coMemberIds = new Set<string>();
+  if (myTenantIds.length > 0) {
+    const { data: coMembers } = await db
+      .from("user_tenants")
+      .select("user_id")
+      .in("tenant_id", myTenantIds)
+      .in("status", ["active", "invited"]);
+    for (const r of coMembers ?? []) {
+      if (r.user_id !== user.userId) coMemberIds.add(r.user_id);
+    }
+  }
+
+  const { data: favData, error } = await db
     .from("sitrep_favorites")
     .select(SELECT)
     .eq("owner_user_id", user.userId)
     .order("sort_order");
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const favorites = data ?? [];
-  if (favorites.length === 0) return NextResponse.json([]);
+  const explicitMap = new Map<string, any>();
+  for (const f of favData ?? []) explicitMap.set(f.favorite_user_id, f);
 
-  // Resolve display names
-  let nameMap: Record<string, string> = {};
+  const allUserIds = new Set([...coMemberIds, ...explicitMap.keys()]);
+
+  const nameMap: Record<string, string> = {};
   try {
     const res = await fetch(`${URL_}/auth/v1/admin/users?per_page=1000`, {
       headers: { Authorization: `Bearer ${KEY}`, apikey: KEY },
@@ -41,7 +62,18 @@ export async function GET(_req: NextRequest) {
     }
   } catch { /* best-effort */ }
 
-  return NextResponse.json(favorites.map((f: any) => ({ ...f, name: nameMap[f.favorite_user_id] ?? f.favorite_user_id })));
+  const result = [...allUserIds].map((uid) => {
+    const explicit = explicitMap.get(uid);
+    return explicit
+      ? { ...explicit, name: nameMap[uid] ?? uid }
+      : { id: null, favorite_user_id: uid, detail_level: "busy", sort_order: null, name: nameMap[uid] ?? uid };
+  }).sort((a, b) => {
+    if (a.id && !b.id) return -1;
+    if (!a.id && b.id) return 1;
+    return (a.name ?? "").localeCompare(b.name ?? "");
+  });
+
+  return NextResponse.json(result);
 }
 
 // POST — add a favorite (by favorite_user_id or by email)

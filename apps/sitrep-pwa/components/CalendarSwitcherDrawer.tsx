@@ -19,7 +19,7 @@ const S = {
 
 type SquadInfo    = { id: string; name: string; color: string; tenantId: string; role: string };
 type OrgInfo      = { id: string; name: string };
-type FavoriteInfo = { id: string; favorite_user_id: string; detail_level: "busy" | "basic" | "full"; name?: string };
+type FavoriteInfo = { id: string | null; favorite_user_id: string; detail_level: "busy" | "basic" | "full"; name?: string };
 
 function IOSToggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
@@ -146,13 +146,25 @@ export default function CalendarSwitcherDrawer({
     }
   }
 
-  async function handleRemoveFavorite(favId: string, favUserId: string) {
-    await fetch(`/api/sitrep/favorites/${favId}`, { method: "DELETE" });
-    setFavorites((p) => p.filter((f) => f.id !== favId));
+  async function handleRemoveFavorite(favId: string | null, favUserId: string) {
+    if (favId) await fetch(`/api/sitrep/favorites/${favId}`, { method: "DELETE" });
+    setFavorites((p) => p.filter((f) => f.favorite_user_id !== favUserId));
     onContextChange({ ...ctx, favoriteIds: ctx.favoriteIds.filter((id) => id !== favUserId) });
   }
 
-  async function handleFavDetailLevel(favId: string, level: "busy" | "basic" | "full") {
+  async function handleFavDetailLevel(favId: string | null, favUserId: string, level: "busy" | "basic" | "full") {
+    if (!favId) {
+      const res = await fetch("/api/sitrep/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite_user_id: favUserId, detail_level: level }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFavorites((p) => p.map((f) => f.favorite_user_id === favUserId ? { ...f, id: data.id, detail_level: level } : f));
+      }
+      return;
+    }
     await fetch(`/api/sitrep/favorites/${favId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -443,7 +455,7 @@ export default function CalendarSwitcherDrawer({
             {favorites.map((fav) => {
               const on = ctx.favoriteIds.includes(fav.favorite_user_id);
               return (
-                <div key={fav.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0" }}>
+                <div key={fav.id ?? fav.favorite_user_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0" }}>
                   <div
                     onClick={() => toggleFavorite(fav.favorite_user_id)}
                     style={{
@@ -467,7 +479,7 @@ export default function CalendarSwitcherDrawer({
                   </span>
                   <select
                     value={fav.detail_level}
-                    onChange={(e) => handleFavDetailLevel(fav.id, e.target.value as "busy" | "basic" | "full")}
+                    onChange={(e) => handleFavDetailLevel(fav.id, fav.favorite_user_id, e.target.value as "busy" | "basic" | "full")}
                     style={{
                       fontSize: 11, padding: "2px 4px", borderRadius: 5,
                       background: "rgba(255,255,255,.08)", border: `1px solid ${S.border}`,

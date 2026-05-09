@@ -188,9 +188,31 @@ export default function CalendarLayout({
     setSheetOpen(false);
   }
 
+  const [overlayItems, setOverlayItems] = useState<SitRepItem[]>([]);
+  useEffect(() => {
+    const ids = context.favoriteIds ?? [];
+    if (ids.length === 0) { setOverlayItems([]); return; }
+    fetch(`/api/sitrep/favorites/items?userIds=${ids.join(",")}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: any[]) => {
+        setOverlayItems(
+          (Array.isArray(data) ? data : []).map((item) => ({
+            ...item,
+            _is_overlay: true,
+            sitrep_assignments: item.sitrep_assignments ?? [],
+          }))
+        );
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(context.favoriteIds)]);
+
   const isToday       = cursor === todayStr();
-  const displayItems  = filterItems(items as any[], userId, context) as SitRepItem[];
-  const hiddenCount   = items.length - displayItems.length;
+  const displayItems  = [
+    ...filterItems(items as any[], userId, context) as SitRepItem[],
+    ...overlayItems,
+  ];
+  const hiddenCount   = items.length - (displayItems.length - overlayItems.length);
 
   return (
     <div style={{ height: "100dvh", background: S.bg, display: "flex", flexDirection: "column" }}>

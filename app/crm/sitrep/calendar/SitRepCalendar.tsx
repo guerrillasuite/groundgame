@@ -169,35 +169,42 @@ function ItemPill({
   const isPastDue = !!ed && (ed.includes("T") ? localDateStr(ed) : ed) < today && !isDone && item.status !== "cancelled";
   const accentCol = isDone ? family.shades[0] : family.shades[2];
 
+  const isOverlay = !!item._is_overlay;
+
   return (
     <button
-      draggable
+      draggable={!isOverlay}
       onDragStart={(e) => { e.stopPropagation(); onDragStart?.(); }}
       onDragEnd={() => onDragEnd?.()}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      title={item.title}
+      title={isOverlay ? `${item._overlay_user_name ?? "Contact"}: ${item.title}` : item.title}
       style={{
         display: "flex", alignItems: "center", gap: 3,
         width: "100%", textAlign: "left",
         padding: "3px 7px", borderRadius: 5, fontSize: 11, fontWeight: 600,
-        background: bg, color,
-        border: "none", cursor: "grab",
+        background: isOverlay ? "rgba(255,255,255,.06)" : bg, color: isOverlay ? "rgba(255,255,255,.4)" : color,
+        border: isOverlay ? `1px dashed ${accentCol}55` : "none", cursor: isOverlay ? "default" : "grab",
         overflow: "hidden",
         textDecoration: isDone ? "line-through" : "none",
-        opacity: isPastDue ? 0.5 : isDone ? 0.75 : 1,
-        boxShadow: `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2)`,
+        opacity: isOverlay ? 0.55 : isPastDue ? 0.5 : isDone ? 0.75 : 1,
+        boxShadow: isOverlay ? `inset 2px 0 0 0 ${accentCol}66` : `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2)`,
         transition: "opacity .15s, box-shadow .12s, transform .12s",
       }}
       onMouseEnter={(e) => {
+        if (isOverlay) return;
         e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 3px 10px rgba(0,0,0,.3)`;
         e.currentTarget.style.transform = "translateY(-1px)";
       }}
       onMouseLeave={(e) => {
+        if (isOverlay) return;
         e.currentTarget.style.boxShadow = `inset 2px 0 0 0 ${accentCol}, 0 1px 3px rgba(0,0,0,.2)`;
         e.currentTarget.style.transform = "";
       }}
     >
-      {(item.priority === "urgent" || item.priority === "high") && (
+      {isOverlay && (
+        <span style={{ fontSize: 8, fontWeight: 900, flexShrink: 0, opacity: 0.6, lineHeight: 1 }}>●</span>
+      )}
+      {!isOverlay && (item.priority === "urgent" || item.priority === "high") && (
         <span style={{ fontSize: 9, fontWeight: 900, flexShrink: 0, lineHeight: 1 }}>
           {item.priority === "urgent" ? "!!" : "!"}
         </span>

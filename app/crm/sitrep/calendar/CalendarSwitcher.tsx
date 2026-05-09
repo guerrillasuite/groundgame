@@ -29,7 +29,7 @@ const COMMON_STATUSES = [
 type SquadInfo    = { id: string; name: string; color: string; tenantId: string; role: string };
 type OrgInfo      = { id: string; name: string };
 type TypeInfo     = { slug: string; name: string; color: string };
-type FavoriteInfo = { id: string; favorite_user_id: string; detail_level: "busy" | "basic" | "full"; name?: string };
+type FavoriteInfo = { id: string | null; favorite_user_id: string; detail_level: "busy" | "basic" | "full"; name?: string };
 
 function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
@@ -296,13 +296,26 @@ export default function CalendarSwitcher({
     }
   }
 
-  async function handleRemoveFavorite(favId: string, favUserId: string) {
-    await fetch(`/api/crm/sitrep/favorites/${favId}`, { method: "DELETE" });
-    setFavorites((p) => p.filter((f) => f.id !== favId));
+  async function handleRemoveFavorite(favId: string | null, favUserId: string) {
+    if (favId) await fetch(`/api/crm/sitrep/favorites/${favId}`, { method: "DELETE" });
+    setFavorites((p) => p.filter((f) => f.favorite_user_id !== favUserId));
     onContextChange({ ...context, favoriteIds: context.favoriteIds.filter((id) => id !== favUserId) });
   }
 
-  async function handleFavDetailLevel(favId: string, level: "busy" | "basic" | "full") {
+  async function handleFavDetailLevel(favId: string | null, favUserId: string, level: "busy" | "basic" | "full") {
+    if (!favId) {
+      // Implicit contact — create the row on first explicit config change
+      const res = await fetch("/api/crm/sitrep/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorite_user_id: favUserId, detail_level: level }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFavorites((p) => p.map((f) => f.favorite_user_id === favUserId ? { ...f, id: data.id, detail_level: level } : f));
+      }
+      return;
+    }
     await fetch(`/api/crm/sitrep/favorites/${favId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ detail_level: level }),
     });
@@ -415,7 +428,7 @@ export default function CalendarSwitcher({
         {favorites.map((fav) => {
           const on = context.favoriteIds.includes(fav.favorite_user_id);
           return (
-            <div key={fav.id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 0" }}>
+            <div key={fav.id ?? fav.favorite_user_id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 0" }}>
               <span
                 onClick={() => toggleFavorite(fav.favorite_user_id)}
                 style={{
@@ -435,7 +448,7 @@ export default function CalendarSwitcher({
               </span>
               <select
                 value={fav.detail_level}
-                onChange={(e) => handleFavDetailLevel(fav.id, e.target.value as "busy" | "basic" | "full")}
+                onChange={(e) => handleFavDetailLevel(fav.id, fav.favorite_user_id, e.target.value as "busy" | "basic" | "full")}
                 style={{ fontSize: 10, padding: "1px 3px", borderRadius: 4, background: S.card, border: `1px solid ${S.border}`, color: S.dim, flexShrink: 0 }}
               >
                 <option value="busy">Busy</option>

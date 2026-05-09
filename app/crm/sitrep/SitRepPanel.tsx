@@ -36,6 +36,9 @@ export type SitRepItem = {
   squad_id?: string | null;
   // set only on items fetched from a shared cross-tenant calendar
   _source_tenant_id?: string;
+  // set on items overlaid from a contact's calendar
+  _is_overlay?: boolean;
+  _overlay_user_name?: string;
 };
 
 type User       = { id: string; name: string; email: string };
