@@ -215,7 +215,8 @@ function LoginForm() {
         </button>
 
         <p style={{ fontSize: 12, color: S.dim, textAlign: "center", margin: 0 }}>
-          No account? Contact your administrator to get access.
+          No account?{" "}
+          <a href="/signup" style={{ color: "var(--gg-primary,#2563eb)", textDecoration: "none" }}>Create one</a>
         </p>
       </form>
     </div>

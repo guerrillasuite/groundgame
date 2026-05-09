@@ -99,16 +99,17 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => null);
-  if (!body?.title?.trim() || !body?.item_type || !body?.tenantId) {
-    return NextResponse.json({ error: "title, item_type, tenantId required" }, { status: 400 });
+  if (!body?.title?.trim() || !body?.item_type) {
+    return NextResponse.json({ error: "title and item_type required" }, { status: 400 });
   }
 
-  const sb = makeServiceSb(body.tenantId);
+  const tenantId = body.tenantId || null;
+  const sb = tenantId ? makeServiceSb(tenantId) : makeAdminSb();
 
   const { data: item, error } = await sb
     .from("sitrep_items")
     .insert({
-      tenant_id:   body.tenantId,
+      tenant_id:   tenantId,
       squad_id:    body.squad_id ?? null,
       item_type:   body.item_type,
       title:       body.title.trim(),
@@ -132,10 +133,12 @@ export async function POST(req: NextRequest) {
     role:    body.item_type === "meeting" ? "organizer" : "assignee",
   }).catch(() => {});
 
-  await sb.from("sitrep_activity").insert({
-    tenant_id: body.tenantId, item_id: (item as any).id,
-    actor_id: user.userId, event_type: "created", new_value: body.title.trim(),
-  }).catch(() => {});
+  if (tenantId) {
+    await sb.from("sitrep_activity").insert({
+      tenant_id: tenantId, item_id: (item as any).id,
+      actor_id: user.userId, event_type: "created", new_value: body.title.trim(),
+    }).catch(() => {});
+  }
 
   return NextResponse.json(item);
 }
