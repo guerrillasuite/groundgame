@@ -59,14 +59,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json(members);
 }
 
-// POST — invite a user to the squad by email
+// POST — create a pending squad invite (returns invite link, does not auto-add)
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCrmUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
 
   const body = await req.json().catch(() => null);
-  if (!body?.email?.trim()) return NextResponse.json({ error: "email required" }, { status: 400 });
+  if (!body?.email?.trim() && !body?.phone?.trim()) {
+    return NextResponse.json({ error: "email or phone required" }, { status: 400 });
+  }
 
   // Verify requester is owner or collaborator
   const { data: self } = await sb()
@@ -78,35 +80,55 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (!self || self.role === "viewer") return NextResponse.json({ error: "Insufficient role" }, { status: 403 });
 
-  // Look up user by email via admin API
+  // Best-effort: look up existing user by email
   let inviteUserId: string | null = null;
+  const email = body.email?.trim().toLowerCase() ?? null;
+  if (email) {
+    try {
+      const res = await fetch(`${URL_}/auth/v1/admin/users?per_page=1000`, {
+        headers: { Authorization: `Bearer ${KEY}`, apikey: KEY },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const match = (json.users ?? []).find((u: any) => u.email === email);
+        inviteUserId = match?.id ?? null;
+      }
+    } catch { /* best-effort */ }
+  }
+
+  // Get inviter's name for the pre-drafted message
+  let inviterName = "A teammate";
   try {
-    const res = await fetch(`${URL_}/auth/v1/admin/users?per_page=1000`, {
+    const res = await fetch(`${URL_}/auth/v1/admin/users/${user.userId}`, {
       headers: { Authorization: `Bearer ${KEY}`, apikey: KEY },
     });
     if (res.ok) {
-      const json = await res.json();
-      const match = (json.users ?? []).find((u: any) => u.email === body.email.trim().toLowerCase());
-      inviteUserId = match?.id ?? null;
+      const u = await res.json();
+      inviterName = u.user_metadata?.name ?? u.user_metadata?.full_name ?? u.email ?? inviterName;
     }
-  } catch { /* ignore */ }
+  } catch { /* best-effort */ }
 
-  if (!inviteUserId) {
-    return NextResponse.json({ error: "No account found with that email" }, { status: 404 });
-  }
+  const { data: squad } = await sb().from("squads").select("name").eq("id", id).maybeSingle();
+  const squadName = (squad as any)?.name ?? "the squad";
 
-  const { error } = await sb()
-    .from("squad_members")
-    .upsert({
+  const { data: invite, error } = await sb()
+    .from("squad_invites")
+    .insert({
       squad_id:   id,
-      user_id:    inviteUserId,
-      role:       body.role ?? "collaborator",
       invited_by: user.userId,
-    }, { onConflict: "squad_id,user_id" });
+      email:      email ?? null,
+      phone:      body.phone?.trim() ?? null,
+      user_id:    inviteUserId,
+    })
+    .select("token")
+    .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || !invite) return NextResponse.json({ error: error?.message ?? "Failed" }, { status: 500 });
 
-  return NextResponse.json({ ok: true });
+  const inviteUrl = `https://app.sitrep.digital/join/${(invite as any).token}`;
+  const message   = `${inviterName} invited you to join ${squadName} on SitRep.\nTap here to accept: ${inviteUrl}`;
+
+  return NextResponse.json({ token: (invite as any).token, inviteUrl, message, squadName, inviterName });
 }
 
 // DELETE — remove a member from the squad (owner removes anyone; any member removes themselves)

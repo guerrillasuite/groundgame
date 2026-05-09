@@ -92,7 +92,8 @@ export default function CalendarLayout({
       squads.map((s) => s.id)
     )
   );
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen,          setDrawerOpen]          = useState(false);
+  const [pendingInviteCount,  setPendingInviteCount]  = useState(0);
 
   // Sheet state
   const [sheetOpen,   setSheetOpen]   = useState(false);
@@ -235,7 +236,16 @@ export default function CalendarLayout({
               }}
             >
               ☰
-              {hiddenCount > 0 && (
+              {pendingInviteCount > 0 && (
+                <span style={{
+                  marginLeft: 3, fontSize: 9, fontWeight: 700,
+                  background: "#f59e0b", color: "#fff",
+                  borderRadius: 8, padding: "1px 5px",
+                }}>
+                  {pendingInviteCount}
+                </span>
+              )}
+              {pendingInviteCount === 0 && hiddenCount > 0 && (
                 <span style={{
                   marginLeft: 3, fontSize: 9, fontWeight: 700,
                   background: "var(--gg-primary,#2563eb)", color: "#fff",
@@ -299,6 +309,7 @@ export default function CalendarLayout({
         context={context}
         onContextChange={handleContextChange}
         onViewsChanged={handleViewsChanged}
+        onPendingCountChange={setPendingInviteCount}
       />
 
       <ItemBottomSheet

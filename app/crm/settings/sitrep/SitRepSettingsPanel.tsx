@@ -1674,12 +1674,18 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
   const [squadMembers,   setSquadMembers]   = useState<Record<string, SquadMember[]>>({});
   const [membersLoading, setMembersLoading] = useState<string | null>(null);
   const [inviteEmail,    setInviteEmail]    = useState<Record<string, string>>({});
+  const [invitePhone,    setInvitePhone]    = useState<Record<string, string>>({});
   const [inviteRole,     setInviteRole]     = useState<Record<string, "collaborator" | "viewer">>({});
   const [inviteSending,  setInviteSending]  = useState<string | null>(null);
   const [inviteErr,      setInviteErr]      = useState<Record<string, string>>({});
-  const [inviteSent,     setInviteSent]     = useState<Record<string, boolean>>({});
+  const [inviteLink,     setInviteLink]     = useState<Record<string, { token: string; inviteUrl: string; message: string; squadName: string } | null>>({});
   const [newSquadName,   setNewSquadName]   = useState("");
   const [creatingSquad,  setCreatingSquad]  = useState(false);
+
+  type PendingSquadInvite = { id: string; squadId: string; squadName: string; squadColor: string; inviterName: string; token: string };
+  const [pendingSquadInvites,   setPendingSquadInvites]   = useState<PendingSquadInvite[]>([]);
+  const [pendingInvitesLoading, setPendingInvitesLoading] = useState(true);
+  const [respondingInvite,      setRespondingInvite]      = useState<string | null>(null);
   // Per-squad share level: "full" | "basic" | "busy" — the current user's row in squad_members
   const [squadShareLevel, setSquadShareLevel] = useState<Record<string, string>>({});
 
@@ -1731,6 +1737,12 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
       .then((data) => setSquads(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setSquadsLoading(false));
+
+    fetch("/api/user/squad-invites")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setPendingSquadInvites(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setPendingInvitesLoading(false));
 
     fetch("/api/crm/sitrep/favorites")
       .then((r) => r.ok ? r.json() : [])
@@ -1802,21 +1814,23 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
 
   async function handleInviteToSquad(squadId: string) {
     const email = (inviteEmail[squadId] ?? "").trim();
-    if (!email || inviteSending === squadId) return;
+    const phone = (invitePhone[squadId] ?? "").trim();
+    if (!email && !phone) return;
+    if (inviteSending === squadId) return;
     setInviteSending(squadId);
     setInviteErr((p) => ({ ...p, [squadId]: "" }));
-    setInviteSent((p) => ({ ...p, [squadId]: false }));
+    setInviteLink((p) => ({ ...p, [squadId]: null }));
     try {
       const res = await fetch(`/api/crm/sitrep/squads/${squadId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role: inviteRole[squadId] ?? "collaborator" }),
+        body: JSON.stringify({ email: email || null, phone: phone || null, role: inviteRole[squadId] ?? "collaborator" }),
       });
       const json = await res.json();
       if (res.ok) {
-        setInviteSent((p) => ({ ...p, [squadId]: true }));
+        setInviteLink((p) => ({ ...p, [squadId]: { token: json.token, inviteUrl: json.inviteUrl, message: json.message, squadName: json.squadName } }));
         setInviteEmail((p) => ({ ...p, [squadId]: "" }));
-        // Refresh member list
+        setInvitePhone((p) => ({ ...p, [squadId]: "" }));
         setSquadMembers((prev) => { const n = { ...prev }; delete n[squadId]; return n; });
         loadSquadMembers(squadId);
       } else {
@@ -1824,6 +1838,28 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
       }
     } finally {
       setInviteSending(null);
+    }
+  }
+
+  async function respondToSquadInvite(token: string, action: "accept" | "decline") {
+    setRespondingInvite(token);
+    try {
+      const res = await fetch(`/api/squad-invite/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        setPendingSquadInvites((p) => p.filter((i) => i.token !== token));
+        if (action === "accept") {
+          fetch("/api/crm/sitrep/squads")
+            .then((r) => r.ok ? r.json() : [])
+            .then((data) => setSquads(Array.isArray(data) ? data : []))
+            .catch(() => {});
+        }
+      }
+    } finally {
+      setRespondingInvite(null);
     }
   }
 
@@ -2192,6 +2228,51 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
             </div>
           </div>
 
+          {/* Pending squad invitations */}
+          {!pendingInvitesLoading && pendingSquadInvites.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 10 }}>
+                Pending Invitations
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {pendingSquadInvites.map((inv) => {
+                  const dot  = getFamilyByKey(inv.squadColor)?.shades[2] ?? "#818cf8";
+                  const busy = respondingInvite === inv.token;
+                  return (
+                    <div key={inv.id} style={{
+                      background: S.surface, border: `1px solid ${S.border}`,
+                      borderRadius: 10, padding: "10px 14px",
+                      display: "flex", alignItems: "center", gap: 10,
+                    }}>
+                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: S.text }}>{inv.squadName}</div>
+                        <div style={{ fontSize: 11, color: S.dim }}>from {inv.inviterName}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => respondToSquadInvite(inv.token, "accept")}
+                        disabled={busy}
+                        className="btn"
+                        style={{ padding: "5px 12px", fontSize: 12, borderRadius: 7, opacity: busy ? 0.5 : 1, flexShrink: 0 }}
+                      >{busy ? "…" : "Accept"}</button>
+                      <button
+                        type="button"
+                        onClick={() => respondToSquadInvite(inv.token, "decline")}
+                        disabled={busy}
+                        style={{
+                          padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+                          border: `1px solid ${S.border}`, background: "rgba(255,255,255,.04)", color: S.dim,
+                          cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, flexShrink: 0,
+                        }}
+                      >Decline</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {squadsLoading ? (
             <div style={{ fontSize: 13, color: S.dim }}>Loading…</div>
           ) : squads.length === 0 ? (
@@ -2311,45 +2392,113 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
                         {/* Invite form */}
                         {(isOwner || squad.role === "collaborator") && (
                           <div style={{ padding: "8px 16px 14px 36px", borderTop: `1px solid ${S.border}` }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>
-                              Invite by email
-                            </div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              <input
-                                type="email"
-                                value={inviteEmail[squad.id] ?? ""}
-                                onChange={(e) => setInviteEmail((p) => ({ ...p, [squad.id]: e.target.value }))}
-                                onKeyDown={(e) => { if (e.key === "Enter") handleInviteToSquad(squad.id); }}
-                                placeholder="teammate@example.com"
-                                style={{
-                                  flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 7, fontSize: 12,
-                                  background: S.card, border: `1px solid ${S.border}`, color: S.text, outline: "none",
-                                }}
-                              />
-                              <select
-                                value={inviteRole[squad.id] ?? "collaborator"}
-                                onChange={(e) => setInviteRole((p) => ({ ...p, [squad.id]: e.target.value as any }))}
-                                style={{
-                                  padding: "6px 10px", borderRadius: 7, fontSize: 12,
-                                  background: S.card, border: `1px solid ${S.border}`, color: S.dim,
-                                }}
-                              >
-                                <option value="collaborator">Collaborator</option>
-                                <option value="viewer">Viewer</option>
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => handleInviteToSquad(squad.id)}
-                                disabled={inviteSending === squad.id || !(inviteEmail[squad.id] ?? "").trim()}
-                                className="btn"
-                                style={{ padding: "6px 14px", fontSize: 12, borderRadius: 7, opacity: inviteSending === squad.id ? 0.6 : 1 }}
-                              >{inviteSending === squad.id ? "…" : "Invite"}</button>
-                            </div>
-                            {inviteErr[squad.id] && (
-                              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#fca5a5" }}>{inviteErr[squad.id]}</p>
-                            )}
-                            {inviteSent[squad.id] && (
-                              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#4ade80" }}>Added to squad successfully.</p>
+                            {inviteLink[squad.id] ? (
+                              /* Draft invite panel */
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 10 }}>
+                                  Draft Your Invite
+                                </div>
+                                <div style={{
+                                  background: S.card, border: `1px solid ${S.border}`,
+                                  borderRadius: 8, padding: "8px 10px", marginBottom: 10,
+                                  fontSize: 12, color: S.dimBrt, wordBreak: "break-all",
+                                  display: "flex", alignItems: "center", gap: 8,
+                                }}>
+                                  <span style={{ flex: 1 }}>{inviteLink[squad.id]!.inviteUrl}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => navigator.clipboard.writeText(inviteLink[squad.id]!.inviteUrl)}
+                                    style={{
+                                      padding: "3px 8px", borderRadius: 5, fontSize: 11, fontWeight: 600, flexShrink: 0,
+                                      border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)", color: S.dim, cursor: "pointer",
+                                    }}
+                                  >Copy</button>
+                                </div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                                  <a
+                                    href={`mailto:?subject=${encodeURIComponent("Join me on SitRep")}&body=${encodeURIComponent(inviteLink[squad.id]!.message)}`}
+                                    style={{
+                                      padding: "6px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+                                      border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)",
+                                      color: S.dimBrt, textDecoration: "none", flexShrink: 0,
+                                    }}
+                                  >Open in Email</a>
+                                  <a
+                                    href={`sms:?body=${encodeURIComponent(inviteLink[squad.id]!.message)}`}
+                                    style={{
+                                      padding: "6px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+                                      border: `1px solid ${S.border}`, background: "rgba(255,255,255,.06)",
+                                      color: S.dimBrt, textDecoration: "none", flexShrink: 0,
+                                    }}
+                                  >Open in Messages</a>
+                                  <button
+                                    type="button"
+                                    onClick={() => setInviteLink((p) => ({ ...p, [squad.id]: null }))}
+                                    style={{
+                                      padding: "6px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+                                      border: `1px solid ${S.border}`, background: "rgba(255,255,255,.04)", color: S.dim,
+                                      cursor: "pointer", flexShrink: 0,
+                                    }}
+                                  >Done</button>
+                                </div>
+                                <p style={{ margin: 0, fontSize: 11, color: S.dim, lineHeight: 1.4 }}>
+                                  Share the link above or tap a button to open your email or messages app with the invite pre-drafted.
+                                </p>
+                              </div>
+                            ) : (
+                              /* Invite form */
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 8 }}>
+                                  Invite by email or phone
+                                </div>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                                  <input
+                                    type="email"
+                                    value={inviteEmail[squad.id] ?? ""}
+                                    onChange={(e) => setInviteEmail((p) => ({ ...p, [squad.id]: e.target.value }))}
+                                    onKeyDown={(e) => { if (e.key === "Enter") handleInviteToSquad(squad.id); }}
+                                    placeholder="email@example.com"
+                                    style={{
+                                      flex: 1, minWidth: 160, padding: "6px 10px", borderRadius: 7, fontSize: 12,
+                                      background: S.card, border: `1px solid ${S.border}`, color: S.text, outline: "none",
+                                    }}
+                                  />
+                                  <input
+                                    type="tel"
+                                    value={invitePhone[squad.id] ?? ""}
+                                    onChange={(e) => setInvitePhone((p) => ({ ...p, [squad.id]: e.target.value }))}
+                                    onKeyDown={(e) => { if (e.key === "Enter") handleInviteToSquad(squad.id); }}
+                                    placeholder="phone (optional)"
+                                    style={{
+                                      flex: 1, minWidth: 130, padding: "6px 10px", borderRadius: 7, fontSize: 12,
+                                      background: S.card, border: `1px solid ${S.border}`, color: S.text, outline: "none",
+                                    }}
+                                  />
+                                </div>
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <select
+                                    value={inviteRole[squad.id] ?? "collaborator"}
+                                    onChange={(e) => setInviteRole((p) => ({ ...p, [squad.id]: e.target.value as any }))}
+                                    style={{
+                                      flex: 1, padding: "6px 10px", borderRadius: 7, fontSize: 12,
+                                      background: S.card, border: `1px solid ${S.border}`, color: S.dim,
+                                    }}
+                                  >
+                                    <option value="collaborator">Collaborator</option>
+                                    <option value="viewer">Viewer</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInviteToSquad(squad.id)}
+                                    disabled={inviteSending === squad.id || (!(inviteEmail[squad.id] ?? "").trim() && !(invitePhone[squad.id] ?? "").trim())}
+                                    className="btn"
+                                    style={{ padding: "6px 14px", fontSize: 12, borderRadius: 7, opacity: inviteSending === squad.id ? 0.6 : 1, flexShrink: 0 }}
+                                  >{inviteSending === squad.id ? "…" : "Invite"}</button>
+                                </div>
+                                {inviteErr[squad.id] && (
+                                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "#fca5a5" }}>{inviteErr[squad.id]}</p>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}

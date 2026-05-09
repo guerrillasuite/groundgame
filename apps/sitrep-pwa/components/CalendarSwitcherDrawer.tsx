@@ -17,9 +17,10 @@ const S = {
   dimBrt: "rgb(148 163 184)",
 } as const;
 
-type SquadInfo    = { id: string; name: string; color: string; tenantId: string; role: string };
-type OrgInfo      = { id: string; name: string };
-type FavoriteInfo = { id: string | null; favorite_user_id: string; detail_level: "busy" | "basic" | "full"; name?: string };
+type SquadInfo      = { id: string; name: string; color: string; tenantId: string; role: string };
+type OrgInfo        = { id: string; name: string };
+type FavoriteInfo   = { id: string | null; favorite_user_id: string; detail_level: "busy" | "basic" | "full"; name?: string };
+type PendingInvite  = { id: string; squadId: string; squadName: string; squadColor: string; inviterName: string; token: string };
 
 function IOSToggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
@@ -54,16 +55,17 @@ function IOSToggle({ on, onToggle, label }: { on: boolean; onToggle: () => void;
 }
 
 interface Props {
-  open:             boolean;
-  onClose:          () => void;
-  views?:           SitRepView[];
-  activeViewId?:    string | null;
-  onSelectView?:    (id: string) => void;
-  squads?:          SquadInfo[];
-  orgs?:            OrgInfo[];
-  context?:         CalendarContext;
-  onContextChange?: (ctx: CalendarContext) => void;
-  onViewsChanged?:  () => Promise<void>;
+  open:                   boolean;
+  onClose:                () => void;
+  views?:                 SitRepView[];
+  activeViewId?:          string | null;
+  onSelectView?:          (id: string) => void;
+  squads?:                SquadInfo[];
+  orgs?:                  OrgInfo[];
+  context?:               CalendarContext;
+  onContextChange?:       (ctx: CalendarContext) => void;
+  onViewsChanged?:        () => Promise<void>;
+  onPendingCountChange?:  (count: number) => void;
 }
 
 export default function CalendarSwitcherDrawer({
@@ -76,6 +78,7 @@ export default function CalendarSwitcherDrawer({
   context: contextProp,
   onContextChange = () => {},
   onViewsChanged = async () => {},
+  onPendingCountChange = () => {},
 }: Props) {
   const ctx = contextProp ?? defaultContext(orgs.map((o) => o.id), squads.map((s) => s.id));
   const [mounted,  setMounted]  = useState(false);
@@ -84,10 +87,12 @@ export default function CalendarSwitcherDrawer({
   const [busy,     setBusy]     = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName,  setEditName]  = useState("");
-  const [favorites,    setFavorites]    = useState<FavoriteInfo[]>([]);
-  const [addFavEmail,  setAddFavEmail]  = useState("");
-  const [addFavBusy,   setAddFavBusy]   = useState(false);
-  const [addFavErr,    setAddFavErr]    = useState("");
+  const [favorites,       setFavorites]       = useState<FavoriteInfo[]>([]);
+  const [addFavEmail,     setAddFavEmail]     = useState("");
+  const [addFavBusy,      setAddFavBusy]      = useState(false);
+  const [addFavErr,       setAddFavErr]       = useState("");
+  const [pendingInvites,  setPendingInvites]  = useState<PendingInvite[]>([]);
+  const [respondingToken, setRespondingToken] = useState<string | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -97,6 +102,39 @@ export default function CalendarSwitcherDrawer({
       .then((d) => setFavorites(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/sitrep/invites/pending")
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => {
+        const arr = Array.isArray(d) ? d : [];
+        setPendingInvites(arr);
+        onPendingCountChange(arr.length);
+      })
+      .catch(() => {});
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function respondToInvite(token: string, action: "accept" | "decline") {
+    setRespondingToken(token);
+    try {
+      const res = await fetch(`/api/sitrep/invites/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        setPendingInvites((p) => {
+          const next = p.filter((i) => i.token !== token);
+          onPendingCountChange(next.length);
+          return next;
+        });
+        if (action === "accept") await onViewsChanged();
+      }
+    } finally {
+      setRespondingToken(null);
+    }
+  }
 
   function toggleOrg(orgId: string) {
     const ids = ctx.orgIds;
@@ -271,6 +309,55 @@ export default function CalendarSwitcherDrawer({
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: 24 }}>
+
+          {/* Pending squad invitations */}
+          {pendingInvites.length > 0 && (
+            <>
+              <div style={{
+                padding: "12px 14px 6px",
+                fontSize: 10, fontWeight: 700, color: "#fbbf24",
+                letterSpacing: "0.07em", textTransform: "uppercase",
+              }}>Pending Invitations</div>
+              <div style={{ padding: "0 14px", display: "grid", gap: 6, marginBottom: 8 }}>
+                {pendingInvites.map((inv) => {
+                  const dot  = getFamilyByKey(inv.squadColor)?.shades[3] ?? "#818cf8";
+                  const busy = respondingToken === inv.token;
+                  return (
+                    <div key={inv.id} style={{
+                      background: "rgba(251,191,36,.06)", border: "1px solid rgba(251,191,36,.15)",
+                      borderRadius: 10, padding: "9px 12px",
+                      display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inv.squadName}</div>
+                        <div style={{ fontSize: 11, color: S.dim }}>from {inv.inviterName}</div>
+                      </div>
+                      <button
+                        onClick={() => respondToInvite(inv.token, "accept")}
+                        disabled={busy}
+                        style={{
+                          padding: "4px 9px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                          border: "none", background: "var(--gg-primary,#2563eb)", color: "#fff",
+                          cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, flexShrink: 0,
+                        }}
+                      >{busy ? "…" : "Join"}</button>
+                      <button
+                        onClick={() => respondToInvite(inv.token, "decline")}
+                        disabled={busy}
+                        style={{
+                          padding: "4px 8px", borderRadius: 6, fontSize: 11,
+                          border: `1px solid ${S.border}`, background: "rgba(255,255,255,.04)", color: S.dim,
+                          cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1, flexShrink: 0,
+                        }}
+                      >✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ height: 1, background: S.border, margin: "0 14px 8px" }} />
+            </>
+          )}
 
           {/* Views */}
           <div style={{

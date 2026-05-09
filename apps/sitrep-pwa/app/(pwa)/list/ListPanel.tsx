@@ -232,7 +232,8 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
       []
     )
   );
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen,          setDrawerOpen]          = useState(false);
+  const [pendingInviteCount,  setPendingInviteCount]  = useState(0);
 
   // Sheet state
   const [sheetOpen,   setSheetOpen]   = useState(false);
@@ -504,7 +505,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                 <line x1="3" y1="12" x2="21" y2="12" />
                 <line x1="3" y1="18" x2="21" y2="18" />
               </svg>
-              {hiddenCount > 0 && (
+              {(pendingInviteCount > 0 || hiddenCount > 0) && (
                 <span
                   style={{
                     position: "absolute",
@@ -512,14 +513,14 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                     right: 1,
                     fontSize: 8,
                     fontWeight: 700,
-                    background: "var(--gg-primary,#2563eb)",
+                    background: pendingInviteCount > 0 ? "#f59e0b" : "var(--gg-primary,#2563eb)",
                     color: "#fff",
                     borderRadius: 8,
                     padding: "0 4px",
                     lineHeight: "14px",
                   }}
                 >
-                  {hiddenCount}
+                  {pendingInviteCount > 0 ? pendingInviteCount : hiddenCount}
                 </span>
               )}
             </button>
@@ -871,6 +872,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
         context={context}
         onContextChange={handleContextChange}
         onViewsChanged={handleViewsChanged}
+        onPendingCountChange={setPendingInviteCount}
       />
 
       <ItemBottomSheet
