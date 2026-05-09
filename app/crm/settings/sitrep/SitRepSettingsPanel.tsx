@@ -151,6 +151,14 @@ type PendingCalInvite = {
   owner_name: string;
 };
 
+type FavoriteInfo = {
+  id:               string;
+  favorite_user_id: string;
+  detail_level:     "busy" | "basic" | "full";
+  sort_order:       number | null;
+  name?:            string;
+};
+
 type SquadData = {
   id:         string;
   name:       string;
@@ -1675,6 +1683,12 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
   // Per-squad share level: "full" | "basic" | "busy" — the current user's row in squad_members
   const [squadShareLevel, setSquadShareLevel] = useState<Record<string, string>>({});
 
+  const [favorites,      setFavorites]      = useState<FavoriteInfo[]>([]);
+  const [favLoading,     setFavLoading]     = useState(true);
+  const [addFavEmail,    setAddFavEmail]    = useState("");
+  const [addFavBusy,     setAddFavBusy]     = useState(false);
+  const [addFavErr,      setAddFavErr]      = useState("");
+
   const [calendars, setCalendars] = useState<PublicCalendar[]>([]);
   const [calsLoading, setCalsLoading] = useState(true);
 
@@ -1717,6 +1731,12 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
       .then((data) => setSquads(Array.isArray(data) ? data : []))
       .catch(() => {})
       .finally(() => setSquadsLoading(false));
+
+    fetch("/api/crm/sitrep/favorites")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setFavorites(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setFavLoading(false));
 
     fetch("/api/crm/sitrep/public-calendars")
       .then((r) => r.json())
@@ -1858,6 +1878,41 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
       setAddError(err.error ?? "Failed to add type.");
     }
     setAdding(false);
+  }
+
+  async function handleAddFavorite() {
+    const email = addFavEmail.trim();
+    if (!email || addFavBusy) return;
+    setAddFavBusy(true);
+    setAddFavErr("");
+    const res = await fetch("/api/crm/sitrep/favorites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, detail_level: "busy" }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setAddFavBusy(false);
+    if (res.ok) {
+      setAddFavEmail("");
+      const refetch = await fetch("/api/crm/sitrep/favorites");
+      if (refetch.ok) setFavorites(await refetch.json());
+    } else {
+      setAddFavErr(json.error ?? "User not found");
+    }
+  }
+
+  async function handleRemoveFavorite(favId: string) {
+    await fetch(`/api/crm/sitrep/favorites/${favId}`, { method: "DELETE" });
+    setFavorites((p) => p.filter((f) => f.id !== favId));
+  }
+
+  async function handleFavDetailLevel(favId: string, level: "busy" | "basic" | "full") {
+    await fetch(`/api/crm/sitrep/favorites/${favId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ detail_level: level }),
+    });
+    setFavorites((p) => p.map((f) => f.id === favId ? { ...f, detail_level: level } : f));
   }
 
   const publicTypes = types.filter((t) => t.is_public);
@@ -2291,6 +2346,109 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Contacts card */}
+        <div style={{
+          background: S.card, border: `1px solid ${S.border}`,
+          borderRadius: 16, padding: 24, display: "grid", gap: 20,
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Contacts</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
+              Add people whose availability you want to see on your calendar. Toggle them on/off in the calendar switcher.
+            </p>
+          </div>
+
+          {favLoading ? (
+            <p style={{ fontSize: 13, color: S.dim, margin: 0 }}>Loading…</p>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {favorites.length === 0 && (
+                <p style={{ fontSize: 13, color: S.dim, margin: 0, fontStyle: "italic" }}>
+                  No contacts added yet.
+                </p>
+              )}
+              {favorites.map((fav) => (
+                <div key={fav.id} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 14px", borderRadius: 10,
+                  background: S.surface, border: `1px solid ${S.border}`,
+                }}>
+                  {/* Avatar initials */}
+                  <div style={{
+                    width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+                    background: "rgba(99,102,241,.2)", border: "1px solid rgba(99,102,241,.3)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, fontWeight: 700, color: "#a5b4fc",
+                  }}>
+                    {(fav.name ?? "?").charAt(0).toUpperCase()}
+                  </div>
+                  <span style={{ flex: 1, fontSize: 13, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {fav.name ?? fav.favorite_user_id}
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <label style={{ fontSize: 11, color: S.dim }}>Show</label>
+                    <select
+                      value={fav.detail_level}
+                      onChange={(e) => handleFavDetailLevel(fav.id, e.target.value as "busy" | "basic" | "full")}
+                      style={{
+                        padding: "4px 8px", borderRadius: 6, fontSize: 12,
+                        background: S.bg, border: `1px solid ${S.border}`,
+                        color: S.text, cursor: "pointer",
+                      }}
+                    >
+                      <option value="busy">Busy only</option>
+                      <option value="basic">Name + time</option>
+                      <option value="full">Full details</option>
+                    </select>
+                    <button
+                      onClick={() => handleRemoveFavorite(fav.id)}
+                      style={{
+                        padding: "4px 10px", borderRadius: 6, fontSize: 12,
+                        background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)",
+                        color: "#fca5a5", cursor: "pointer",
+                      }}
+                    >Remove</button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Add by email */}
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <input
+                  type="email"
+                  value={addFavEmail}
+                  onChange={(e) => { setAddFavEmail(e.target.value); setAddFavErr(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddFavorite(); }}
+                  placeholder="Add contact by email…"
+                  style={{
+                    flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 13,
+                    background: S.bg, border: `1px solid ${S.border}`,
+                    color: S.text, outline: "none",
+                  }}
+                />
+                <button
+                  onClick={handleAddFavorite}
+                  disabled={!addFavEmail.trim() || addFavBusy}
+                  style={{
+                    padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    border: "none", background: "var(--gg-primary,#2563eb)", color: "#fff",
+                    cursor: !addFavEmail.trim() || addFavBusy ? "not-allowed" : "pointer",
+                    opacity: !addFavEmail.trim() || addFavBusy ? 0.5 : 1, flexShrink: 0,
+                  }}
+                >{addFavBusy ? "Adding…" : "Add"}</button>
+              </div>
+              {addFavErr && (
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#fca5a5" }}>{addFavErr}</p>
+              )}
+
+              <p style={{ margin: "4px 0 0", fontSize: 11, color: S.dim, lineHeight: 1.5 }}>
+                Adding a contact lets you overlay their availability on your calendar.
+                They won't be notified and can't see your items unless they add you too.
+              </p>
             </div>
           )}
         </div>

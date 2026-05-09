@@ -17,8 +17,9 @@ const S = {
   dimBrt: "rgb(148 163 184)",
 } as const;
 
-type SquadInfo = { id: string; name: string; color: string; tenantId: string; role: string };
-type OrgInfo   = { id: string; name: string };
+type SquadInfo    = { id: string; name: string; color: string; tenantId: string; role: string };
+type OrgInfo      = { id: string; name: string };
+type FavoriteInfo = { id: string; favorite_user_id: string; detail_level: "busy" | "basic" | "full"; name?: string };
 
 function IOSToggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
@@ -83,8 +84,19 @@ export default function CalendarSwitcherDrawer({
   const [busy,     setBusy]     = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName,  setEditName]  = useState("");
+  const [favorites,    setFavorites]    = useState<FavoriteInfo[]>([]);
+  const [addFavEmail,  setAddFavEmail]  = useState("");
+  const [addFavBusy,   setAddFavBusy]   = useState(false);
+  const [addFavErr,    setAddFavErr]    = useState("");
 
   useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    fetch("/api/sitrep/favorites")
+      .then((r) => r.ok ? r.json() : [])
+      .then((d) => setFavorites(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, []);
 
   function toggleOrg(orgId: string) {
     const ids = ctx.orgIds;
@@ -104,6 +116,49 @@ export default function CalendarSwitcherDrawer({
       ? ids.filter((id) => id !== squadId)
       : [...ids, squadId];
     onContextChange({ ...ctx, squadIds: next });
+  }
+
+  function toggleFavorite(favUserId: string) {
+    const next = ctx.favoriteIds.includes(favUserId)
+      ? ctx.favoriteIds.filter((id) => id !== favUserId)
+      : [...ctx.favoriteIds, favUserId];
+    onContextChange({ ...ctx, favoriteIds: next });
+  }
+
+  async function handleAddFavorite() {
+    const email = addFavEmail.trim();
+    if (!email || addFavBusy) return;
+    setAddFavBusy(true);
+    setAddFavErr("");
+    const res = await fetch("/api/sitrep/favorites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, detail_level: "busy" }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setAddFavBusy(false);
+    if (res.ok) {
+      setAddFavEmail("");
+      const refetch = await fetch("/api/sitrep/favorites");
+      if (refetch.ok) setFavorites(await refetch.json());
+    } else {
+      setAddFavErr(json.error ?? "User not found");
+    }
+  }
+
+  async function handleRemoveFavorite(favId: string, favUserId: string) {
+    await fetch(`/api/sitrep/favorites/${favId}`, { method: "DELETE" });
+    setFavorites((p) => p.filter((f) => f.id !== favId));
+    onContextChange({ ...ctx, favoriteIds: ctx.favoriteIds.filter((id) => id !== favUserId) });
+  }
+
+  async function handleFavDetailLevel(favId: string, level: "busy" | "basic" | "full") {
+    await fetch(`/api/sitrep/favorites/${favId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ detail_level: level }),
+    });
+    setFavorites((p) => p.map((f) => f.id === favId ? { ...f, detail_level: level } : f));
   }
 
   async function handleCreate() {
@@ -376,6 +431,93 @@ export default function CalendarSwitcherDrawer({
               </div>
             </>
           )}
+
+          {/* Favorites */}
+          <div style={{ height: 1, background: S.border, margin: "8px 14px 4px" }} />
+          <div style={{
+            padding: "4px 14px 4px",
+            fontSize: 10, fontWeight: 700, color: S.dim,
+            letterSpacing: "0.07em", textTransform: "uppercase",
+          }}>Favorites</div>
+          <div style={{ padding: "0 14px" }}>
+            {favorites.map((fav) => {
+              const on = ctx.favoriteIds.includes(fav.favorite_user_id);
+              return (
+                <div key={fav.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0" }}>
+                  <div
+                    onClick={() => toggleFavorite(fav.favorite_user_id)}
+                    style={{
+                      position: "relative", width: 38, height: 21, borderRadius: 11, flexShrink: 0, cursor: "pointer",
+                      background: on ? "var(--gg-primary,#2563eb)" : "rgba(255,255,255,.12)",
+                      boxShadow: on ? "0 0 8px color-mix(in srgb, var(--gg-primary,#2563eb) 45%, transparent)" : "inset 0 1px 3px rgba(0,0,0,.4)",
+                      transition: "background .2s ease, box-shadow .2s ease",
+                    }}
+                  >
+                    <div style={{
+                      position: "absolute", top: 2, left: on ? 19 : 2, width: 17, height: 17,
+                      borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.35)",
+                      transition: "left .2s ease",
+                    }} />
+                  </div>
+                  <span style={{
+                    flex: 1, fontSize: 13, color: on ? S.dimBrt : S.dim,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {fav.name ?? fav.favorite_user_id.slice(0, 8)}
+                  </span>
+                  <select
+                    value={fav.detail_level}
+                    onChange={(e) => handleFavDetailLevel(fav.id, e.target.value as "busy" | "basic" | "full")}
+                    style={{
+                      fontSize: 11, padding: "2px 4px", borderRadius: 5,
+                      background: "rgba(255,255,255,.08)", border: `1px solid ${S.border}`,
+                      color: S.dim, flexShrink: 0,
+                    }}
+                  >
+                    <option value="busy">Busy</option>
+                    <option value="basic">Basic</option>
+                    <option value="full">Full</option>
+                  </select>
+                  <button
+                    onClick={() => handleRemoveFavorite(fav.id, fav.favorite_user_id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: S.dim, fontSize: 13, padding: "1px 3px", opacity: 0.5, flexShrink: 0 }}
+                  >✕</button>
+                </div>
+              );
+            })}
+
+            {/* Add by email */}
+            <div style={{ display: "flex", gap: 6, paddingTop: 4 }}>
+              <input
+                type="email"
+                value={addFavEmail}
+                onChange={(e) => { setAddFavEmail(e.target.value); setAddFavErr(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddFavorite(); }}
+                placeholder="+ Add by email"
+                style={{
+                  flex: 1, padding: "7px 10px", borderRadius: 8, fontSize: 13,
+                  background: "rgba(255,255,255,.06)", border: `1px solid ${S.border}`,
+                  color: S.text, outline: "none", minWidth: 0,
+                }}
+              />
+              {addFavEmail.trim() && (
+                <button
+                  onClick={handleAddFavorite}
+                  disabled={addFavBusy}
+                  style={{
+                    padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    border: "none", background: "var(--gg-primary,#2563eb)", color: "#fff",
+                    cursor: "pointer", flexShrink: 0, opacity: addFavBusy ? 0.6 : 1,
+                  }}
+                >{addFavBusy ? "…" : "Add"}</button>
+              )}
+            </div>
+            {addFavErr && (
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#fca5a5" }}>{addFavErr}</p>
+            )}
+          </div>
+
+          <div style={{ height: "max(24px, env(safe-area-inset-bottom))" }} />
         </div>
       </div>
     </div>
