@@ -603,7 +603,7 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
   let filtered = items;
   if (scope === "mine") {
     filtered = filtered.filter(
-      (i) => i.created_by === currentUserId || i.sitrep_assignments.some((a) => a.user_id === currentUserId)
+      (i) => (i as any)._is_overlay || i.created_by === currentUserId || i.sitrep_assignments.some((a) => a.user_id === currentUserId)
     );
   }
   if (typeFilter !== "all") filtered = filtered.filter((i) => i.item_type === typeFilter);
