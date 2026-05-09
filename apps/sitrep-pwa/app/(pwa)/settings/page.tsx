@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
+import { supabase } from "@/lib/supabase/client";
 
 const S = {
   bg:     "rgb(10 13 20)",
@@ -27,6 +28,26 @@ type SquadMember = {
 
 export default function SettingsPage() {
   const router = useRouter();
+
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName,  setUserName]  = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setUserEmail(data.user.email ?? null);
+        setUserName(data.user.user_metadata?.name ?? data.user.user_metadata?.full_name ?? null);
+      }
+    });
+  }, []);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await supabase.auth.signOut();
+    localStorage.removeItem("sitrep_tenant_id");
+    router.replace("/login");
+  }
 
   const [squads,        setSquads]        = useState<SquadData[]>([]);
   const [squadsLoading, setSquadsLoading] = useState(true);
@@ -152,6 +173,33 @@ export default function SettingsPage() {
       </div>
 
       <div style={{ padding: "16px", display: "grid", gap: 16, maxWidth: 520, margin: "0 auto" }}>
+
+        {/* Account card */}
+        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+              background: "rgba(99,102,241,.2)", border: "1px solid rgba(99,102,241,.3)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16, fontWeight: 700, color: "#a5b4fc",
+            }}>
+              {(userName ?? userEmail ?? "?").charAt(0).toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {userName && <div style={{ fontSize: 14, fontWeight: 600, color: S.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{userName}</div>}
+              <div style={{ fontSize: 13, color: S.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{userEmail ?? "…"}</div>
+            </div>
+            <button
+              onClick={handleSignOut}
+              disabled={signingOut}
+              style={{
+                padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, flexShrink: 0,
+                border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)",
+                color: "#fca5a5", cursor: "pointer", opacity: signingOut ? 0.5 : 1,
+              }}
+            >{signingOut ? "…" : "Sign out"}</button>
+          </div>
+        </div>
 
         {/* Squads card */}
         <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 20, display: "grid", gap: 16 }}>
