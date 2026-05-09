@@ -127,11 +127,13 @@ export async function POST(req: NextRequest) {
 
   if (error || !item) return NextResponse.json({ error: error?.message ?? "Failed" }, { status: 500 });
 
-  await sb.from("sitrep_assignments").insert({
-    item_id: (item as any).id,
-    user_id: user.userId,
-    role:    body.item_type === "meeting" ? "organizer" : "assignee",
-  }).catch(() => {});
+  const role = body.item_type === "meeting" ? "organizer" : "assignee";
+  const assigneeIds: string[] = Array.isArray(body.assignees) && body.assignees.length > 0
+    ? body.assignees
+    : [user.userId];
+  await sb.from("sitrep_assignments").insert(
+    assigneeIds.map((uid: string) => ({ item_id: (item as any).id, user_id: uid, role }))
+  ).catch(() => {});
 
   if (tenantId) {
     await sb.from("sitrep_activity").insert({
