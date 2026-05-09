@@ -322,7 +322,29 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   const [items, setItems]               = useState<SitRepItem[]>(initialItems);
 
   const { context } = useSitRepFilter();
-  const contextItems = filterItems(items as any[], currentUserId, context) as SitRepItem[];
+
+  const [overlayItems, setOverlayItems] = useState<SitRepItem[]>([]);
+  useEffect(() => {
+    const ids = context.favoriteIds ?? [];
+    if (ids.length === 0) { setOverlayItems([]); return; }
+    fetch(`/api/crm/sitrep/favorites/items?userIds=${ids.join(",")}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: any[]) => {
+        setOverlayItems(
+          (Array.isArray(data) ? data : []).map((item) => ({
+            ...item, _is_overlay: true,
+            sitrep_assignments: item.sitrep_assignments ?? [],
+          }))
+        );
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(context.favoriteIds)]);
+
+  const contextItems = [
+    ...filterItems(items as any[], currentUserId, context) as SitRepItem[],
+    ...overlayItems,
+  ];
 
   const [scope, setScope]               = useState<"mine" | "all">(
     (searchParams.get("scope") as "mine" | "all") || "mine"
@@ -396,6 +418,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   let filtered = contextItems;
   if (scope === "mine") {
     filtered = filtered.filter((i) => {
+      if ((i as any)._is_overlay) return true;
       if (i.sitrep_assignments.some((a) => a.user_id === currentUserId)) return true;
       if (i.created_by !== currentUserId) return false;
       // Items I created that are not public team items

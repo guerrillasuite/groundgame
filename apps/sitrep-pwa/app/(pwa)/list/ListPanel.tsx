@@ -397,9 +397,30 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
     setRescheduleItem(null);
   }
 
+  const [overlayItems, setOverlayItems] = useState<SitRepItem[]>([]);
+  useEffect(() => {
+    const ids = context.favoriteIds ?? [];
+    if (ids.length === 0) { setOverlayItems([]); return; }
+    fetch(`/api/sitrep/favorites/items?userIds=${ids.join(",")}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: any[]) => {
+        setOverlayItems(
+          (Array.isArray(data) ? data : []).map((item: any) => ({
+            ...item, _is_overlay: true,
+            sitrep_assignments: item.sitrep_assignments ?? [],
+          }))
+        );
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(context.favoriteIds)]);
+
   // Apply calendar visibility filter first
-  const calFiltered  = filterItems(items as any[], userId, context) as SitRepItem[];
-  const hiddenCount  = items.length - calFiltered.length;
+  const calFiltered  = [
+    ...filterItems(items as any[], userId, context) as SitRepItem[],
+    ...overlayItems,
+  ];
+  const hiddenCount  = items.length - (calFiltered.length - overlayItems.length);
 
   // Compute stats from unfiltered (calendar-visible) items
   const openCount    = calFiltered.filter((i) => i.status !== "done" && i.status !== "cancelled").length;
@@ -409,6 +430,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   let filtered = calFiltered;
   if (scopeFilter === "mine") {
     filtered = filtered.filter((i) => {
+      if ((i as any)._is_overlay) return true;
       if ((i.sitrep_assignments ?? []).some((a) => a.user_id === userId)) return true;
       if (i.created_by !== userId) return false;
       const vis = (i as any).visibility ?? "team";
