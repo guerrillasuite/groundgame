@@ -22,8 +22,8 @@ type SquadData = {
 };
 
 type SquadMember = {
-  id: string; user_id: string; name: string; email: string;
-  role: string; joined_at: string;
+  id: string; user_id: string | null; name: string; email: string;
+  role: string; joined_at: string; pending?: boolean; token?: string;
 };
 
 export default function SettingsPage() {
@@ -191,6 +191,19 @@ export default function SettingsPage() {
     setSquadMembers((p) => ({
       ...p,
       [squadId]: (p[squadId] ?? []).filter((m) => m.user_id !== userId),
+    }));
+  }
+
+  async function handleRevokeInvite(squadId: string, inviteId: string) {
+    if (!confirm("Revoke this invite?")) return;
+    await fetch(`/api/sitrep/squads/${squadId}/members`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite_id: inviteId }),
+    });
+    setSquadMembers((p) => ({
+      ...p,
+      [squadId]: (p[squadId] ?? []).filter((m) => m.id !== inviteId),
     }));
   }
 
@@ -362,17 +375,34 @@ export default function SettingsPage() {
                           ) : members.map((m) => (
                             <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 14px 7px 34px" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, color: S.text }}>{m.name || m.email}</div>
+                                <div style={{ fontSize: 13, color: m.pending ? S.dim : S.text }}>{m.name || m.email}</div>
                                 {m.name && <div style={{ fontSize: 11, color: S.dim }}>{m.email}</div>}
                               </div>
-                              <span style={{
-                                fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, flexShrink: 0,
-                                background: m.role === "owner" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.06)",
-                                color: m.role === "owner" ? "#a5b4fc" : S.dim,
-                              }}>{m.role.toUpperCase()}</span>
-                              {isOwner && m.role !== "owner" && (
+                              {m.pending ? (
+                                <span style={{
+                                  fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, flexShrink: 0,
+                                  background: "rgba(245,158,11,.15)", color: "#fbbf24",
+                                }}>PENDING</span>
+                              ) : (
+                                <span style={{
+                                  fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, flexShrink: 0,
+                                  background: m.role === "owner" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.06)",
+                                  color: m.role === "owner" ? "#a5b4fc" : S.dim,
+                                }}>{m.role.toUpperCase()}</span>
+                              )}
+                              {isOwner && m.pending && (
                                 <button
-                                  onClick={() => handleRemove(squad.id, m.user_id)}
+                                  onClick={() => handleRevokeInvite(squad.id, m.id)}
+                                  style={{
+                                    padding: "2px 8px", fontSize: 11, borderRadius: 5, flexShrink: 0,
+                                    border: `1px solid ${S.border}`, background: "rgba(255,255,255,.04)",
+                                    color: S.dim, cursor: "pointer",
+                                  }}
+                                >Revoke</button>
+                              )}
+                              {isOwner && !m.pending && m.role !== "owner" && (
+                                <button
+                                  onClick={() => handleRemove(squad.id, m.user_id!)}
                                   style={{
                                     padding: "2px 8px", fontSize: 11, borderRadius: 5, flexShrink: 0,
                                     border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)",

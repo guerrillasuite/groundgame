@@ -171,11 +171,13 @@ type SquadData = {
 
 type SquadMember = {
   id:        string;
-  user_id:   string;
+  user_id:   string | null;
   name:      string;
   email:     string;
   role:      string;
   joined_at: string;
+  pending?:  boolean;
+  token?:    string;
 };
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -1876,6 +1878,19 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
     }));
   }
 
+  async function handleRevokeSquadInvite(squadId: string, inviteId: string) {
+    if (!confirm("Revoke this invite?")) return;
+    await fetch(`/api/crm/sitrep/squads/${squadId}/members`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite_id: inviteId }),
+    });
+    setSquadMembers((prev) => ({
+      ...prev,
+      [squadId]: (prev[squadId] ?? []).filter((m) => m.id !== inviteId),
+    }));
+  }
+
   async function saveWidget() {
     setWidgetSaving(true);
     await fetch("/api/crm/sitrep/widget-settings", {
@@ -2322,18 +2337,35 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
                           ) : members.map((m) => (
                             <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 16px 6px 36px" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, color: S.text, fontWeight: 500 }}>{m.name || m.email}</div>
+                                <div style={{ fontSize: 13, color: m.pending ? S.dim : S.text, fontWeight: 500 }}>{m.name || m.email}</div>
                                 {m.name && <div style={{ fontSize: 11, color: S.dim }}>{m.email}</div>}
                               </div>
-                              <span style={{
-                                fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, flexShrink: 0,
-                                background: m.role === "owner" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.06)",
-                                color: m.role === "owner" ? "#a5b4fc" : S.dim,
-                              }}>{m.role.toUpperCase()}</span>
-                              {isOwner && m.role !== "owner" && (
+                              {m.pending ? (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, flexShrink: 0,
+                                  background: "rgba(245,158,11,.15)", color: "#fbbf24",
+                                }}>PENDING</span>
+                              ) : (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, flexShrink: 0,
+                                  background: m.role === "owner" ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.06)",
+                                  color: m.role === "owner" ? "#a5b4fc" : S.dim,
+                                }}>{m.role.toUpperCase()}</span>
+                              )}
+                              {isOwner && m.pending && (
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveFromSquad(squad.id, m.user_id)}
+                                  onClick={() => handleRevokeSquadInvite(squad.id, m.id)}
+                                  style={{
+                                    padding: "2px 8px", fontSize: 11, borderRadius: 5, cursor: "pointer", flexShrink: 0,
+                                    border: `1px solid ${S.border}`, background: "rgba(255,255,255,.04)", color: S.dim,
+                                  }}
+                                >Revoke</button>
+                              )}
+                              {isOwner && !m.pending && m.role !== "owner" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFromSquad(squad.id, m.user_id!)}
                                   style={{
                                     padding: "2px 8px", fontSize: 11, borderRadius: 5, cursor: "pointer", flexShrink: 0,
                                     border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)", color: "#fca5a5",

@@ -54,9 +54,27 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     ...m,
     name:  nameMap[m.user_id]?.name  ?? m.user_id,
     email: nameMap[m.user_id]?.email ?? "",
+    pending: false,
   }));
 
-  return NextResponse.json(members);
+  const { data: pendingInvites } = await sb()
+    .from("squad_invites")
+    .select("id, token, email, phone, user_id, created_at")
+    .eq("squad_id", id)
+    .eq("status", "pending");
+
+  const pending = (pendingInvites ?? []).map((inv: any) => ({
+    id:         inv.id,
+    token:      inv.token,
+    user_id:    inv.user_id ?? null,
+    role:       "pending",
+    joined_at:  inv.created_at,
+    name:       (inv.user_id ? nameMap[inv.user_id]?.name : null) ?? inv.email ?? inv.phone ?? "Invited",
+    email:      inv.email ?? (inv.user_id ? nameMap[inv.user_id]?.email : null) ?? "",
+    pending:    true,
+  }));
+
+  return NextResponse.json([...members, ...pending]);
 }
 
 // POST — create a pending squad invite (returns invite link, does not auto-add)
@@ -138,6 +156,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
 
   const body = await req.json().catch(() => null);
+
+  // Revoke a pending invite (owner only)
+  if (body?.invite_id) {
+    const { data: self } = await sb()
+      .from("squad_members")
+      .select("role")
+      .eq("squad_id", id)
+      .eq("user_id", user.userId)
+      .single();
+    if (!self || self.role === "viewer") return NextResponse.json({ error: "Insufficient role" }, { status: 403 });
+    const { error } = await sb().from("squad_invites").delete().eq("id", body.invite_id).eq("squad_id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   const targetUserId: string = body?.user_id ?? user.userId;
 
   // Verify requester is owner OR is removing themselves
