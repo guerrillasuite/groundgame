@@ -119,7 +119,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       email:      email ?? null,
       phone:      body.phone?.trim() ?? null,
       user_id:    inviteUserId,
-      role:       body.role ?? "collaborator",
     })
     .select("token")
     .single();
