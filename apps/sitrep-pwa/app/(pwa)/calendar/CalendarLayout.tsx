@@ -207,12 +207,11 @@ export default function CalendarLayout({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(context.favoriteIds)]);
 
-  const isToday       = cursor === todayStr();
-  const displayItems  = [
-    ...filterItems(items as any[], userId, context) as SitRepItem[],
-    ...overlayItems,
-  ];
-  const hiddenCount   = items.length - (displayItems.length - overlayItems.length);
+  const isToday      = cursor === todayStr();
+  const filteredItems = filterItems(items as any[], userId, context) as SitRepItem[];
+  const filteredIds   = new Set(filteredItems.map((i) => i.id));
+  const displayItems  = [...filteredItems, ...overlayItems.filter((o) => !filteredIds.has(o.id))];
+  const hiddenCount   = items.length - filteredItems.length;
 
   return (
     <div style={{ height: "100dvh", background: S.bg, display: "flex", flexDirection: "column" }}>

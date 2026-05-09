@@ -341,10 +341,9 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(context.favoriteIds)]);
 
-  const contextItems = [
-    ...filterItems(items as any[], currentUserId, context) as SitRepItem[],
-    ...overlayItems,
-  ];
+  const filteredItems = filterItems(items as any[], currentUserId, context) as SitRepItem[];
+  const filteredIds   = new Set(filteredItems.map((i) => i.id));
+  const contextItems  = [...filteredItems, ...overlayItems.filter((o) => !filteredIds.has(o.id))];
 
   const [scope, setScope]               = useState<"mine" | "all">(
     (searchParams.get("scope") as "mine" | "all") || "mine"

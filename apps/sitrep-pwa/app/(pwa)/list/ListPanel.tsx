@@ -415,12 +415,11 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(context.favoriteIds)]);
 
-  // Apply calendar visibility filter first
-  const calFiltered  = [
-    ...filterItems(items as any[], userId, context) as SitRepItem[],
-    ...overlayItems,
-  ];
-  const hiddenCount  = items.length - (calFiltered.length - overlayItems.length);
+  // Apply calendar visibility filter first, dedup overlay items already visible via membership
+  const filteredItems = filterItems(items as any[], userId, context) as SitRepItem[];
+  const filteredIds   = new Set(filteredItems.map((i) => i.id));
+  const calFiltered   = [...filteredItems, ...overlayItems.filter((o) => !filteredIds.has(o.id))];
+  const hiddenCount   = items.length - filteredItems.length;
 
   // Compute stats from unfiltered (calendar-visible) items
   const openCount    = calFiltered.filter((i) => i.status !== "done" && i.status !== "cancelled").length;
