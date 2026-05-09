@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { getCrmUser } from "@/lib/crm-auth";
 import { makeServiceSb } from "@/lib/tenant";
+
+function makeAdminSb() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -54,9 +62,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => null);
-  if (!body?.tenantId) return NextResponse.json({ error: "tenantId required" }, { status: 400 });
+  // tenantId may be null for personal (tenant-less) items
+  const tenantId: string | null = body?.tenantId ?? null;
 
-  const sb = makeServiceSb(body.tenantId);
+  const sb = tenantId ? makeServiceSb(tenantId) : makeAdminSb();
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const key of PATCHABLE) {
@@ -66,27 +75,34 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (body.status === "done") patch.completed_at = new Date().toISOString();
   if (body.status === "cancelled") patch.cancelled_at = new Date().toISOString();
 
-  const { error } = await sb
-    .from("sitrep_items")
-    .update(patch)
-    .eq("id", id)
-    .eq("tenant_id", body.tenantId);
+  let updateQ = sb.from("sitrep_items").update(patch).eq("id", id);
+  if (tenantId) updateQ = updateQ.eq("tenant_id", tenantId);
 
+  const { error } = await updateQ;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Activity log for tracked fields
-  const TRACKED: Record<string, string> = {
-    status: "status_changed", due_date: "due_changed", title: "title_changed",
-  };
-  const actRows = Object.entries(TRACKED)
-    .filter(([k]) => k in body)
-    .map(([k, evt]) => ({
-      tenant_id: body.tenantId, item_id: id, actor_id: user.userId,
-      event_type: evt, new_value: body[k] != null ? String(body[k]) : null,
-    }));
-  if (actRows.length) await sb.from("sitrep_activity").insert(actRows).catch(() => {});
+  // Activity log for tracked fields (only when tenant exists)
+  if (tenantId) {
+    const TRACKED: Record<string, string> = {
+      status: "status_changed", due_date: "due_changed", title: "title_changed",
+    };
+    const actRows = Object.entries(TRACKED)
+      .filter(([k]) => k in body)
+      .map(([k, evt]) => ({
+        tenant_id: tenantId, item_id: id, actor_id: user.userId,
+        event_type: evt, new_value: body[k] != null ? String(body[k]) : null,
+      }));
+    if (actRows.length) await sb.from("sitrep_activity").insert(actRows).catch(() => {});
+  }
 
-  return NextResponse.json({ ok: true });
+  // Return the updated item so the client can update local state without a full refetch
+  const { data: updated } = await sb
+    .from("sitrep_items")
+    .select(SELECT)
+    .eq("id", id)
+    .single();
+
+  return NextResponse.json(updated ?? { id, ...patch });
 }
 
 // DELETE /api/sitrep/items/[id]

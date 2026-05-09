@@ -273,6 +273,7 @@ export default function ItemBottomSheet({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (!res.ok) throw new Error(await res.text());
         result = await res.json();
       } else {
         const res = await fetch(`/api/sitrep/items/${item!.id}`, {
@@ -280,11 +281,14 @@ export default function ItemBottomSheet({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, id: item!.id }),
         });
+        if (!res.ok) throw new Error(await res.text());
         result = await res.json();
       }
       onSaved(result);
-    } catch {
-      onClose();
+    } catch (err) {
+      console.error("ItemBottomSheet save failed:", err);
+      setSaving(false);
+      return;
     }
     setSaving(false);
   }
