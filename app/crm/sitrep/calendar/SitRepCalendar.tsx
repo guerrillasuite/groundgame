@@ -704,7 +704,8 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
       const data = await res.json();
       const utcStartAt = (createDate && !createAllDay) ? localToUtcIso(createDate) : (createDate || null);
       const newItem: SitRepItem = {
-        id: data.id, item_type: createType, title: createTitle.trim(),
+        id: data.id, tenant_id: data.tenant_id ?? null,
+        item_type: createType, title: createTitle.trim(),
         status: createType === "task" ? "open" : null,
         priority: createType === "task" ? "normal" : null,
         description: null, location: null, location_address: null,

@@ -137,6 +137,7 @@ export default function ItemBottomSheet({
   const [saving, setSaving]             = useState(false);
   const [deleting, setDeleting]         = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [errorMsg, setErrorMsg]         = useState<string | null>(null);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const titleRef    = useRef<HTMLInputElement>(null);
   const [titleShake, setTitleShake] = useState(false);
@@ -174,6 +175,7 @@ export default function ItemBottomSheet({
     }
     setConfirmDelete(false);
     setSaving(false);
+    setErrorMsg(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, createMode, item]);
 
@@ -265,6 +267,7 @@ export default function ItemBottomSheet({
       ...(choicePayload ? { squad_id: choicePayload.squad_id } : {}),
     };
 
+    setErrorMsg(null);
     try {
       let result: SitRepItem;
       if (createMode) {
@@ -273,7 +276,7 @@ export default function ItemBottomSheet({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? await res.text());
         result = await res.json();
       } else {
         const res = await fetch(`/api/sitrep/items/${item!.id}`, {
@@ -281,12 +284,12 @@ export default function ItemBottomSheet({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, id: item!.id }),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? await res.text());
         result = await res.json();
       }
       onSaved(result);
     } catch (err) {
-      console.error("ItemBottomSheet save failed:", err);
+      setErrorMsg(err instanceof Error ? err.message : "Save failed");
       setSaving(false);
       return;
     }
@@ -296,15 +299,20 @@ export default function ItemBottomSheet({
   async function handleComplete() {
     if (!item) return;
     setSaving(true);
+    setErrorMsg(null);
     try {
+      const itemTenantId = (item as any).tenant_id ?? null;
       const res = await fetch(`/api/sitrep/items/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "done", tenantId }),
+        body: JSON.stringify({ status: "done", tenantId: itemTenantId }),
       });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed");
       const updated = await res.json();
       onSaved({ ...item, ...updated, status: "done" });
-    } catch { /* ignore */ }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Failed to complete");
+    }
     setSaving(false);
   }
 
@@ -312,14 +320,19 @@ export default function ItemBottomSheet({
     if (!item) return;
     if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
+    setErrorMsg(null);
     try {
-      await fetch(`/api/sitrep/items/${item.id}`, {
+      const itemTenantId = (item as any).tenant_id ?? null;
+      const res = await fetch(`/api/sitrep/items/${item.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId }),
+        body: JSON.stringify({ tenantId: itemTenantId }),
       });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed");
       onDeleted(item.id);
-    } catch { /* ignore */ }
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Failed to delete");
+    }
     setDeleting(false);
   }
 
@@ -604,6 +617,17 @@ export default function ItemBottomSheet({
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* ── Error message ── */}
+        {errorMsg && (
+          <div style={{
+            padding: "8px 12px", borderRadius: 8,
+            background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.25)",
+            color: "#fca5a5", fontSize: 13,
+          }}>
+            {errorMsg}
           </div>
         )}
 

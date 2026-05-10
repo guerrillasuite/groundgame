@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { COLOR_FAMILIES, SYSTEM_TYPE_FAMILIES, getFamilyByKey, type ColorFamily } from "@/lib/sitrep-colors";
 import SitRepKanban from "./kanban/SitRepKanban";
-import { filterItems } from "@/lib/sitrep-calendar-filter";
+import { filterItems, isAssigned } from "@/lib/sitrep-calendar-filter";
 import { useSitRepFilter } from "./SitRepFilterContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -416,14 +416,9 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
 
   let filtered = contextItems;
   if (scope === "mine") {
-    filtered = filtered.filter((i) => {
-      if ((i as any)._is_overlay) return false;
-      if (i.sitrep_assignments.some((a) => a.user_id === currentUserId)) return true;
-      if (i.created_by !== currentUserId) return false;
-      // Items I created that are not public team items
-      const vis = i.visibility ?? "team";
-      return vis === "private" || vis === "assignee_only" || (!i.tenant_id && !i.squad_id);
-    });
+    filtered = filtered.filter((i) =>
+      !(i as any)._is_overlay && isAssigned(i as any, currentUserId)
+    );
   }
   if (typeFilter !== "all") filtered = filtered.filter((i) => i.item_type === typeFilter);
   if (statusFilter === "active") filtered = filtered.filter((i) => i.status !== "done" && i.status !== "cancelled");
@@ -459,9 +454,10 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
         body: JSON.stringify({ item_type: "task", title, due_date: dueDate, visibility: "assignee_only" }),
       });
       if (res.ok) {
-        const { id } = await res.json();
+        const data = await res.json();
         const newItem: SitRepItem = {
-          id, item_type: "task", title, status: "open", priority: "normal",
+          id: data.id, tenant_id: data.tenant_id ?? null,
+          item_type: "task", title, status: "open", priority: "normal",
           description: null, location: null, location_address: null,
           due_date: dueDate, start_at: null, end_at: null, is_all_day: false,
           mission_id: null, parent_item_id: null, depth: 0,
@@ -490,55 +486,62 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
     if (!createTitle.trim()) { setCreateError("Title is required."); return; }
     setCreating(true); setCreateError("");
 
-    const body: Record<string, any> = {
-      item_type:   createType,
-      title:       createTitle.trim(),
-      description: createDesc || null,
-      visibility:  createVisibility,
-      mission_id:  createMissionId || null,
-    };
-    if (createAssignees.length) body.assignee_ids = createAssignees;
-    if (createType === "task" || (typeDefs?.[createType]?.is_mission_type)) {
-      body.priority = createPriority;
-      body.due_date = createDueDate || null;
-      body.status   = "open";
-    } else {
-      body.start_at   = (createStartAt && !createIsAllDay) ? localToUtcIso(createStartAt) : (createStartAt || null);
-      body.end_at     = (createEndAt   && !createIsAllDay) ? localToUtcIso(createEndAt)   : (createEndAt   || null);
-      body.is_all_day = createIsAllDay;
-      if (createType === "meeting") body.agenda = createAgenda || null;
-    }
-
-    const res = await fetch("/api/crm/sitrep/items", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const newItem: SitRepItem = {
-        id: data.id, item_type: createType,
-        title: createTitle.trim(),
-        status: (createType === "task" || typeDefs?.[createType]?.is_mission_type) ? "open" : null,
-        priority: (createType === "task" || typeDefs?.[createType]?.is_mission_type) ? createPriority : null,
-        description: createDesc || null, location: null, location_address: null,
-        due_date:   (createType === "task" || typeDefs?.[createType]?.is_mission_type) ? (createDueDate || null) : null,
-        start_at:   (createType !== "task" && !typeDefs?.[createType]?.is_mission_type) ? ((createStartAt && !createIsAllDay) ? localToUtcIso(createStartAt) : (createStartAt || null)) : null,
-        end_at:     (createType !== "task" && !typeDefs?.[createType]?.is_mission_type) ? ((createEndAt   && !createIsAllDay) ? localToUtcIso(createEndAt)   : (createEndAt   || null)) : null,
-        is_all_day: createIsAllDay, mission_id: createMissionId || null,
-        parent_item_id: null, depth: 0,
-        visibility: createVisibility, created_by: currentUserId,
-        created_at: new Date().toISOString(),
-        sitrep_assignments: createAssignees.map((uid) => ({ user_id: uid, role: "assignee" })),
+    try {
+      const body: Record<string, any> = {
+        item_type:   createType,
+        title:       createTitle.trim(),
+        description: createDesc || null,
+        visibility:  createVisibility,
+        mission_id:  createMissionId || null,
       };
-      setItems((prev) => [newItem, ...prev]);
-      setShowCreate(false);
-    } else {
-      const err = await res.json().catch(() => ({}));
-      setCreateError(err.error ?? "Failed to create. Please try again.");
+      if (createAssignees.length) body.assignee_ids = createAssignees;
+      if (createType === "task" || (typeDefs?.[createType]?.is_mission_type)) {
+        body.priority = createPriority;
+        body.due_date = createDueDate || null;
+        body.status   = "open";
+      } else {
+        body.start_at   = (createStartAt && !createIsAllDay) ? localToUtcIso(createStartAt) : (createStartAt || null);
+        body.end_at     = (createEndAt   && !createIsAllDay) ? localToUtcIso(createEndAt)   : (createEndAt   || null);
+        body.is_all_day = createIsAllDay;
+        if (createType === "meeting") body.agenda = createAgenda || null;
+      }
+
+      const res = await fetch("/api/crm/sitrep/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const isMissionType = createType === "task" || typeDefs?.[createType]?.is_mission_type;
+        const newItem: SitRepItem = {
+          id: data.id, tenant_id: data.tenant_id ?? null,
+          item_type: createType,
+          title: createTitle.trim(),
+          status: isMissionType ? "open" : null,
+          priority: isMissionType ? createPriority : null,
+          description: createDesc || null, location: null, location_address: null,
+          due_date:   isMissionType ? (createDueDate || null) : null,
+          start_at:   !isMissionType ? ((createStartAt && !createIsAllDay) ? localToUtcIso(createStartAt) : (createStartAt || null)) : null,
+          end_at:     !isMissionType ? ((createEndAt   && !createIsAllDay) ? localToUtcIso(createEndAt)   : (createEndAt   || null)) : null,
+          is_all_day: createIsAllDay, mission_id: createMissionId || null,
+          parent_item_id: null, depth: 0,
+          visibility: createVisibility, created_by: currentUserId,
+          created_at: new Date().toISOString(),
+          sitrep_assignments: createAssignees.map((uid) => ({ user_id: uid, role: "assignee" })),
+        };
+        setItems((prev) => [newItem, ...prev]);
+        setShowCreate(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setCreateError(err.error ?? "Failed to create. Please try again.");
+      }
+    } catch {
+      setCreateError("Network error. Please try again.");
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   }
 
   // ── Style constants ───────────────────────────────────────────────────────────

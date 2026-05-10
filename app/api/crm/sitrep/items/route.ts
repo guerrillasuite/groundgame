@@ -198,5 +198,5 @@ export async function POST(req: NextRequest) {
     new_value:  body.title.trim(),
   });
 
-  return NextResponse.json({ id: itemId, created: true });
+  return NextResponse.json({ id: itemId, tenant_id: tenant.id, created: true });
 }

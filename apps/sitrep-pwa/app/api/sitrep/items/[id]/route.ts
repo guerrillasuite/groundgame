@@ -112,17 +112,13 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const tenantId = body.tenantId;
-  if (!tenantId) return NextResponse.json({ error: "tenantId required" }, { status: 400 });
+  const tenantId: string | null = body.tenantId ?? null;
 
-  const sb = makeServiceSb(tenantId);
+  const sb = tenantId ? makeServiceSb(tenantId) : makeAdminSb();
 
-  const { data: existing } = await sb
-    .from("sitrep_items")
-    .select("created_by")
-    .eq("id", id)
-    .eq("tenant_id", tenantId)
-    .single();
+  let existingQ = sb.from("sitrep_items").select("created_by").eq("id", id);
+  if (tenantId) existingQ = existingQ.eq("tenant_id", tenantId);
+  const { data: existing } = await existingQ.single();
 
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if ((existing as any).created_by !== user.userId && !user.isSuperAdmin) {
@@ -130,13 +126,20 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   }
 
   // Orphan children rather than cascade — safer default from mobile
-  await sb.from("sitrep_items")
+  const orphanQ = sb.from("sitrep_items")
     .update({ parent_item_id: null, depth: 0 })
-    .eq("parent_item_id", id)
-    .eq("tenant_id", tenantId);
+    .eq("parent_item_id", id);
+  if (tenantId) {
+    await orphanQ.eq("tenant_id", tenantId);
+  } else {
+    await orphanQ.is("tenant_id", null);
+  }
 
-  const { error } = await sb.from("sitrep_items").delete().eq("id", id).eq("tenant_id", tenantId);
+  let deleteQ = sb.from("sitrep_items").delete().eq("id", id);
+  if (tenantId) deleteQ = deleteQ.eq("tenant_id", tenantId);
+  const { data: deleted, error } = await (deleteQ as any).select("id");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!deleted?.length) return NextResponse.json({ error: "Item not found or already deleted" }, { status: 404 });
 
   return NextResponse.json({ ok: true });
 }

@@ -186,7 +186,6 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 // If neither param + item has children → 409 with child_count
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
-  const tenant = await getTenant();
   const crmUser = await getCrmUser();
   if (!crmUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -194,13 +193,17 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   const cascade = searchParams.get("cascade") === "true";
   const orphan  = searchParams.get("orphan")  === "true";
 
-  const sb = makeSb(tenant.id);
+  // Use admin client (no tenant restriction) — the item detail page can show cross-tenant
+  // items, so restricting by getTenant().id would miss items belonging to secondary tenants.
+  const adminSb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  const { data: existing } = await sb
+  const { data: existing } = await adminSb
     .from("sitrep_items")
-    .select("created_by")
+    .select("id, created_by, tenant_id")
     .eq("id", id)
-    .eq("tenant_id", tenant.id)
     .single();
 
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -208,33 +211,37 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: "Only the creator can delete this item" }, { status: 403 });
   }
 
+  const itemTenantId = (existing as any).tenant_id as string;
+
   // Check for children
-  const { count: childCount } = await sb
+  const { count: childCount } = await adminSb
     .from("sitrep_items")
     .select("id", { count: "exact", head: true })
     .eq("parent_item_id", id)
-    .eq("tenant_id", tenant.id);
+    .eq("tenant_id", itemTenantId);
 
   if ((childCount ?? 0) > 0) {
     if (!cascade && !orphan) {
       return NextResponse.json({ error: "Item has children", child_count: childCount }, { status: 409 });
     }
     if (orphan) {
-      await sb
+      await adminSb
         .from("sitrep_items")
         .update({ parent_item_id: null, depth: 0 })
         .eq("parent_item_id", id)
-        .eq("tenant_id", tenant.id);
+        .eq("tenant_id", itemTenantId);
     }
-    // cascade: ON DELETE CASCADE on FK handles recursive delete
+    // cascade: sitrep_assignments/comments/activity have ON DELETE CASCADE
   }
 
-  const { error } = await sb
+  const { data: deleted, error } = await (adminSb as any)
     .from("sitrep_items")
     .delete()
     .eq("id", id)
-    .eq("tenant_id", tenant.id);
+    .eq("tenant_id", itemTenantId)
+    .select("id");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!deleted?.length) return NextResponse.json({ error: "Item not found or already deleted" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

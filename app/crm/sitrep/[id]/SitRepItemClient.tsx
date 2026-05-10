@@ -239,6 +239,7 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
   const [deleting,         setDeleting]          = useState(false);
   const [deleteModal,      setDeleteModal]       = useState<"none"|"confirm"|"children">("none");
   const [deleteChildCount, setDeleteChildCount]  = useState(0);
+  const [deleteError,      setDeleteError]       = useState<string | null>(null);
   const [statusExpanded,   setStatusExpanded]    = useState(true);
   const [priorityExpanded, setPriorityExpanded]  = useState(true);
   const [activityExpanded, setActivityExpanded]  = useState(false);
@@ -343,6 +344,7 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
 
   async function handleDelete(mode?: "cascade"|"orphan") {
     setDeleting(true);
+    setDeleteError(null);
     const qs  = mode ? `?${mode}=true` : "";
     const res = await fetch(`/api/crm/sitrep/items/${item.id}${qs}`, { method: "DELETE" });
     if (res.ok) { router.push("/crm/sitrep"); return; }
@@ -353,6 +355,8 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
       setDeleting(false);
       return;
     }
+    const errData = await res.json().catch(() => ({}));
+    setDeleteError(errData.error ?? "Delete failed");
     setDeleting(false);
   }
 
@@ -1015,8 +1019,13 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
       {/* ── Danger zone ── */}
       {isCreator && (
         <div>
+          {deleteError && (
+            <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.25)", color: "#fca5a5", fontSize: 13, marginBottom: 8 }}>
+              {deleteError}
+            </div>
+          )}
           {deleteModal === "none" && (
-            <button onClick={() => setDeleteModal("confirm")} style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.22)", color: "rgba(239,68,68,.65)", borderRadius: 10, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}
+            <button onClick={() => { setDeleteModal("confirm"); setDeleteError(null); }} style={{ display: "flex", alignItems: "center", gap: 7, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.22)", color: "rgba(239,68,68,.65)", borderRadius: 10, padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,.12)"; e.currentTarget.style.borderColor = "rgba(239,68,68,.4)"; e.currentTarget.style.color = "rgb(239 68 68)"; e.currentTarget.style.boxShadow = "0 0 14px rgba(239,68,68,.18)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,.06)"; e.currentTarget.style.borderColor = "rgba(239,68,68,.22)"; e.currentTarget.style.color = "rgba(239,68,68,.65)"; e.currentTarget.style.boxShadow = "none"; }}
             >

@@ -68,7 +68,7 @@ export type SitRepView = {
 
 const TERMINAL_STATUSES = ["done", "cancelled"];
 
-function isAssigned(item: ItemLike, userId: string): boolean {
+export function isAssigned(item: ItemLike, userId: string): boolean {
   return (
     item.created_by === userId ||
     (item.sitrep_assignments ?? []).some((a) => a.user_id === userId)
