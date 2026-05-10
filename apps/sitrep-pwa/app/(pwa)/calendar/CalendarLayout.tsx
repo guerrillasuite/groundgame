@@ -74,6 +74,19 @@ export default function CalendarLayout({
   const [tz, setTz] = useState("UTC");
   useEffect(() => { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone); }, []);
 
+  // Server only fetches primary-tenant items. Replace with the full set (assigned + created
+  // + squad items across all tenants) after mount — same source the list page uses.
+  useEffect(() => {
+    fetch("/api/sitrep/items")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) return;
+        setItems(data as SitRepItem[]);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [view, setView] = useState<View>(() => {
     const p = searchParams.get("view") as View | null;
     if (p && ["day", "week", "month"].includes(p)) return p;
