@@ -9,6 +9,7 @@ import CalendarSwitcherDrawer from "@/components/CalendarSwitcherDrawer";
 import { todayStr, addDays, localDateStr, effectiveDate } from "@/lib/date-utils";
 import {
   filterItems,
+  isAssigned,
   defaultContext,
   contextFromView,
   loadActiveViewId,
@@ -429,13 +430,9 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   // Apply search + scope + type + status filters
   let filtered = calFiltered;
   if (scopeFilter === "mine") {
-    filtered = filtered.filter((i) => {
-      if ((i as any)._is_overlay) return false;
-      if ((i.sitrep_assignments ?? []).some((a) => a.user_id === userId)) return true;
-      if (i.created_by !== userId) return false;
-      const vis = (i as any).visibility ?? "team";
-      return vis === "private" || vis === "assignee_only" || (!(i as any).tenant_id && !(i as any).squad_id);
-    });
+    filtered = filtered.filter((i) =>
+      !(i as any)._is_overlay && isAssigned(i as any, userId)
+    );
   }
   if (typeFilter !== "all") {
     filtered = filtered.filter((i) => i.item_type === typeFilter);
