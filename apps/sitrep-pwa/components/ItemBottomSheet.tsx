@@ -276,7 +276,12 @@ export default function ItemBottomSheet({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? await res.text());
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          let msg = `Server error ${res.status}`;
+          try { msg = JSON.parse(text)?.error ?? msg; } catch { if (text) msg = text.slice(0, 200); }
+          throw new Error(msg);
+        }
         result = await res.json();
       } else {
         const res = await fetch(`/api/sitrep/items/${item!.id}`, {
@@ -284,7 +289,12 @@ export default function ItemBottomSheet({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, id: item!.id }),
         });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? await res.text());
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          let msg = `Server error ${res.status}`;
+          try { msg = JSON.parse(text)?.error ?? msg; } catch { if (text) msg = text.slice(0, 200); }
+          throw new Error(msg);
+        }
         result = await res.json();
       }
       onSaved(result);
