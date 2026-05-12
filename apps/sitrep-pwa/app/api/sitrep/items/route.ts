@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { getCrmUser } from "@/lib/crm-auth";
 import { makeServiceSb } from "@/lib/tenant";
@@ -104,13 +105,19 @@ export async function POST(req: NextRequest) {
   }
 
   const tenantId = body.tenantId || null;
-  const sb = tenantId ? makeServiceSb(tenantId) : makeAdminSb();
+  // Always use admin client — service role bypasses RLS so INSERT succeeds and
+  // the separate read-back works without needing RETURNING from PostgREST.
+  const sb = makeAdminSb();
 
-  // Insert with just "id" — chaining nested selects (sitrep_assignments) on INSERT
-  // RETURNING can fail in some PostgREST versions. We select-back separately instead.
-  const { data: created, error: insertError } = await sb
+  // Supply our own UUID so we never have to rely on INSERT RETURNING.
+  // PostgREST's RETURNING + nested selects can silently return null even when the
+  // insert succeeds, which caused false 500s.
+  const itemId = randomUUID();
+
+  const { error: insertError } = await sb
     .from("sitrep_items")
     .insert({
+      id:          itemId,
       tenant_id:   tenantId,
       squad_id:    body.squad_id ?? null,
       item_type:   body.item_type,
@@ -123,15 +130,11 @@ export async function POST(req: NextRequest) {
       visibility:  body.visibility ?? "team",
       created_by:  user.userId,
       depth:       0,
-    })
-    .select("id")
-    .single();
+    });
 
-  if (insertError || !created) {
-    return NextResponse.json({ error: insertError?.message ?? "Failed to create item" }, { status: 500 });
+  if (insertError) {
+    return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
-
-  const itemId = (created as any).id as string;
 
   // Insert assignments + activity in parallel, now that we have the ID
   const role = body.item_type === "meeting" ? "organizer" : "assignee";
