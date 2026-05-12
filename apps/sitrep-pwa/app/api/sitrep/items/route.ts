@@ -145,12 +145,12 @@ export async function POST(req: NextRequest) {
   await Promise.all([
     sb.from("sitrep_assignments").insert(
       assigneeIds.map((uid: string) => ({ item_id: itemId, user_id: uid, role }))
-    ).catch(() => {}),
+    ).then(() => {}, () => {}),
     tenantId
       ? sb.from("sitrep_activity").insert({
           tenant_id: tenantId, item_id: itemId,
           actor_id: user.userId, event_type: "created", new_value: body.title.trim(),
-        }).catch(() => {})
+        }).then(() => {}, () => {})
       : Promise.resolve(),
   ]);
 
