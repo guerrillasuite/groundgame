@@ -10,9 +10,12 @@ export function todayStr(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** Extract local "YYYY-MM-DD" from any UTC ISO string */
+/** Extract local "YYYY-MM-DD" from any UTC ISO string or date-only string.
+ *  Date-only strings (no "T") are treated as local midnight, not UTC midnight,
+ *  because JS's new Date("YYYY-MM-DD") returns UTC midnight which shifts the
+ *  date backwards by the UTC offset in negative-offset timezones. */
 export function localDateStr(iso: string): string {
-  const d = new Date(iso);
+  const d = new Date(iso.includes("T") ? iso : iso + "T00:00:00");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
@@ -21,9 +24,10 @@ export function localToUtcIso(local: string): string {
   return new Date(local).toISOString();
 }
 
-/** Convert UTC ISO string → datetime-local input value (local time) */
+/** Convert UTC ISO string → datetime-local input value (local time).
+ *  Date-only strings are treated as local midnight for the same reason as localDateStr. */
 export function utcToDatetimeLocal(iso: string): string {
-  const d = new Date(iso);
+  const d = new Date(iso.includes("T") ? iso : iso + "T00:00:00");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 

@@ -255,10 +255,14 @@ export default function ItemBottomSheet({
     const effectiveVisibility = cal?.visibility ?? choicePayload?.visibility ?? visibility;
     const effectiveAssignees  = effectiveVisibility === "private" ? [userId] : assigneeIds;
 
+    // Tasks store date in due_date; events/meetings store date in start_at.
+    // Always send the right field so PATCH and POST both land on the correct column.
+    const isTask = typeSlug === "task";
     const payload: Record<string, unknown> = {
       title:      title.trim(),
       item_type:  typeSlug,
-      due_date:   dueDateUtc,
+      due_date:   isTask ? dueDateUtc : null,
+      start_at:   isTask ? null : dueDateUtc,
       location:   location.trim() || null,
       tenantId:   cal?.tenantId ?? choicePayload?.tenantId ?? tenantId ?? null,
       created_by: userId,
