@@ -106,7 +106,9 @@ export async function POST(req: NextRequest) {
   const tenantId = body.tenantId || null;
   const sb = tenantId ? makeServiceSb(tenantId) : makeAdminSb();
 
-  const { data: item, error } = await sb
+  // Insert with just "id" — chaining nested selects (sitrep_assignments) on INSERT
+  // RETURNING can fail in some PostgREST versions. We select-back separately instead.
+  const { data: created, error: insertError } = await sb
     .from("sitrep_items")
     .insert({
       tenant_id:   tenantId,
@@ -122,25 +124,39 @@ export async function POST(req: NextRequest) {
       created_by:  user.userId,
       depth:       0,
     })
-    .select(SELECT)
+    .select("id")
     .single();
 
-  if (error || !item) return NextResponse.json({ error: error?.message ?? "Failed" }, { status: 500 });
+  if (insertError || !created) {
+    return NextResponse.json({ error: insertError?.message ?? "Failed to create item" }, { status: 500 });
+  }
 
+  const itemId = (created as any).id as string;
+
+  // Insert assignments + activity in parallel, now that we have the ID
   const role = body.item_type === "meeting" ? "organizer" : "assignee";
   const assigneeIds: string[] = Array.isArray(body.assignees) && body.assignees.length > 0
     ? body.assignees
     : [user.userId];
-  await sb.from("sitrep_assignments").insert(
-    assigneeIds.map((uid: string) => ({ item_id: (item as any).id, user_id: uid, role }))
-  ).catch(() => {});
 
-  if (tenantId) {
-    await sb.from("sitrep_activity").insert({
-      tenant_id: tenantId, item_id: (item as any).id,
-      actor_id: user.userId, event_type: "created", new_value: body.title.trim(),
-    }).catch(() => {});
-  }
+  await Promise.all([
+    sb.from("sitrep_assignments").insert(
+      assigneeIds.map((uid: string) => ({ item_id: itemId, user_id: uid, role }))
+    ).catch(() => {}),
+    tenantId
+      ? sb.from("sitrep_activity").insert({
+          tenant_id: tenantId, item_id: itemId,
+          actor_id: user.userId, event_type: "created", new_value: body.title.trim(),
+        }).catch(() => {})
+      : Promise.resolve(),
+  ]);
 
-  return NextResponse.json(item);
+  // Fetch the full item (including assignments that now exist) as a separate query
+  const { data: item } = await sb
+    .from("sitrep_items")
+    .select(SELECT)
+    .eq("id", itemId)
+    .single();
+
+  return NextResponse.json(item ?? { id: itemId });
 }
