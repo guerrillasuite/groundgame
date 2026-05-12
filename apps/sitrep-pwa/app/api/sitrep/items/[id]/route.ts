@@ -92,7 +92,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         tenant_id: tenantId, item_id: id, actor_id: user.userId,
         event_type: evt, new_value: body[k] != null ? String(body[k]) : null,
       }));
-    if (actRows.length) await sb.from("sitrep_activity").insert(actRows).catch(() => {});
+    if (actRows.length) await sb.from("sitrep_activity").insert(actRows).then(() => {}, () => {});
   }
 
   // Return the updated item so the client can update local state without a full refetch

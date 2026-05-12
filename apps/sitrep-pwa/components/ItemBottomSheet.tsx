@@ -416,20 +416,36 @@ export default function ItemBottomSheet({
           </div>
         )}
 
-        {/* ── Type selector + close ── */}
+        {/* ── Type selector + expand + close ── */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <TypePillSelector types={contextTypes} value={typeSlug} onChange={setTypeSlug} />
-          <button
-            onClick={onClose}
-            style={{
-              flexShrink: 0, width: 32, height: 32, borderRadius: 8,
-              border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.05)",
-              color: S.dim, cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
-            }}
-          >
-            ×
-          </button>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+            {!createMode && item && (
+              <button
+                onClick={() => onExpandItem(item.id)}
+                title="Open full view"
+                style={{
+                  width: 32, height: 32, borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.05)",
+                  color: S.dim, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
+                }}
+              >
+                ↗
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.05)",
+                color: S.dim, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+              }}
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* ── Title ── */}
@@ -718,14 +734,16 @@ export default function ItemBottomSheet({
                 Delete
               </button>
               <button
-                onClick={() => item && onExpandItem(item.id)}
+                onClick={handleSave}
+                disabled={saving}
                 style={{
-                  flex: 1, padding: "11px 0", borderRadius: 9,
-                  border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)",
-                  color: S.dimBright, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  flex: 1, padding: "11px 0", borderRadius: 9, border: "none",
+                  background: `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 70%, #7c3aed) 100%)`,
+                  color: "#fff", fontSize: 13, fontWeight: 600,
+                  cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
                 }}
               >
-                Expand ↗
+                {saving ? "Saving…" : "Save"}
               </button>
             </>
           )}
