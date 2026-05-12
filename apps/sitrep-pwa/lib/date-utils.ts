@@ -45,9 +45,8 @@ export function hasExplicitTime(s: string | null | undefined): boolean {
   return !t.startsWith("00:00");
 }
 
-/** For tasks: due_date. For events/meetings: start_at ?? due_date */
+/** start_at if present (tasks with a time, events, meetings), else due_date (date-only tasks) */
 export function effectiveDate(item: { item_type: string; due_date: string | null; start_at?: string | null }): string | null {
-  if (item.item_type === "task") return item.due_date;
   return (item as any).start_at ?? item.due_date;
 }
 
