@@ -169,8 +169,16 @@ export default function ItemBottomSheet({
       } else {
         setCalChoice((item as any).tenant_id ?? firstOrgId ?? "personal");
       }
-      const stored = item.due_date ?? (item as any).start_at ?? null;
-      setDueDateLocal(stored ? utcToDatetimeLocal(stored) : "");
+      const stored = (item as any).start_at ?? item.due_date ?? null;
+      if (!stored) {
+        setDueDateLocal("");
+      } else if (stored.includes("T") || stored.endsWith("Z")) {
+        // Full datetime — convert UTC → local "YYYY-MM-DDTHH:mm"
+        setDueDateLocal(utcToDatetimeLocal(stored));
+      } else {
+        // Date-only — just show the date, no forced midnight time
+        setDueDateLocal(stored);
+      }
       setLocation((item as any).location ?? "");
     }
     setConfirmDelete(false);
@@ -232,7 +240,11 @@ export default function ItemBottomSheet({
     }
     setSaving(true);
 
-    const dueDateUtc = dueDateLocal ? localToUtcIso(dueDateLocal) : null;
+    // For tasks, time is optional — only convert if the user actually set a time (has "T").
+    // Events/meetings always use datetime-local so they always have a time.
+    const dueDateHasTime = dueDateLocal.includes("T");
+    const dueDateUtc = (dueDateLocal && dueDateHasTime) ? localToUtcIso(dueDateLocal) : null;
+    const dueDateOnly = dueDateLocal ? dueDateLocal.split("T")[0] : null;
 
     // Legacy calendarTypes path
     const cal = calendarTypes?.length && selectedCalId
@@ -255,14 +267,12 @@ export default function ItemBottomSheet({
     const effectiveVisibility = cal?.visibility ?? choicePayload?.visibility ?? visibility;
     const effectiveAssignees  = effectiveVisibility === "private" ? [userId] : assigneeIds;
 
-    // Tasks: due_date = date-only (DB date column), start_at = full datetime for time positioning.
-    // Events/meetings: due_date = null, start_at = full datetime.
     const isTask = typeSlug === "task";
     const payload: Record<string, unknown> = {
       title:      title.trim(),
       item_type:  typeSlug,
-      due_date:   isTask ? (dueDateUtc ? dueDateUtc.split("T")[0] : null) : null,
-      start_at:   dueDateUtc,
+      due_date:   isTask ? dueDateOnly : null,
+      start_at:   isTask ? dueDateUtc : (dueDateLocal ? localToUtcIso(dueDateLocal) : null),
       location:   location.trim() || null,
       tenantId:   cal?.tenantId ?? choicePayload?.tenantId ?? tenantId ?? null,
       created_by: userId,
@@ -468,21 +478,48 @@ export default function ItemBottomSheet({
           />
         </div>
 
-        {/* ── Due date ── */}
+        {/* ── Due date / time ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
             <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          <input
-            type="datetime-local"
-            value={dueDateLocal}
-            onChange={(e) => setDueDateLocal(e.target.value)}
-            style={{ ...inputStyle, colorScheme: "dark" }}
-            onFocus={focusIn}
-            onBlur={focusOut}
-          />
+          {typeSlug === "task" ? (
+            <div style={{ flex: 1, display: "flex", gap: 6 }}>
+              <input
+                type="date"
+                value={dueDateLocal.split("T")[0] || ""}
+                onChange={(e) => {
+                  const t = dueDateLocal.includes("T") ? dueDateLocal.split("T")[1] : "";
+                  setDueDateLocal(t ? `${e.target.value}T${t}` : e.target.value);
+                }}
+                style={{ ...inputStyle, flex: 1, colorScheme: "dark" }}
+                onFocus={focusIn}
+                onBlur={focusOut}
+              />
+              <input
+                type="time"
+                value={dueDateLocal.includes("T") ? dueDateLocal.split("T")[1] : ""}
+                onChange={(e) => {
+                  const d = dueDateLocal.split("T")[0] || "";
+                  setDueDateLocal(e.target.value ? `${d}T${e.target.value}` : d);
+                }}
+                style={{ ...inputStyle, width: 108, colorScheme: "dark" }}
+                onFocus={focusIn}
+                onBlur={focusOut}
+              />
+            </div>
+          ) : (
+            <input
+              type="datetime-local"
+              value={dueDateLocal}
+              onChange={(e) => setDueDateLocal(e.target.value)}
+              style={{ ...inputStyle, colorScheme: "dark" }}
+              onFocus={focusIn}
+              onBlur={focusOut}
+            />
+          )}
         </div>
 
         {/* ── Location ── */}

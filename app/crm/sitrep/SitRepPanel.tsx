@@ -375,6 +375,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   const [createDesc,       setCreateDesc]       = useState("");
   const [createPriority,   setCreatePriority]   = useState("normal");
   const [createDueDate,    setCreateDueDate]    = useState("");
+  const [createDueTime,    setCreateDueTime]    = useState("");
   const [createStartAt,    setCreateStartAt]    = useState("");
   const [createEndAt,      setCreateEndAt]      = useState("");
   const [createIsAllDay,   setCreateIsAllDay]   = useState(false);
@@ -496,8 +497,10 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
       if (createAssignees.length) body.assignee_ids = createAssignees;
       if (createType === "task" || (typeDefs?.[createType]?.is_mission_type)) {
         body.priority = createPriority;
-        body.due_date = createDueDate ? createDueDate.split("T")[0] : null;
-        body.start_at = createDueDate ? localToUtcIso(createDueDate) : null;
+        body.due_date = createDueDate || null;
+        body.start_at = (createDueDate && createDueTime)
+          ? localToUtcIso(`${createDueDate}T${createDueTime}`)
+          : null;
         body.status   = "open";
       } else {
         body.start_at   = (createStartAt && !createIsAllDay) ? localToUtcIso(createStartAt) : (createStartAt || null);
@@ -522,9 +525,9 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
           status: isMissionType ? "open" : null,
           priority: isMissionType ? createPriority : null,
           description: createDesc || null, location: null, location_address: null,
-          due_date:   isMissionType ? (createDueDate ? createDueDate.split("T")[0] : null) : null,
+          due_date:   isMissionType ? (createDueDate || null) : null,
           start_at:   isMissionType
-            ? (createDueDate ? localToUtcIso(createDueDate) : null)
+            ? ((createDueDate && createDueTime) ? localToUtcIso(`${createDueDate}T${createDueTime}`) : null)
             : ((createStartAt && !createIsAllDay) ? localToUtcIso(createStartAt) : (createStartAt || null)),
           end_at:     !isMissionType ? ((createEndAt   && !createIsAllDay) ? localToUtcIso(createEndAt)   : (createEndAt   || null)) : null,
           is_all_day: createIsAllDay, mission_id: createMissionId || null,
@@ -1030,8 +1033,12 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
                       </select>
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Due Date & Time</label>
-                      <input type="datetime-local" value={createDueDate} onChange={(e) => setCreateDueDate(e.target.value)} style={{ ...inputStyle, colorScheme: "dark" }} onFocus={focusInput} onBlur={blurInput} />
+                      <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Due Date</label>
+                      <input type="date" value={createDueDate} onChange={(e) => setCreateDueDate(e.target.value)} style={inputStyle} onFocus={focusInput} onBlur={blurInput} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, display: "block", marginBottom: 6, color: S.dim, letterSpacing: "0.05em", textTransform: "uppercase" }}>Due Time <span style={{ fontWeight: 400, textTransform: "none" }}>(optional)</span></label>
+                      <input type="time" value={createDueTime} onChange={(e) => setCreateDueTime(e.target.value)} style={inputStyle} onFocus={focusInput} onBlur={blurInput} />
                     </div>
                   </div>
                 )}
