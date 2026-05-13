@@ -45,7 +45,7 @@ type Group = {
   items: SitRepItem[];
 };
 
-function groupItems(items: SitRepItem[]): Group[] {
+function groupItems(items: SitRepItem[], flatMode = false): Group[] {
   const today    = todayStr();
   const tomorrow = addDays(today, 1);
   const weekEnd  = addDays(today, 7);
@@ -57,8 +57,8 @@ function groupItems(items: SitRepItem[]): Group[] {
   };
 
   for (const item of items) {
-    if (item.status === "done")      { buckets.done.push(item); continue; }
-    if (item.status === "cancelled") { buckets.cancelled.push(item); continue; }
+    if (!flatMode && item.status === "done")      { buckets.done.push(item); continue; }
+    if (!flatMode && item.status === "cancelled") { buckets.cancelled.push(item); continue; }
     const ed = effectiveDate(item);
     if (!ed) { buckets.nodate.push(item); continue; }
     const ds = ed.includes("T") ? localDateStr(ed) : ed;
@@ -76,8 +76,8 @@ function groupItems(items: SitRepItem[]): Group[] {
   if (buckets.week.length)      result.push({ key: "week",      label: "This Week", color: muted,             items: buckets.week });
   if (buckets.later.length)     result.push({ key: "later",     label: "Later",     color: muted,             items: buckets.later });
   if (buckets.nodate.length)    result.push({ key: "nodate",    label: "No Date",   color: muted,             items: buckets.nodate });
-  if (buckets.done.length)      result.push({ key: "done",      label: "Done",      color: "rgb(34 197 94)",  items: buckets.done });
-  if (buckets.cancelled.length) result.push({ key: "cancelled", label: "Cancelled", color: muted,             items: buckets.cancelled });
+  if (!flatMode && buckets.done.length)      result.push({ key: "done",      label: "Done",      color: "rgb(34 197 94)",  items: buckets.done });
+  if (!flatMode && buckets.cancelled.length) result.push({ key: "cancelled", label: "Cancelled", color: muted,             items: buckets.cancelled });
   return result;
 }
 
@@ -447,7 +447,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
     filtered = filtered.filter((i) => i.title.toLowerCase().includes(q));
   }
 
-  const groups = groupItems(filtered);
+  const groups = groupItems(filtered, statusFilter === "all");
 
   return (
     <div style={{ minHeight: "100dvh", background: S.bg }}>
@@ -686,11 +686,11 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
           <FilterPill active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
             Active
           </FilterPill>
-          <FilterPill active={statusFilter === "done"} onClick={() => setStatusFilter("done")}>
-            Done
-          </FilterPill>
           <FilterPill active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
             All
+          </FilterPill>
+          <FilterPill active={statusFilter === "done"} onClick={() => setStatusFilter("done")}>
+            Done
           </FilterPill>
         </div>
       </div>

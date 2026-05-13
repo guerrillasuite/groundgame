@@ -136,7 +136,7 @@ const TYPE_LABEL: Record<string, string> = { task: "TASK", event: "EVENT", meeti
 
 type Group = { key: string; label: string; color: string; items: SitRepItem[] };
 
-function groupItems(items: SitRepItem[]): Group[] {
+function groupItems(items: SitRepItem[], flatMode = false): Group[] {
   const today   = todayStr();
   const tomorrow = tomorrowStr();
   const weekEnd  = weekEndStr();
@@ -147,8 +147,8 @@ function groupItems(items: SitRepItem[]): Group[] {
   };
 
   for (const item of items) {
-    if (item.status === "done")      { buckets.done.push(item); continue; }
-    if (item.status === "cancelled") { buckets.cancelled.push(item); continue; }
+    if (!flatMode && item.status === "done")      { buckets.done.push(item); continue; }
+    if (!flatMode && item.status === "cancelled") { buckets.cancelled.push(item); continue; }
     const ed = effectiveDate(item);
     if (!ed) { buckets.nodate.push(item); continue; }
     const ds = ed.includes("T") ? localDateStr(ed) : ed;
@@ -167,8 +167,8 @@ function groupItems(items: SitRepItem[]): Group[] {
   if (buckets.week.length)      result.push({ key: "week",      label: "This Week", color: muted,             items: buckets.week });
   if (buckets.later.length)     result.push({ key: "later",     label: "Later",     color: muted,             items: buckets.later });
   if (buckets.nodate.length)    result.push({ key: "nodate",    label: "No Date",   color: muted,             items: buckets.nodate });
-  if (buckets.done.length)      result.push({ key: "done",      label: "Done",      color: "rgb(34 197 94)",  items: buckets.done });
-  if (buckets.cancelled.length) result.push({ key: "cancelled", label: "Cancelled", color: muted,             items: buckets.cancelled });
+  if (!flatMode && buckets.done.length)      result.push({ key: "done",      label: "Done",      color: "rgb(34 197 94)",  items: buckets.done });
+  if (!flatMode && buckets.cancelled.length) result.push({ key: "cancelled", label: "Cancelled", color: muted,             items: buckets.cancelled });
   return result;
 }
 
@@ -424,7 +424,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
   if (statusFilter === "active") filtered = filtered.filter((i) => i.status !== "done" && i.status !== "cancelled");
   else if (statusFilter === "done") filtered = filtered.filter((i) => i.status === "done");
 
-  const groups = groupItems(filtered);
+  const groups = groupItems(filtered, statusFilter === "all");
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
@@ -746,8 +746,8 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
           <div style={{ width: 1, height: 18, background: "rgba(255,255,255,.1)", margin: "0 2px" }} />
           <div style={{ display: "flex", gap: 3 }}>
             <FilterPill active={statusFilter === "active"} onClick={() => { setStatusFilter("active"); pushFilters(scope, typeFilter, "active"); }}>Active</FilterPill>
-            <FilterPill active={statusFilter === "done"}   onClick={() => { setStatusFilter("done");   pushFilters(scope, typeFilter, "done");   }}>Done</FilterPill>
             <FilterPill active={statusFilter === "all"}    onClick={() => { setStatusFilter("all");    pushFilters(scope, typeFilter, "all");    }}>All</FilterPill>
+            <FilterPill active={statusFilter === "done"}   onClick={() => { setStatusFilter("done");   pushFilters(scope, typeFilter, "done");   }}>Done</FilterPill>
           </div>
         </>)}
         {view === "kanban" && (<>
