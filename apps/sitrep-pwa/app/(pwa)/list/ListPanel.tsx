@@ -332,16 +332,17 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   }
 
   async function handleComplete(item: SitRepItem) {
-    if (item.status === "done") return;
+    if (item.status === "cancelled") return;
+    const newStatus = item.status === "done" ? "open" : "done";
     setCompleting((p) => new Set(p).add(item.id));
     try {
       await fetch(`/api/sitrep/items/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "done", tenantId }),
+        body: JSON.stringify({ status: newStatus, tenantId }),
       });
       setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, status: "done" } : i)),
+        prev.map((i) => (i.id === item.id ? { ...i, status: newStatus } : i)),
       );
     } catch { /* ignore */ }
     setTimeout(
