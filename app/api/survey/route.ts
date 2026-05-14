@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSurvey, getSurveys } from "@/lib/db/supabase-surveys";
+import { createSurvey, getSurveys, createQuestion } from "@/lib/db/supabase-surveys";
 import { getTenant } from "@/lib/tenant";
 
 export async function GET(request: NextRequest) {
@@ -22,7 +22,7 @@ function slugify(text: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, description, id: customId, form_type, status, opp_trigger } = await request.json();
+    const { title, description, id: customId, form_type, status, opp_trigger, questions } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
@@ -46,6 +46,23 @@ export async function POST(request: NextRequest) {
       status: status ?? "draft",
       opp_trigger: opp_trigger ?? null,
     });
+
+    if (Array.isArray(questions) && questions.length > 0) {
+      for (const q of questions) {
+        const qSlug = slugify(q.question_text || "question") || "question";
+        const qId = `${qSlug}-${Math.random().toString(36).slice(2, 6)}`;
+        await createQuestion(survey_id, {
+          id: qId,
+          question_text: q.question_text,
+          question_type: q.question_type,
+          options: Array.isArray(q.options) && q.options.length > 0 ? q.options : null,
+          display_format: q.display_format ?? null,
+          crm_field: q.crm_field ?? null,
+          required: q.required ?? false,
+          order_index: q.order_index,
+        });
+      }
+    }
 
     return NextResponse.json({ survey_id }, { status: 201 });
   } catch (error) {

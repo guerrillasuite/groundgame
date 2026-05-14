@@ -58,6 +58,7 @@ export default function IntakeTypeSelector() {
         ? { enabled: true, mode: "always" }
         : null;
 
+      const defaults = getTypeDefaults(type as any, starter);
       const res = await fetch("/api/survey", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -66,31 +67,11 @@ export default function IntakeTypeSelector() {
           form_type: type,
           status: "draft",
           opp_trigger,
+          questions: defaults,
         }),
       });
       if (!res.ok) throw new Error("Failed to create");
       const { survey_id } = await res.json();
-
-      // Seed default questions in parallel
-      const defaults = getTypeDefaults(type as any, starter);
-      if (defaults.length > 0) {
-        await Promise.all(
-          defaults.map((q) =>
-            fetch(`/api/survey/${survey_id}/questions`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                question_text: q.question_text,
-                question_type: q.question_type,
-                options: q.options ?? [],
-                crm_field: q.crm_field ?? null,
-                required: q.required ?? false,
-                order_index: q.order_index,
-              }),
-            })
-          )
-        );
-      }
 
       router.push(`/crm/intake/${survey_id}/edit`);
     } catch {
