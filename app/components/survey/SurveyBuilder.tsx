@@ -760,22 +760,22 @@ export default function SurveyBuilder({
   return (
     <section className="stack" style={{ maxWidth: 1040, margin: "0 auto" }}>
       <style>{`
-        .gg-q-card { transition: transform 0.1s ease, box-shadow 0.1s ease; }
-        .gg-q-card:not(.gg-q-expanded):hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
-        .gg-q-card:not(.gg-q-expanded):hover { border-color: rgba(37,99,235,0.35) !important; }
-        .gg-q-card .gg-grip { opacity: 0.25; transition: opacity 0.12s; }
-        .gg-q-card:hover .gg-grip { opacity: 0.8; }
-        .gg-q-card .gg-q-actions { opacity: 0.4; transition: opacity 0.1s; }
+        .gg-q-card { transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease; }
+        .gg-q-card:not(.gg-q-expanded):hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0,0,0,0.4) !important; border-color: rgba(37,99,235,0.5) !important; }
+        .gg-q-card .gg-grip { opacity: 0.3; transition: opacity 0.12s; }
+        .gg-q-card:hover .gg-grip { opacity: 0.9; }
+        .gg-q-card .gg-q-actions { opacity: 0.5; transition: opacity 0.1s; }
         .gg-q-card:hover .gg-q-actions { opacity: 1; }
-        @keyframes gg-border-pulse { 0%, 100% { border-color: rgba(37,99,235,0.3); } 50% { border-color: rgba(37,99,235,0.85); } }
+        .gg-section-btn:hover { background: rgba(255,255,255,0.04) !important; }
+        @keyframes gg-border-pulse { 0%, 100% { border-color: rgba(37,99,235,0.35); } 50% { border-color: rgba(37,99,235,0.9); } }
         .gg-add-q-btn { transition: background 0.15s, border-color 0.15s, transform 0.1s; }
-        .gg-add-q-btn:hover { border-color: rgba(37,99,235,0.3) !important; color: var(--gg-primary, #2563eb) !important; transform: translateY(-1px); animation: gg-border-pulse 1.1s ease-in-out infinite; }
+        .gg-add-q-btn:hover { border-color: rgba(37,99,235,0.35) !important; color: var(--gg-primary, #2563eb) !important; transform: translateY(-1px); animation: gg-border-pulse 1.1s ease-in-out infinite; }
       `}</style>
       {/* ── Top bar ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <a
           href="/crm/intake"
-          style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 14, opacity: 0.6, textDecoration: "none" }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 14, color: "var(--gg-dim, rgb(134 150 168))", textDecoration: "none" }}
         >
           <ArrowLeft size={14} /> Intake
         </a>
@@ -876,7 +876,7 @@ export default function SurveyBuilder({
 
         {/* Front-facing header / description */}
         <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.4, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Front-facing text</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--gg-dim, rgb(134 150 168))", letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Front-facing text</div>
           <FloatingInput
             label="Public Header"
             value={displayTitle}
@@ -925,9 +925,9 @@ export default function SurveyBuilder({
 
         {/* Public URL Slug */}
         <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.5, letterSpacing: "0.06em", textTransform: "uppercase" as const }}>Public URL Slug</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--gg-dim, rgb(134 150 168))", letterSpacing: "0.06em", textTransform: "uppercase" as const }}>Public URL Slug</div>
           <div style={{ display: "flex", alignItems: "center", gap: 0, borderBottom: "2px solid var(--gg-border, #e5e7eb)", paddingBottom: 4 }}>
-            <span style={{ fontSize: 13, opacity: 0.4, whiteSpace: "nowrap", paddingRight: 2 }}>/s/</span>
+            <span style={{ fontSize: 13, color: "var(--gg-dim, rgb(134 150 168))", whiteSpace: "nowrap", paddingRight: 2 }}>/s/</span>
             <input
               type="text"
               value={publicSlug}
@@ -941,7 +941,7 @@ export default function SurveyBuilder({
               </button>
             )}
           </div>
-          {!isNew && <p style={{ margin: 0, fontSize: 11, opacity: 0.4 }}>Old URL (<code>/s/{surveyId}</code>) still works after renaming.</p>}
+          {!isNew && <p style={{ margin: 0, fontSize: 11, color: "var(--gg-dim, rgb(134 150 168))" }}>Old URL (<code>/s/{surveyId}</code>) still works after renaming.</p>}
         </div>
 
         {/* Thank You Message */}
@@ -1060,7 +1060,7 @@ export default function SurveyBuilder({
 
         {/* Identity & Appearance group */}
         <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Identity & Appearance</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--gg-dim, rgb(134 150 168))" }}>Identity & Appearance</div>
           <ToggleRow checked={logoDisplayEnabled} onChange={setLogoDisplayEnabled} note="Show your organization's logo at the top of the form.">
             Display Logo
           </ToggleRow>
@@ -1072,7 +1072,7 @@ export default function SurveyBuilder({
 
         {/* Notifications group */}
         <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Notifications</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--gg-dim, rgb(134 150 168))" }}>Notifications</div>
 
           {/* Staff notification emails */}
           <div style={{ display: "grid", gap: 8 }}>
@@ -1119,7 +1119,7 @@ export default function SurveyBuilder({
 
         {/* Submissions group */}
         <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Submissions</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--gg-dim, rgb(134 150 168))" }}>Submissions</div>
 
           <ToggleRow checked={allowMultiple} onChange={setAllowMultiple} note="By default one submission per contact is allowed. Turn on to allow repeated submissions.">
             Allow Multiple Submissions
@@ -1146,7 +1146,7 @@ export default function SurveyBuilder({
         {/* Pipeline group — opp/custom/survey only */}
         {(formType === "custom" || formType === "survey" || formType === "opportunity") && (
           <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Pipeline</div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--gg-dim, rgb(134 150 168))" }}>Pipeline</div>
 
             <div style={{ display: "grid", gap: 8 }}>
               <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: formType === "opportunity" ? "default" : "pointer" }}>
@@ -1283,7 +1283,7 @@ export default function SurveyBuilder({
 
         {/* Submission limits */}
         <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Limits</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--gg-dim, rgb(134 150 168))" }}>Limits</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div style={{ display: "grid", gap: 6 }}>
               <label style={labelStyle}>Max Submissions <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
@@ -2265,7 +2265,7 @@ const inputStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
-  opacity: 0.6,
+  color: "var(--gg-dim, rgb(134 150 168))",
   textTransform: "uppercase",
   letterSpacing: "0.04em",
   color: "inherit",
@@ -2825,33 +2825,34 @@ function SectionCard({
 }) {
   return (
     <div style={{
-      borderRadius: 10,
+      borderRadius: 12,
       borderLeft: open ? "3px solid var(--gg-primary, #2563eb)" : "1px solid var(--gg-border, #e5e7eb)",
       borderTop: "1px solid var(--gg-border, #e5e7eb)",
       borderRight: "1px solid var(--gg-border, #e5e7eb)",
       borderBottom: "1px solid var(--gg-border, #e5e7eb)",
       background: "var(--gg-card, white)",
-      boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07)",
       overflow: "hidden",
     }}>
       <button
         type="button"
+        className="gg-section-btn"
         onClick={onToggle}
         style={{
           width: "100%", display: "flex", alignItems: "center", gap: 8,
           padding: "14px 20px", background: "none", border: "none",
           borderBottom: open ? "1px solid var(--gg-border, #e5e7eb)" : "none",
-          cursor: "pointer", textAlign: "left",
+          cursor: "pointer", textAlign: "left", transition: "background 0.15s",
         }}
       >
         <span style={{ fontSize: 14, fontWeight: 700, flex: 1 }}>{title}</span>
         {headerExtra}
         {!open && summary && (
-          <span style={{ fontSize: 12, opacity: 0.45, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 12, color: "var(--gg-dim, rgb(134 150 168))", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {summary}
           </span>
         )}
-        <ChevronRight size={16} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 200ms ease", opacity: 0.4, flexShrink: 0 }} />
+        <ChevronRight size={16} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 200ms ease", opacity: 0.6, flexShrink: 0 }} />
       </button>
       <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 200ms ease", overflow: "hidden" }}>
         <div style={{ minHeight: 0 }}>

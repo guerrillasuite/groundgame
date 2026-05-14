@@ -89,7 +89,7 @@ export default async function IntakePage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em" }}>Intake</h1>
-          <p style={{ margin: "4px 0 0", opacity: 0.5, fontSize: 14 }}>
+          <p style={{ margin: "4px 0 0", color: "var(--gg-dim, rgb(134 150 168))", fontSize: 14 }}>
             Forms, surveys, and data collection
           </p>
         </div>
@@ -114,6 +114,7 @@ export default async function IntakePage() {
           borderRadius: 12, padding: "56px 48px",
           textAlign: "center",
           border: "1px solid var(--gg-border, #e5e7eb)",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07)",
         }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>📋</div>
           <h3 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 8px" }}>No forms yet</h3>
@@ -143,6 +144,7 @@ export default async function IntakePage() {
           background: "var(--gg-card, white)",
           borderRadius: 12,
           border: "1px solid var(--gg-border, #e5e7eb)",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07)",
           overflow: "hidden",
         }}>
           {/* Table header */}
@@ -155,7 +157,7 @@ export default async function IntakePage() {
             fontWeight: 700,
             textTransform: "uppercase",
             letterSpacing: "0.06em",
-            opacity: 0.45,
+            color: "var(--gg-dim, rgb(134 150 168))",
             gap: 12,
           }}>
             <span>Name</span>
@@ -193,7 +195,7 @@ export default async function IntakePage() {
                     {survey.title}
                   </Link>
                   {survey.description && (
-                    <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: 12, color: "var(--gg-dim, rgb(134 150 168))", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {survey.description}
                     </div>
                   )}
@@ -211,7 +213,7 @@ export default async function IntakePage() {
                 </div>
 
                 {/* Updated */}
-                <div style={{ textAlign: "right", fontSize: 12, opacity: 0.5 }}>
+                <div style={{ textAlign: "right", fontSize: 12, color: "var(--gg-dim, rgb(134 150 168))" }}>
                   {relTime(survey.updated_at)}
                 </div>
 
