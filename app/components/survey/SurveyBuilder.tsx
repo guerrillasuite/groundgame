@@ -1195,31 +1195,33 @@ export default function SurveyBuilder({
                     </div>
                   </div>
                   <OppTitleTemplateEditor value={oppTitleTemplate} onChange={setOppTitleTemplate} />
-                  <div>
-                    <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Default intake form for</label>
-                    <p style={{ margin: "0 0 6px", fontSize: 12, opacity: 0.6 }}>After an opportunity is created in a field session, this form will be shown to capture details.</p>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"], ["take_survey", "Take Survey"], ["storefront", "Storefront"]].map(([ch, label]) => (
-                        <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
-                          <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
-                            const next = new Set(opIntakeChannels);
-                            if (e.target.checked) next.add(ch); else next.delete(ch);
-                            setOpIntakeChannels(next);
-                          }} style={{ display: "none" }} />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
                   <div style={{ display: "grid", gap: 6, paddingTop: 10, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
                     <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                       <input type="checkbox" checked={deliveryEnabled} onChange={(e) => setDeliveryEnabled(e.target.checked)} />
                       Enable Delivery Option
                     </label>
-                    {deliveryEnabled && <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>Respondents can choose Pickup or Delivery. When Delivery is selected, an address form is shown and required before submit.</p>}
+                    {deliveryEnabled && <p style={{ margin: 0, fontSize: 12, color: "var(--gg-dim)" }}>Respondents can choose Pickup or Delivery. When Delivery is selected, an address form is shown and required before submit.</p>}
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Default App Intake — independent of opp trigger */}
+            <div style={{ display: "grid", gap: 8, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+              <label style={{ ...labelStyle, marginBottom: 0, display: "block" }}>Default App Intake</label>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "var(--gg-dim)" }}>Select which field session types should open this form by default.</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"], ["take_survey", "Take Survey"], ["storefront", "Storefront"]].map(([ch, label]) => (
+                  <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
+                    <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
+                      const next = new Set(opIntakeChannels);
+                      if (e.target.checked) next.add(ch); else next.delete(ch);
+                      setOpIntakeChannels(next);
+                    }} style={{ display: "none" }} />
+                    {label}
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -1416,6 +1418,7 @@ export default function SurveyBuilder({
                 borderRadius: 12,
                 border: `1px solid ${expanded ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
                 position: "relative",
+                zIndex: qMenuOpenId === q.id ? 10 : undefined,
               }}
             >
               {/* Question header row */}
@@ -1451,12 +1454,12 @@ export default function SurveyBuilder({
                       type="button"
                       title="More actions"
                       onClick={() => setQMenuOpenId(qMenuOpenId === q.id ? null : q.id)}
-                      style={{ border: "none", background: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4, lineHeight: 1, fontSize: 16, fontWeight: 700, opacity: 0.5, letterSpacing: 1, display: "flex", alignItems: "center" }}
+                      style={{ border: "1px solid transparent", background: qMenuOpenId === q.id ? "rgba(255,255,255,0.08)" : "none", cursor: "pointer", padding: "3px 7px", borderRadius: 5, lineHeight: 1, fontSize: 15, fontWeight: 900, color: "var(--gg-dim, rgb(134 150 168))", letterSpacing: 2, display: "flex", alignItems: "center", transition: "background 0.12s, color 0.12s" }}
                     >
                       ···
                     </button>
                     {qMenuOpenId === q.id && (
-                      <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: "var(--gg-card, white)", border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 140, overflow: "hidden" }}>
+                      <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 400, background: "var(--gg-card, white)", border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 8, boxShadow: "0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07)", minWidth: 148, overflow: "hidden" }}>
                         <button type="button" onClick={() => { duplicateQuestion(q.id); setQMenuOpenId(null); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, textAlign: "left" as const, color: "inherit" }}>
                           <Copy size={13} /> Duplicate
                         </button>
