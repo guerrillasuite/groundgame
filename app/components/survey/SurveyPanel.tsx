@@ -690,7 +690,7 @@ export default function SurveyPanel({
                             : <input type={qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "date" ? "date" : "text"} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"} style={input} />
                         )}
                         {(qType === "approval_voting" || qType === "star_voting") && (() => {
-                          const candidates = (q.options ?? []).filter((c: string) => c.trim());
+                          const candidates = (shuffledOptionsMap[q.id] ?? q.options ?? []).filter((c: string) => c.trim());
                           const ballot: Record<string, any> = (() => { try { return val ? JSON.parse(val) : {}; } catch { return {}; } })();
                           const approvalChoices = ["approve", "neutral", "disapprove"] as const;
                           return (
@@ -1001,7 +1001,7 @@ export default function SurveyPanel({
 
           {/* Approval Voting / STAR Voting */}
           {(qType === "approval_voting" || qType === "star_voting") && (() => {
-            const candidates = (currentQuestion?.options ?? []).filter((c: string) => c.trim());
+            const candidates = (shuffledOptionsMap[currentQuestion.id] ?? currentQuestion?.options ?? []).filter((c: string) => c.trim());
             const ballot: Record<string, any> = (() => { try { return JSON.parse(answers[currentQuestion.id] ?? "{}"); } catch { return {}; } })();
             const allRated = candidates.length > 0 && candidates.every((c: string) => ballot[c] !== undefined && ballot[c] !== null);
             const approvalChoices = ["approve", "neutral", "disapprove"] as const;

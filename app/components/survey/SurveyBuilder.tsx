@@ -1621,7 +1621,7 @@ export default function SurveyBuilder({
                       </div>
                     )}
 
-                    {isChoice && (
+                    {(isChoice || q.question_type === "approval_voting" || q.question_type === "star_voting") && (
                       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer", paddingBottom: 2 }}>
                         <input
                           type="checkbox"
@@ -1629,7 +1629,7 @@ export default function SurveyBuilder({
                           onChange={(e) => updateQuestion(q.id, { randomize_choices: e.target.checked })}
                           style={{ width: 16, height: 16, cursor: "pointer" }}
                         />
-                        Randomize choices
+                        {(q.question_type === "approval_voting" || q.question_type === "star_voting") ? "Randomize candidates" : "Randomize choices"}
                       </label>
                     )}
 
