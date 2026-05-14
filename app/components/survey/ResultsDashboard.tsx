@@ -7,12 +7,31 @@ import { useSearchParams, useRouter } from 'next/navigation';
 interface QuestionResult {
   question_id: string;
   question_text: string;
+  question_type?: string;
   total_responses: number;
   answers: {
     value: string;
     count: number;
     percentage: number;
+    // Approval voting
+    approve?: number;
+    neutral?: number;
+    disapprove?: number;
+    approvePercent?: number;
+    neutralPercent?: number;
+    disapprovePercent?: number;
+    // STAR voting
+    totalScore?: number;
+    averageScore?: number;
   }[];
+  starRunoff?: {
+    finalist1: string;
+    finalist2: string;
+    finalist1Preferences: number;
+    finalist2Preferences: number;
+    ties: number;
+    winner: string | null;
+  };
 }
 
 interface QuizDot { personalScore: number; economicScore: number; result: string }
@@ -565,52 +584,116 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
             <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 8px 0' }}>
               Question {idx + 1}: {question.question_text}
             </h2>
-            <p style={{ fontSize: 13, opacity: 0.6, margin: 0 }}>
+            <p style={{ fontSize: 13, color: 'var(--gg-dim)', margin: 0 }}>
               {question.total_responses} {question.total_responses === 1 ? 'response' : 'responses'}
             </p>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {question.answers.map((answer, answerIdx) => (
-              <div key={`${answer.value}-${answerIdx}`}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  marginBottom: 8 
-                }}>
-                  <span style={{ fontSize: 14, fontWeight: 500 }}>
-                    {answer.value}
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 13, opacity: 0.7 }}>
-                      {answer.count} {answer.count === 1 ? 'vote' : 'votes'}
-                    </span>
-                    <span style={{ fontSize: 14, fontWeight: 700, minWidth: 48, textAlign: 'right' }}>
-                      {Math.round(answer.percentage)}%
-                    </span>
+          {/* ── Approval Voting ── */}
+          {question.question_type === 'approval_voting' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {question.answers.map((a) => {
+                const total = a.count || 1;
+                return (
+                  <div key={a.value}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>{a.value}</span>
+                      <span style={{ fontSize: 12, color: 'var(--gg-dim)' }}>
+                        {a.approve ?? 0} approve · {a.neutral ?? 0} neutral · {a.disapprove ?? 0} disapprove
+                      </span>
+                    </div>
+                    <div style={{ height: 20, borderRadius: 6, overflow: 'hidden', display: 'flex', background: 'rgba(0,0,0,0.06)' }}>
+                      <div style={{ width: `${(a.approvePercent ?? 0)}%`, background: '#16a34a', transition: 'width 0.5s' }} title={`Approve ${Math.round(a.approvePercent ?? 0)}%`} />
+                      <div style={{ width: `${(a.neutralPercent ?? 0)}%`, background: 'rgba(100,116,139,0.5)', transition: 'width 0.5s' }} title={`Neutral ${Math.round(a.neutralPercent ?? 0)}%`} />
+                      <div style={{ width: `${(a.disapprovePercent ?? 0)}%`, background: '#dc2626', transition: 'width 0.5s' }} title={`Disapprove ${Math.round(a.disapprovePercent ?? 0)}%`} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, marginTop: 4, fontSize: 11, color: 'var(--gg-dim)' }}>
+                      <span style={{ color: '#16a34a', fontWeight: 600 }}>{Math.round(a.approvePercent ?? 0)}% Approve</span>
+                      <span>{Math.round(a.neutralPercent ?? 0)}% Neutral</span>
+                      <span style={{ color: '#dc2626', fontWeight: 600 }}>{Math.round(a.disapprovePercent ?? 0)}% Disapprove</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── STAR Voting ── */}
+          {question.question_type === 'star_voting' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {question.answers.map((a, i) => {
+                const isFinalist = question.starRunoff && (a.value === question.starRunoff.finalist1 || a.value === question.starRunoff.finalist2);
+                const maxScore = question.answers[0]?.totalScore ?? 1;
+                return (
+                  <div key={a.value} style={{ padding: isFinalist ? '10px 12px' : '0', borderRadius: 8, border: isFinalist ? '1.5px solid rgba(217,119,6,0.4)' : 'none', background: isFinalist ? 'rgba(217,119,6,0.06)' : 'transparent' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700 }}>{a.value}</span>
+                        {isFinalist && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: 'rgba(217,119,6,0.15)', color: '#d97706', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Finalist</span>}
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gg-dim)', fontVariantNumeric: 'tabular-nums' }}>
+                        {a.totalScore ?? 0} pts · {(a.averageScore ?? 0).toFixed(1)} avg
+                      </span>
+                    </div>
+                    <div style={{ height: 10, borderRadius: 5, overflow: 'hidden', background: 'rgba(0,0,0,0.06)' }}>
+                      <div style={{ width: `${maxScore > 0 ? ((a.totalScore ?? 0) / maxScore) * 100 : 0}%`, height: '100%', background: 'linear-gradient(90deg, #f59e0b, #d97706)', borderRadius: 5, transition: 'width 0.5s' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 3, marginTop: 6 }}>
+                      {Array.from({ length: 5 }, (_, si) => (
+                        <div key={si} style={{ height: 4, flex: 1, borderRadius: 2, background: si < Math.round(a.averageScore ?? 0) ? '#f59e0b' : 'rgba(0,0,0,0.08)' }} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* STAR Runoff Result */}
+              {question.starRunoff && (
+                <div style={{ marginTop: 8, padding: '14px 16px', borderRadius: 10, background: 'rgba(37,99,235,0.06)', border: '1.5px solid rgba(37,99,235,0.2)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--gg-dim)', marginBottom: 8 }}>STAR Runoff</div>
+                  <div style={{ fontSize: 14, marginBottom: 6 }}>
+                    <strong>{question.starRunoff.finalist1}</strong> vs <strong>{question.starRunoff.finalist2}</strong>
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--gg-dim)', marginBottom: 8 }}>
+                    {question.starRunoff.finalist1Preferences} preferred {question.starRunoff.finalist1} &nbsp;·&nbsp;
+                    {question.starRunoff.finalist2Preferences} preferred {question.starRunoff.finalist2}
+                    {question.starRunoff.ties > 0 && ` · ${question.starRunoff.ties} tied`}
+                  </div>
+                  {question.starRunoff.winner ? (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, background: 'rgba(37,99,235,0.12)', border: '1.5px solid rgba(37,99,235,0.3)' }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--gg-primary, #2563eb)' }}>Winner: {question.starRunoff.winner}</span>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gg-dim)' }}>Runoff tied — no winner determined</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Standard types ── */}
+          {question.question_type !== 'approval_voting' && question.question_type !== 'star_voting' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {question.answers.map((answer, answerIdx) => (
+                <div key={`${answer.value}-${answerIdx}`}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500 }}>{answer.value}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 13, color: 'var(--gg-dim)' }}>
+                        {answer.count} {answer.count === 1 ? 'vote' : 'votes'}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 700, minWidth: 48, textAlign: 'right' }}>
+                        {Math.round(answer.percentage)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ width: '100%', height: 12, background: 'rgba(0,0,0,0.05)', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ width: `${answer.percentage}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #2563eb)', borderRadius: 6, transition: 'width 0.5s ease-out' }} />
                   </div>
                 </div>
-                <div style={{ 
-                  width: '100%', 
-                  height: 12, 
-                  background: 'rgba(0,0,0,0.05)', 
-                  borderRadius: 6, 
-                  overflow: 'hidden' 
-                }}>
-                  <div
-                    style={{
-                      width: `${answer.percentage}%`,
-                      height: '100%',
-                      background: 'linear-gradient(90deg, #3b82f6, #2563eb)',
-                      borderRadius: 6,
-                      transition: 'width 0.5s ease-out'
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       ))}
 

@@ -27,7 +27,9 @@ type QuestionType =
   | "number"
   | "email"
   | "phone"
-  | "product_picker";
+  | "product_picker"
+  | "approval_voting"
+  | "star_voting";
 
 type DisplayFormat = "list" | "dropdown" | null;
 
@@ -500,6 +502,12 @@ export default function SurveyBuilder({
         let display_format = q.display_format;
         if (type === "yes_no") { options = ["Yes", "No"]; display_format = null; }
         else if (type === "rating") { options = ["5"]; display_format = null; }
+        else if (type === "approval_voting" || type === "star_voting") {
+          // Preserve candidate list when switching between voting types
+          const isVotingNow = q.question_type === "approval_voting" || q.question_type === "star_voting";
+          options = isVotingNow && options.length >= 2 ? options : ["", ""];
+          display_format = null;
+        }
         else if (!CHOICE_TYPES.includes(type)) { options = []; display_format = null; }
         else if (options.length === 0) options = ["", ""];
         if (!CHOICE_TYPES.includes(type)) display_format = null;
@@ -1565,6 +1573,10 @@ export default function SurveyBuilder({
                         <optgroup label="Storefront">
                           <option value="product_picker">Product Picker</option>
                         </optgroup>
+                        <optgroup label="Voting">
+                          <option value="approval_voting">Approval Voting</option>
+                          <option value="star_voting">STAR Voting (0–5)</option>
+                        </optgroup>
                       </select>
                     </div>
 
@@ -1737,6 +1749,47 @@ export default function SurveyBuilder({
                       >
                         <Plus size={13} /> Add choice
                       </button>
+                    </div>
+                  )}
+
+                  {/* Candidate editor for voting types */}
+                  {(q.question_type === "approval_voting" || q.question_type === "star_voting") && (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <label style={labelStyle}>Candidates</label>
+                      {q.options.map((opt, oi) => (
+                        <div key={oi} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <span style={{ fontSize: 12, color: "var(--gg-dim)", minWidth: 14 }}>{oi + 1}.</span>
+                          <input
+                            type="text"
+                            value={opt}
+                            onChange={(e) => setOptionText(q.id, oi, e.target.value)}
+                            placeholder={`Candidate ${oi + 1}`}
+                            style={{ ...inputStyle, flex: 1 }}
+                          />
+                          {q.options.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => removeOption(q.id, oi)}
+                              style={{ border: "none", background: "none", cursor: "pointer", padding: 4, opacity: 0.4, lineHeight: 1, color: "var(--gg-text, inherit)" }}
+                              title="Remove candidate"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => addOption(q.id)}
+                        style={{ ...ghostBtnStyle, padding: "6px 12px" }}
+                      >
+                        <Plus size={13} /> Add candidate
+                      </button>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--gg-dim)" }}>
+                        {q.question_type === "approval_voting"
+                          ? "Respondents will Approve, Stay Neutral, or Disapprove of each candidate."
+                          : "Respondents score each candidate 0–5. Results use STAR tabulation: score round → automatic head-to-head runoff."}
+                      </p>
                     </div>
                   )}
 
@@ -2306,6 +2359,8 @@ const QUESTION_TYPE_META: Record<string, { label: string; color: string; bg: str
   email:                      { label: "Email",                color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
   phone:                      { label: "Phone",                color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
   product_picker:             { label: "Product Picker",       color: "#0d9488", bg: "rgba(13,148,136,0.13)" },
+  approval_voting:            { label: "Approval Voting",      color: "#059669", bg: "rgba(5,150,105,0.13)"  },
+  star_voting:                { label: "STAR Voting",          color: "#d97706", bg: "rgba(217,119,6,0.13)"  },
 };
 
 // ── CRM Field Picker ──────────────────────────────────────────────────────────

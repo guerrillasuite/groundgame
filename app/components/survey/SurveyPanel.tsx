@@ -597,6 +597,13 @@ export default function SurveyPanel({
       if (q.question_type === "product_picker") {
         try { const items = JSON.parse(answers[q.id] || "[]"); return items.length > 0 && items.every((i: any) => i.product_id && i.qty >= 1); } catch { return false; }
       }
+      if (q.question_type === "approval_voting" || q.question_type === "star_voting") {
+        try {
+          const ballot = JSON.parse(answers[q.id] || "{}");
+          const candidates = (q.options ?? []).filter((c: string) => c.trim());
+          return candidates.length > 0 && candidates.every((c: string) => ballot[c] !== undefined && ballot[c] !== null);
+        } catch { return false; }
+      }
       return Boolean(answers[q.id]);
     });
     const deliveryValid = !deliveryEnabled || deliveryMode === "pickup" || deliveryAddr.address_line1.trim();
@@ -682,6 +689,58 @@ export default function SurveyPanel({
                             ? <textarea rows={3} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder="Your answer…" style={{ ...input, resize: "vertical" }} />
                             : <input type={qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "date" ? "date" : "text"} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"} style={input} />
                         )}
+                        {(qType === "approval_voting" || qType === "star_voting") && (() => {
+                          const candidates = (q.options ?? []).filter((c: string) => c.trim());
+                          const ballot: Record<string, any> = (() => { try { return val ? JSON.parse(val) : {}; } catch { return {}; } })();
+                          const approvalChoices = ["approve", "neutral", "disapprove"] as const;
+                          return (
+                            <div style={{ overflowX: "auto" }}>
+                              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 340 }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ textAlign: "left", fontSize: 11, fontWeight: 700, color: textColor, opacity: 0.55, padding: "0 8px 8px 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>Candidate</th>
+                                    {qType === "approval_voting"
+                                      ? approvalChoices.map(c => <th key={c} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: textColor, opacity: 0.55, padding: "0 4px 8px", minWidth: 82, textTransform: "capitalize" }}>{c}</th>)
+                                      : [0,1,2,3,4,5].map(s => <th key={s} style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: textColor, opacity: 0.55, padding: "0 3px 8px", minWidth: 38 }}>{s}</th>)
+                                    }
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {candidates.map((candidate, ci) => (
+                                    <tr key={candidate} style={{ borderTop: `1px solid ${borderColor}` }}>
+                                      <td style={{ fontSize: 13, padding: "8px 8px 8px 0", color: textColor, fontWeight: 500 }}>{candidate}</td>
+                                      {qType === "approval_voting"
+                                        ? approvalChoices.map(choice => {
+                                            const isSel = ballot[candidate] === choice;
+                                            const cc = choice === "approve" ? "#16a34a" : choice === "disapprove" ? "#dc2626" : primaryColor;
+                                            return (
+                                              <td key={choice} style={{ textAlign: "center", padding: "5px 3px" }}>
+                                                <button type="button" onClick={() => { const next = { ...ballot, [candidate]: choice }; setAnswers({ ...answers, [q.id]: JSON.stringify(next) }); }}
+                                                  style={{ padding: "5px 8px", borderRadius: 6, fontSize: 13, fontWeight: 700, border: `2px solid ${isSel ? cc : borderColor}`, background: isSel ? `${cc}22` : "transparent", color: isSel ? cc : textColor, cursor: "pointer" }}>
+                                                  {choice === "approve" ? "✓" : choice === "disapprove" ? "✗" : "–"}
+                                                </button>
+                                              </td>
+                                            );
+                                          })
+                                        : [0,1,2,3,4,5].map(score => {
+                                            const isSel = ballot[candidate] === score;
+                                            return (
+                                              <td key={score} style={{ textAlign: "center", padding: "5px 2px" }}>
+                                                <button type="button" onClick={() => { const next = { ...ballot, [candidate]: score }; setAnswers({ ...answers, [q.id]: JSON.stringify(next) }); }}
+                                                  style={{ width: 34, height: 34, borderRadius: 7, fontSize: 13, fontWeight: 700, border: `2px solid ${isSel ? primaryColor : borderColor}`, background: isSel ? `${primaryColor}22` : "transparent", color: isSel ? primaryColor : textColor, cursor: "pointer" }}>
+                                                  {score}
+                                                </button>
+                                              </td>
+                                            );
+                                          })
+                                      }
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        })()}
                         {qType === "product_picker" && (
                           <ProductPickerField
                             questionId={q.id}
@@ -939,6 +998,70 @@ export default function SurveyPanel({
               </div>
             </>
           )}
+
+          {/* Approval Voting / STAR Voting */}
+          {(qType === "approval_voting" || qType === "star_voting") && (() => {
+            const candidates = (currentQuestion?.options ?? []).filter((c: string) => c.trim());
+            const ballot: Record<string, any> = (() => { try { return JSON.parse(answers[currentQuestion.id] ?? "{}"); } catch { return {}; } })();
+            const allRated = candidates.length > 0 && candidates.every((c: string) => ballot[c] !== undefined && ballot[c] !== null);
+            const approvalChoices = ["approve", "neutral", "disapprove"] as const;
+            return (
+              <div>
+                <div style={{ overflowX: "auto", marginBottom: 16 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 340 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left", fontSize: 11, fontWeight: 700, color: textColor, opacity: 0.55, padding: "0 8px 10px 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>Candidate</th>
+                        {qType === "approval_voting"
+                          ? approvalChoices.map(c => <th key={c} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: textColor, opacity: 0.55, padding: "0 6px 10px", minWidth: 88, textTransform: "capitalize" }}>{c}</th>)
+                          : [0,1,2,3,4,5].map(s => <th key={s} style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: textColor, opacity: 0.55, padding: "0 4px 10px", minWidth: 44 }}>{s}</th>)
+                        }
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {candidates.map((candidate: string) => (
+                        <tr key={candidate} style={{ borderTop: `1px solid ${borderColor}` }}>
+                          <td style={{ fontSize: 15, padding: "10px 8px 10px 0", color: textColor, fontWeight: 500 }}>{candidate}</td>
+                          {qType === "approval_voting"
+                            ? approvalChoices.map(choice => {
+                                const isSel = ballot[candidate] === choice;
+                                const cc = choice === "approve" ? "#16a34a" : choice === "disapprove" ? "#ef4444" : primaryColor;
+                                return (
+                                  <td key={choice} style={{ textAlign: "center", padding: "8px 4px" }}>
+                                    <button onClick={() => { const next = { ...ballot, [candidate]: choice }; setAnswers({ ...answers, [currentQuestion.id]: JSON.stringify(next) }); }}
+                                      style={{ padding: "8px 12px", borderRadius: 8, fontSize: 16, fontWeight: 700, border: `2px solid ${isSel ? cc : borderColor}`, background: isSel ? `${cc}22` : "transparent", color: isSel ? cc : textColor, cursor: "pointer", minWidth: 48 }}>
+                                      {choice === "approve" ? "✓" : choice === "disapprove" ? "✗" : "–"}
+                                    </button>
+                                  </td>
+                                );
+                              })
+                            : [0,1,2,3,4,5].map(score => {
+                                const isSel = ballot[candidate] === score;
+                                return (
+                                  <td key={score} style={{ textAlign: "center", padding: "6px 3px" }}>
+                                    <button onClick={() => { const next = { ...ballot, [candidate]: score }; setAnswers({ ...answers, [currentQuestion.id]: JSON.stringify(next) }); }}
+                                      style={{ width: 42, height: 42, borderRadius: 8, fontSize: 16, fontWeight: 700, border: `2px solid ${isSel ? primaryColor : borderColor}`, background: isSel ? `${primaryColor}22` : "transparent", color: isSel ? primaryColor : textColor, cursor: "pointer" }}>
+                                      {score}
+                                    </button>
+                                  </td>
+                                );
+                              })
+                          }
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  onClick={() => selectAnswer(answers[currentQuestion.id] ?? "{}")}
+                  style={btn(primaryColor)}
+                  disabled={currentQuestion?.required && !allRated}
+                >
+                  {current === totalQuestions - 1 ? "Submit →" : "Next →"}
+                </button>
+              </div>
+            );
+          })()}
 
           {/* Open-ended types */}
           {OPEN_TYPES.includes(qType) && (

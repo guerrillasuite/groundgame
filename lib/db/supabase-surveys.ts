@@ -552,6 +552,81 @@ export async function getSurveyResults(surveyId: string, tenantId: string) {
   const questionResults = (questions ?? []).map((q) => {
     const qResponses = (responses ?? []).filter((r: any) => r.question_id === q.id);
     const total = qResponses.length;
+
+    // ── Approval Voting ──
+    if (q.question_type === "approval_voting") {
+      const cMap = new Map<string, { approve: number; neutral: number; disapprove: number }>();
+      for (const r of qResponses) {
+        let ballot: Record<string, string> = {};
+        try { ballot = JSON.parse(r.answer_value); } catch { /* skip malformed */ }
+        for (const [candidate, choice] of Object.entries(ballot)) {
+          if (!cMap.has(candidate)) cMap.set(candidate, { approve: 0, neutral: 0, disapprove: 0 });
+          const c = cMap.get(candidate)!;
+          if (choice === "approve") c.approve++;
+          else if (choice === "disapprove") c.disapprove++;
+          else c.neutral++;
+        }
+      }
+      const answers = Array.from(cMap.entries())
+        .map(([candidate, c]) => ({
+          value: candidate,
+          count: total,
+          percentage: total > 0 ? (c.approve / total) * 100 : 0,
+          approve: c.approve,
+          neutral: c.neutral,
+          disapprove: c.disapprove,
+          approvePercent: total > 0 ? (c.approve / total) * 100 : 0,
+          neutralPercent: total > 0 ? (c.neutral / total) * 100 : 0,
+          disapprovePercent: total > 0 ? (c.disapprove / total) * 100 : 0,
+        }))
+        .sort((a, b) => b.approve - a.approve);
+      return { question_id: q.id, question_text: q.question_text, question_type: q.question_type, total_responses: total, answers };
+    }
+
+    // ── STAR Voting ──
+    if (q.question_type === "star_voting") {
+      const scoreMap = new Map<string, { total: number; count: number }>();
+      const ballots: Record<string, number>[] = [];
+      for (const r of qResponses) {
+        let ballot: Record<string, number> = {};
+        try { ballot = JSON.parse(r.answer_value); } catch { /* skip */ }
+        if (Object.keys(ballot).length === 0) continue;
+        ballots.push(ballot);
+        for (const [candidate, score] of Object.entries(ballot)) {
+          if (!scoreMap.has(candidate)) scoreMap.set(candidate, { total: 0, count: 0 });
+          const s = scoreMap.get(candidate)!;
+          s.total += Number(score);
+          s.count++;
+        }
+      }
+      const answers = Array.from(scoreMap.entries())
+        .map(([candidate, s]) => ({
+          value: candidate,
+          count: s.count,
+          percentage: 0,
+          totalScore: s.total,
+          averageScore: s.count > 0 ? Math.round((s.total / s.count) * 10) / 10 : 0,
+        }))
+        .sort((a, b) => b.totalScore - a.totalScore);
+
+      let starRunoff: { finalist1: string; finalist2: string; finalist1Preferences: number; finalist2Preferences: number; ties: number; winner: string | null } | undefined;
+      if (answers.length >= 2) {
+        const f1 = answers[0].value;
+        const f2 = answers[1].value;
+        let f1Prefs = 0, f2Prefs = 0, ties = 0;
+        for (const ballot of ballots) {
+          const s1 = ballot[f1] ?? 0;
+          const s2 = ballot[f2] ?? 0;
+          if (s1 > s2) f1Prefs++;
+          else if (s2 > s1) f2Prefs++;
+          else ties++;
+        }
+        starRunoff = { finalist1: f1, finalist2: f2, finalist1Preferences: f1Prefs, finalist2Preferences: f2Prefs, ties, winner: f1Prefs > f2Prefs ? f1 : f2Prefs > f1Prefs ? f2 : null };
+      }
+      return { question_id: q.id, question_text: q.question_text, question_type: q.question_type, total_responses: total, answers, starRunoff };
+    }
+
+    // ── Standard types ──
     const isMultiSelect = MULTI_SELECT_TYPES.has(q.question_type);
     const counts = new Map<string, number>();
 
@@ -585,6 +660,7 @@ export async function getSurveyResults(surveyId: string, tenantId: string) {
     return {
       question_id: q.id,
       question_text: q.question_text,
+      question_type: q.question_type,
       total_responses: total,
       answers,
     };
