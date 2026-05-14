@@ -54,6 +54,9 @@ interface SurveyPanelProps {
   viewConfig?: { pagination?: string; page_groups?: string[][][] | null };
   deliveryEnabled?: boolean;
   orderProducts?: string[] | null;
+  passwordProtected?: boolean;
+  showResultsAfterSub?: boolean;
+  resultsDisplayMode?: string;
 }
 
 // ── WSPQ scoring ───────────────────────────────────────────────────────────────
@@ -243,8 +246,46 @@ export default function SurveyPanel({
   viewConfig,
   deliveryEnabled,
   orderProducts,
+  passwordProtected = false,
+  showResultsAfterSub = false,
+  resultsDisplayMode = "none",
 }: SurveyPanelProps) {
   const isWspq = surveyId.startsWith("wspq-");
+
+  // Password gate
+  const [pwVerified, setPwVerified] = useState(!passwordProtected);
+  const [pwInput, setPwInput] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwChecking, setPwChecking] = useState(false);
+
+  // Post-submit results (populated from panel-submit response when show_results_after_submission is on)
+  type AggregateAnswer = { value: string; count: number; pct: number };
+  type AggregateQuestion = { question_id: string; question_text: string; question_type: string; answers: AggregateAnswer[] };
+  type PostSubmitResults = { mode: string; total_responses: number; aggregates?: AggregateQuestion[] };
+  const [postSubmitResults, setPostSubmitResults] = useState<PostSubmitResults | null>(null);
+
+  async function submitPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pwInput.trim() || pwChecking) return;
+    setPwChecking(true);
+    setPwError("");
+    try {
+      const res = await fetch(`/api/survey/${surveyId}/verify-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pwInput }),
+      });
+      if (res.ok) {
+        const { ok } = await res.json();
+        if (ok) { setPwVerified(true); return; }
+      }
+      setPwError("Incorrect password. Please try again.");
+    } catch {
+      setPwError("Something went wrong. Please try again.");
+    } finally {
+      setPwChecking(false);
+    }
+  }
 
   // Branding-derived colors (with safe fallbacks)
   const primaryColor = branding?.primaryColor ?? "#2563eb";
@@ -430,6 +471,7 @@ export default function SurveyPanel({
         });
         const data = await res.json().catch(() => ({}));
         if (data.opportunity_id) setOpportunityId(data.opportunity_id);
+        if (data.results) setPostSubmitResults(data.results);
         return { payment_required: Boolean(data.payment_required), opportunity_id: data.opportunity_id ?? null };
       }
     } catch {
@@ -516,6 +558,36 @@ export default function SurveyPanel({
     { value: "maybe",    label: "Maybe / Unsure", color: "#d97706" },
     { value: "disagree", label: "Disagree",       color: "#dc2626" },
   ];
+
+  // ── Password gate ──────────────────────────────────────────────────────────
+  if (!pwVerified) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "32px 16px", background: bgColor }}>
+        <div style={{ ...card, maxWidth: 400, width: "100%", textAlign: "center" }}>
+          <p style={{ color: textColor, fontSize: 18, fontWeight: 700, margin: "0 0 6px" }}>Password Required</p>
+          <p style={{ color: mutedText, fontSize: 14, margin: "0 0 24px" }}>This form is password protected. Enter the password to continue.</p>
+          <form onSubmit={submitPassword} style={{ display: "grid", gap: 12 }}>
+            <input
+              type="password"
+              value={pwInput}
+              onChange={(e) => { setPwInput(e.target.value); setPwError(""); }}
+              placeholder="Enter password"
+              autoFocus
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 8, border: `1.5px solid ${pwError ? "#ef4444" : "rgba(255,255,255,0.15)"}`, background: "rgba(255,255,255,0.06)", color: textColor, fontSize: 15, boxSizing: "border-box" as const, outline: "none" }}
+            />
+            {pwError && <p style={{ margin: 0, color: "#ef4444", fontSize: 13 }}>{pwError}</p>}
+            <button
+              type="submit"
+              disabled={pwChecking || !pwInput.trim()}
+              style={{ padding: "12px", borderRadius: 8, border: "none", background: primaryColor, color: btnTextColor(primaryColor), fontSize: 15, fontWeight: 700, cursor: pwChecking ? "wait" : "pointer", opacity: pwChecking || !pwInput.trim() ? 0.6 : 1 }}
+            >
+              {pwChecking ? "Verifying…" : "Continue"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // ── Phase: Quiz (all-at-once mode) ──────────────────────────────────────────
   if (phase === "quiz" && viewConfig?.pagination === "all_at_once" && !isWspq) {
@@ -1076,9 +1148,13 @@ export default function SurveyPanel({
   // ── Phase: Thank You ────────────────────────────────────────────────────────
   const meta = isWspq ? RESULT_META[result] : null;
 
+  // Determine effective results mode from either the submit response or props
+  const effectiveResultsMode = postSubmitResults?.mode ?? (showResultsAfterSub ? resultsDisplayMode : "none");
+  const visibleQuestions = questions.filter((q) => isQuestionVisible(q, answers));
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px 16px", background: bgColor }}>
-      <div style={{ ...card, textAlign: "center", maxWidth: 420 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minHeight: "100vh", padding: "24px 16px", background: bgColor }}>
+      <div style={{ ...card, textAlign: "center", maxWidth: effectiveResultsMode === "none" ? 420 : 560, width: "100%" }}>
         {logoUrl && <img src={logoUrl} alt="" style={{ height: 36, marginBottom: 12, objectFit: "contain", maxWidth: 120 }} />}
         <div style={{ fontSize: 48, marginBottom: 12 }}>🗳️</div>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: textColor, margin: "0 0 8px" }}>
@@ -1091,6 +1167,62 @@ export default function SurveyPanel({
             thankyouMessage || "Your response has been recorded."
           )}
         </p>
+
+        {/* Post-submit results display */}
+        {effectiveResultsMode === "count" && (postSubmitResults?.total_responses ?? 0) > 0 && (
+          <div style={{ margin: "0 0 20px", padding: "14px 20px", borderRadius: 10, background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", textAlign: "center" }}>
+            <span style={{ fontSize: 32, fontWeight: 800, color: primaryColor }}>{postSubmitResults!.total_responses.toLocaleString()}</span>
+            <p style={{ color: mutedText, fontSize: 13, margin: "4px 0 0" }}>people have responded so far</p>
+          </div>
+        )}
+
+        {effectiveResultsMode === "your_response" && visibleQuestions.length > 0 && (
+          <div style={{ margin: "0 0 20px", textAlign: "left" }}>
+            <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>Your Responses</p>
+            <div style={{ display: "grid", gap: 10 }}>
+              {visibleQuestions.map((q) => {
+                const val = answers[q.id];
+                if (!val) return null;
+                let displayVal = val;
+                try { const parsed = JSON.parse(val); if (Array.isArray(parsed)) displayVal = parsed.join(", "); } catch {}
+                return (
+                  <div key={q.id} style={{ padding: "10px 14px", borderRadius: 8, background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)", textAlign: "left" }}>
+                    <p style={{ color: mutedText, fontSize: 11, margin: "0 0 3px" }}>{q.question_text}</p>
+                    <p style={{ color: textColor, fontSize: 14, fontWeight: 600, margin: 0 }}>{displayVal}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {effectiveResultsMode === "aggregate" && postSubmitResults?.aggregates && (
+          <div style={{ margin: "0 0 20px", textAlign: "left" }}>
+            <p style={{ color: mutedText, fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", margin: "0 0 12px" }}>
+              Results ({(postSubmitResults.total_responses ?? 0).toLocaleString()} responses)
+            </p>
+            <div style={{ display: "grid", gap: 16 }}>
+              {postSubmitResults.aggregates.map((q) => (
+                <div key={q.question_id}>
+                  <p style={{ color: textColor, fontSize: 13, fontWeight: 600, margin: "0 0 8px" }}>{q.question_text}</p>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {q.answers.map((a) => (
+                      <div key={a.value}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                          <span style={{ color: textColor, fontSize: 12 }}>{a.value}</span>
+                          <span style={{ color: mutedText, fontSize: 12 }}>{a.pct}%</span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 3, background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)", overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${a.pct}%`, background: primaryColor, borderRadius: 3, transition: "width 0.6s ease" }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {!isKiosk && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {websiteUrl && (

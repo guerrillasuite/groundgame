@@ -1,16 +1,10 @@
-// app/crm/survey/[surveyId]/results/page.tsx
-import { Suspense } from 'react';
-import { ResultsDashboard } from '@/app/components/survey/ResultsDashboard';
+import { redirect } from "next/navigation";
 
-export default async function SurveyResultsPage({
+export default async function SurveyResultsRedirect({
   params,
 }: {
   params: Promise<{ surveyId: string }>;
 }) {
   const { surveyId } = await params;
-  return (
-    <Suspense>
-      <ResultsDashboard surveyId={surveyId} />
-    </Suspense>
-  );
+  redirect(`/crm/intake/${surveyId}/results`);
 }

@@ -1,13 +1,10 @@
-import SurveyBuilder from "@/app/components/survey/SurveyBuilder";
-import { getTenant } from "@/lib/tenant";
+import { redirect } from "next/navigation";
 
-export default async function EditSurveyPage({
+export default async function EditSurveyRedirect({
   params,
 }: {
   params: Promise<{ surveyId: string }>;
 }) {
   const { surveyId } = await params;
-  const tenant = await getTenant();
-  const hasSurveyBranding = tenant.features.includes("crm_survey_branding");
-  return <SurveyBuilder surveyId={surveyId} hasSurveyBranding={hasSurveyBranding} />;
+  redirect(`/crm/intake/${surveyId}/edit`);
 }

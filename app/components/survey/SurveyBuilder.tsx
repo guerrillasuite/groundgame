@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import {
   ChevronUp, ChevronDown, Trash2, Plus, Copy,
   GripVertical, ArrowLeft, ExternalLink, ChevronRight,
-  Settings2, Users, Layout,
+  Users, Layout,
 } from "lucide-react";
 
 const RichTextEditor = dynamic(() => import("@/app/components/RichTextEditor"), { ssr: false });
@@ -53,6 +53,9 @@ type LocalQuestion = {
   tag_mapping_enabled: boolean;
   tag_prefix: string;
 };
+
+type FormType = "person" | "company" | "opportunity" | "event" | "survey" | "custom" | "wspq";
+type SurveyStatus = "draft" | "live" | "closed";
 
 type ViewType = "embedded" | "hosted" | "door" | "call" | "text";
 type PaginationMode = "one_at_a_time" | "all_at_once" | "pages";
@@ -133,6 +136,7 @@ export default function SurveyBuilder({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [showAdditionalText, setShowAdditionalText] = useState(false);
   const [footerText, setFooterText] = useState("");
   const [displayTitle, setDisplayTitle] = useState("");
   const [displayDescription, setDisplayDescription] = useState("");
@@ -165,6 +169,36 @@ export default function SurveyBuilder({
   // Contact prefill
   const [prefillContact, setPrefillContact] = useState(false);
 
+  // Personalized link enforcement (survey/custom only)
+  const [requireContactIdUrl, setRequireContactIdUrl] = useState(false);
+
+  // Respondent confirmation email
+  const [confirmationEmailEnabled, setConfirmationEmailEnabled] = useState(false);
+  const [confirmationEmailSubject, setConfirmationEmailSubject] = useState("");
+
+  // Staff notification emails (tag-style list)
+  const [staffEmails, setStaffEmails] = useState<string[]>([]);
+  const [staffEmailDraft, setStaffEmailDraft] = useState("");
+
+  // Identity & Appearance
+  const [logoDisplayEnabled, setLogoDisplayEnabled] = useState(true);
+
+  // Submission settings
+  const [allowMultiple, setAllowMultiple] = useState(false);
+  const [buttonLabel, setButtonLabel] = useState("");
+  const [submissionLimit, setSubmissionLimit] = useState<number | "">("");
+  const [expirationAt, setExpirationAt] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+
+  // Show results after submission (custom only)
+  const [showResultsAfterSub, setShowResultsAfterSub] = useState(false);
+  const [resultsDisplayMode, setResultsDisplayMode] = useState<"none" | "count" | "aggregate" | "your_response">("none");
+
+  // Password protection
+  const [passwordEnabled, setPasswordEnabled] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordWasSet, setPasswordWasSet] = useState(false);
+
   // Payment
   const [paymentEnabled, setPaymentEnabled] = useState(false);
   const [publicSlug, setPublicSlug] = useState("");
@@ -195,13 +229,20 @@ export default function SurveyBuilder({
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersFetched, setUsersFetched] = useState(false);
 
+  // Form type + status (loaded from DB; status is editable)
+  const [formType, setFormType] = useState<FormType>("custom");
+  const [surveyStatus, setSurveyStatus] = useState<SurveyStatus>("draft");
+
   // UI state
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [qMenuOpenId, setQMenuOpenId] = useState<string | null>(null);
+  const [formDetailsOpen, setFormDetailsOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [showViewConfig, setShowViewConfig] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -216,6 +257,7 @@ export default function SurveyBuilder({
         setTitle(s.title ?? "");
         setDescription(s.description ?? "");
         setWebsiteUrl(s.website_url ?? "");
+        if (s.website_url) setShowAdditionalText(true);
         setFooterText(s.footer_text ?? "");
         const channels = Array.isArray(s.active_channels) && s.active_channels.length > 0
           ? s.active_channels
@@ -233,6 +275,23 @@ export default function SurveyBuilder({
         setLearnMoreLabel(s.learn_more_label ?? "");
         setShowShare(s.show_share !== false);
         setShowTakeAgain(s.show_take_again !== false);
+        setFormType((s.form_type as FormType) ?? "custom");
+        setSurveyStatus((s.status as SurveyStatus) ?? "live");
+        setRequireContactIdUrl(Boolean(s.require_contact_id_url));
+        setConfirmationEmailEnabled(Boolean(s.respondent_confirmation_email_enabled));
+        setConfirmationEmailSubject(s.respondent_confirmation_email_subject ?? "");
+        setStaffEmails(Array.isArray(s.staff_notification_emails) ? s.staff_notification_emails : []);
+        setLogoDisplayEnabled(s.logo_display_enabled !== false);
+        setAllowMultiple(Boolean(s.allow_multiple_submissions));
+        setButtonLabel(s.button_label ?? "");
+        setSubmissionLimit(s.submission_limit ?? "");
+        setExpirationAt(s.expiration_at ? String(s.expiration_at).slice(0, 16) : "");
+        setWebhookUrl(s.webhook_url ?? "");
+        setShowResultsAfterSub(Boolean(s.show_results_after_submission));
+        setResultsDisplayMode((s.results_display_mode as any) ?? "none");
+        const hasHash = Boolean(s.password_hash);
+        setPasswordEnabled(hasHash);
+        setPasswordWasSet(hasHash);
         // Opp trigger
         const ot = s.opp_trigger as any;
         if (ot?.enabled) {
@@ -322,9 +381,9 @@ export default function SurveyBuilder({
       .finally(() => setUsersLoading(false));
   }, [isActive, usersFetched, crmUsers.length]);
 
-  // Load embeddable surveys + contact types when Advanced Options opens
+  // Load embeddable surveys + contact types when Settings or Advanced opens
   useEffect(() => {
-    if (!showAdvanced) return;
+    if (!settingsOpen && !advancedOpen) return;
     if (embeddableSurveys.length === 0) {
       fetch("/api/survey?channel=embedded")
         .then((r) => r.json())
@@ -337,7 +396,15 @@ export default function SurveyBuilder({
         .then((data: any) => setContactTypes(Array.isArray(data) ? data : (data.types ?? [])))
         .catch(() => {});
     }
-  }, [showAdvanced, surveyId]);
+  }, [settingsOpen, advancedOpen, surveyId]);
+
+  // Close question context menu on outside click
+  useEffect(() => {
+    if (!qMenuOpenId) return;
+    const handler = () => setQMenuOpenId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [qMenuOpenId]);
 
   // Load stages when oppContactType changes
   useEffect(() => {
@@ -509,7 +576,7 @@ export default function SurveyBuilder({
         const res = await fetch("/api/survey", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, description, id: publicSlug.trim() || undefined }),
+          body: JSON.stringify({ title, description, id: publicSlug.trim() || undefined, form_type: formType, status: surveyStatus }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Failed to create survey");
@@ -533,6 +600,21 @@ export default function SurveyBuilder({
             learn_more_label: learnMoreLabel || null,
             show_share: showShare,
             show_take_again: showTakeAgain,
+            status: surveyStatus,
+            require_contact_id_url: requireContactIdUrl,
+            respondent_confirmation_email_enabled: confirmationEmailEnabled,
+            respondent_confirmation_email_subject: confirmationEmailSubject || null,
+            staff_notification_emails: staffEmails.length > 0 ? staffEmails : null,
+            logo_display_enabled: logoDisplayEnabled,
+            allow_multiple_submissions: allowMultiple,
+            button_label: buttonLabel.trim() || null,
+            submission_limit: submissionLimit !== "" ? Number(submissionLimit) : null,
+            expiration_at: expirationAt || null,
+            webhook_url: webhookUrl.trim() || null,
+            show_results_after_submission: showResultsAfterSub,
+            results_display_mode: resultsDisplayMode,
+            password_enabled: passwordEnabled,
+            new_password: (passwordEnabled && passwordInput.trim()) ? passwordInput.trim() : null,
             opp_trigger: oppEnabled ? {
               enabled: true,
               mode: oppMode,
@@ -646,7 +728,7 @@ export default function SurveyBuilder({
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => setSaveStatus("idle"), 2500);
 
-      if (isNew && sid) router.replace(`/crm/survey/${sid}/edit`);
+      if (isNew && sid) router.replace(`/crm/intake/${sid}/edit`);
     } catch (err: any) {
       console.error(err);
       setSaveError(err?.message ?? "An error occurred");
@@ -661,7 +743,7 @@ export default function SurveyBuilder({
     if (!surveyId) return;
     if (!confirm(`Delete "${title}"? This will remove all responses and cannot be undone.`)) return;
     await fetch(`/api/survey/${surveyId}`, { method: "DELETE" });
-    router.push("/crm/survey");
+    router.push("/crm/intake");
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -677,13 +759,25 @@ export default function SurveyBuilder({
 
   return (
     <section className="stack" style={{ maxWidth: 1040, margin: "0 auto" }}>
+      <style>{`
+        .gg-q-card { transition: transform 0.1s ease, box-shadow 0.1s ease; }
+        .gg-q-card:not(.gg-q-expanded):hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+        .gg-q-card:not(.gg-q-expanded):hover { border-color: rgba(37,99,235,0.35) !important; }
+        .gg-q-card .gg-grip { opacity: 0.25; transition: opacity 0.12s; }
+        .gg-q-card:hover .gg-grip { opacity: 0.8; }
+        .gg-q-card .gg-q-actions { opacity: 0.4; transition: opacity 0.1s; }
+        .gg-q-card:hover .gg-q-actions { opacity: 1; }
+        @keyframes gg-border-pulse { 0%, 100% { border-color: rgba(37,99,235,0.3); } 50% { border-color: rgba(37,99,235,0.85); } }
+        .gg-add-q-btn { transition: background 0.15s, border-color 0.15s, transform 0.1s; }
+        .gg-add-q-btn:hover { border-color: rgba(37,99,235,0.3) !important; color: var(--gg-primary, #2563eb) !important; transform: translateY(-1px); animation: gg-border-pulse 1.1s ease-in-out infinite; }
+      `}</style>
       {/* ── Top bar ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <a
-          href="/crm/survey"
+          href="/crm/intake"
           style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 14, opacity: 0.6, textDecoration: "none" }}
         >
-          <ArrowLeft size={14} /> Surveys
+          <ArrowLeft size={14} /> Intake
         </a>
         <div style={{ flex: 1 }} />
         {surveyId && (
@@ -696,6 +790,34 @@ export default function SurveyBuilder({
             Preview <ExternalLink size={13} />
           </a>
         )}
+        {/* Status segmented control */}
+        <div style={{ display: "inline-flex", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", overflow: "hidden", fontSize: 12, fontWeight: 700 }}>
+          {(["draft", "live", "closed"] as SurveyStatus[]).map((s, i) => {
+            const active = surveyStatus === s;
+            const bg = active ? (s === "live" ? "#16a34a" : s === "closed" ? "#ef4444" : "#6b7280") : "transparent";
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSurveyStatus(s)}
+                style={{
+                  padding: "6px 13px",
+                  border: "none",
+                  borderRight: i < 2 ? "1px solid var(--gg-border, #e5e7eb)" : "none",
+                  background: bg,
+                  color: active ? "white" : "inherit",
+                  cursor: "pointer",
+                  textTransform: "capitalize",
+                  letterSpacing: "0.02em",
+                  opacity: active ? 1 : 0.65,
+                  transition: "background 0.15s, color 0.15s",
+                }}
+              >
+                {s}
+              </button>
+            );
+          })}
+        </div>
         <button
           type="button"
           onClick={handleSave}
@@ -716,50 +838,53 @@ export default function SurveyBuilder({
         </div>
       )}
 
-      {/* ── Survey meta ── */}
-      <div style={{ background: "var(--gg-card, white)", borderRadius: 12, border: "1px solid var(--gg-border, #e5e7eb)", padding: 24, display: "grid", gap: 16 }}>
+      {/* ── SECTION: Form Details ── */}
+      <SectionCard
+        title="Form Details"
+        open={formDetailsOpen}
+        onToggle={() => setFormDetailsOpen(o => !o)}
+        summary={title || "Untitled"}
+        headerExtra={formType !== "custom" ? (
+          <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 12, background: "rgba(37,99,235,0.08)", color: "var(--gg-primary, #2563eb)", flexShrink: 0 }}>
+            {formType === "person" ? "Contact Form" : formType === "opportunity" ? "Order Form" : formType === "wspq" ? "Political Quiz" : formType === "event" ? "Event" : formType === "company" ? "Business Contact" : "Survey"}
+          </span>
+        ) : undefined}
+      >
         {/* Title */}
-        <div style={{ display: "grid", gap: 6 }}>
-          <label style={labelStyle}>Survey Title *</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              if (!slugManual && isNew) {
-                setPublicSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
-              }
-            }}
-            placeholder="e.g. Voter Issues Survey 2026"
-            style={inputStyle}
-          />
-        </div>
+        <FloatingInput
+          label="Form Title"
+          value={title}
+          required
+          maxLength={120}
+          placeholder="e.g. Voter Issues Survey 2026"
+          onChange={(v) => {
+            setTitle(v);
+            if (!slugManual && isNew) {
+              setPublicSlug(v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""));
+            }
+          }}
+        />
 
         {/* Description (internal) */}
-        <div style={{ display: "grid", gap: 6 }}>
-          <label style={labelStyle}>Description <span style={{ fontWeight: 400, opacity: 0.5 }}>(internal only)</span></label>
-          <input
-            type="text"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Short description for canvassers"
-            style={inputStyle}
-          />
-        </div>
+        <FloatingInput
+          label="Internal Description"
+          value={description}
+          onChange={setDescription}
+          placeholder="Short description for canvassers"
+          hint="Only visible to your team — not shown to respondents"
+        />
 
         {/* Front-facing header / description */}
-        <div style={{ display: "grid", gap: 10, paddingTop: 12, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.5, letterSpacing: 1, textTransform: "uppercase" }}>Front-facing text</div>
-          <div style={{ display: "grid", gap: 6 }}>
-            <label style={labelStyle}>Header <span style={{ fontWeight: 400, opacity: 0.5 }}>(shown to respondents; defaults to survey title)</span></label>
-            <input
-              type="text"
-              value={displayTitle}
-              onChange={(e) => setDisplayTitle(e.target.value)}
-              placeholder={title || "e.g. Help us understand your priorities"}
-              style={inputStyle}
-            />
-          </div>
+        <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.4, letterSpacing: "0.08em", textTransform: "uppercase" as const }}>Front-facing text</div>
+          <FloatingInput
+            label="Public Header"
+            value={displayTitle}
+            onChange={setDisplayTitle}
+            maxLength={120}
+            placeholder={title || "e.g. Help us understand your priorities"}
+            hint="Shown to respondents — defaults to form title"
+          />
           <div style={{ display: "grid", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <label style={labelStyle}>Description <span style={{ fontWeight: 400, opacity: 0.5 }}>(shown below the header)</span></label>
@@ -798,9 +923,81 @@ export default function SurveyBuilder({
           </div>
         </div>
 
-        {/* Active channel toggles */}
+        {/* Public URL Slug */}
+        <div style={{ display: "grid", gap: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.5, letterSpacing: "0.06em", textTransform: "uppercase" as const }}>Public URL Slug</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 0, borderBottom: "2px solid var(--gg-border, #e5e7eb)", paddingBottom: 4 }}>
+            <span style={{ fontSize: 13, opacity: 0.4, whiteSpace: "nowrap", paddingRight: 2 }}>/s/</span>
+            <input
+              type="text"
+              value={publicSlug}
+              onChange={(e) => { setSlugManual(true); setPublicSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")); }}
+              placeholder="my-form-slug"
+              style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 14, color: "inherit", padding: "4px 0" }}
+            />
+            {publicSlug && (
+              <button type="button" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/s/${publicSlug}`)} style={{ ...ghostBtnStyle, padding: "4px 10px", whiteSpace: "nowrap", fontSize: 12 }}>
+                Copy
+              </button>
+            )}
+          </div>
+          {!isNew && <p style={{ margin: 0, fontSize: 11, opacity: 0.4 }}>Old URL (<code>/s/{surveyId}</code>) still works after renaming.</p>}
+        </div>
+
+        {/* Thank You Message */}
+        <FloatingInput
+          label="Thank You Message"
+          value={thankyouMessage}
+          onChange={setThankyouMessage}
+          placeholder="Your response has been recorded."
+        />
+
+        {/* Footer Text */}
+        <FloatingInput
+          label="Footer Text"
+          value={footerText}
+          onChange={setFooterText}
+          placeholder="Paid for by…"
+        />
+
+        {/* Learn More URL — collapsed under "Additional text" */}
+        <button
+          type="button"
+          onClick={() => setShowAdditionalText(o => !o)}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: "var(--gg-primary, #2563eb)", fontWeight: 600 }}
+        >
+          <span style={{ fontSize: 11, display: "inline-block", transform: showAdditionalText ? "rotate(90deg)" : "none", transition: "transform 150ms" }}>▶</span>
+          Additional text
+        </button>
+        {showAdditionalText && (
+          <div style={{ display: "grid", gap: 16 }}>
+            <FloatingInput
+              label="Learn More URL"
+              value={websiteUrl}
+              onChange={setWebsiteUrl}
+              type="url"
+              placeholder="https://example.com"
+            />
+            <FloatingInput
+              label="Link Button Label"
+              value={learnMoreLabel}
+              onChange={setLearnMoreLabel}
+              placeholder='e.g. "Learn More →"'
+            />
+          </div>
+        )}
+      </SectionCard>
+
+      {/* ── SECTION: Settings ── */}
+      <SectionCard
+        title="Settings"
+        open={settingsOpen}
+        onToggle={() => setSettingsOpen(o => !o)}
+        summary={`${activeChannels.size} channel${activeChannels.size !== 1 ? "s" : ""} active`}
+      >
+        {/* Active Channels */}
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, opacity: 0.7 }}>Active in</div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4, marginBottom: 8 }}>Active in</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {([
               { key: "all",        label: "All" },
@@ -813,49 +1010,26 @@ export default function SurveyBuilder({
             ] as const).map(({ key: ch, label }) => {
               const isAll = ch === "all";
               const allKeys = ["embedded","hosted","doors","dials","texts","storefront"] as const;
-              const checked = isAll
-                ? allKeys.every(c => activeChannels.has(c))
-                : activeChannels.has(ch);
+              const checked = isAll ? allKeys.every(c => activeChannels.has(c)) : activeChannels.has(ch);
               return (
-                <label
-                  key={ch}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
-                    padding: "5px 12px", borderRadius: 20, fontSize: 13,
-                    border: `1px solid ${checked ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
-                    background: checked ? "rgba(37,99,235,0.08)" : "transparent",
-                    fontWeight: checked ? 600 : 400,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    style={{ width: 13, height: 13, cursor: "pointer" }}
-                    onChange={(e) => {
-                      const next = new Set(activeChannels);
-                      if (isAll) {
-                        if (e.target.checked) allKeys.forEach(c => next.add(c));
-                        else next.clear();
-                      } else {
-                        if (e.target.checked) next.add(ch);
-                        else next.delete(ch);
-                      }
-                      setActiveChannels(next);
-                    }}
-                  />
+                <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "5px 12px", borderRadius: 20, fontSize: 13, border: `1px solid ${checked ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: checked ? "rgba(37,99,235,0.08)" : "transparent", fontWeight: checked ? 600 : 400 }}>
+                  <input type="checkbox" checked={checked} style={{ width: 13, height: 13, cursor: "pointer" }} onChange={(e) => {
+                    const next = new Set(activeChannels);
+                    if (isAll) { if (e.target.checked) allKeys.forEach(c => next.add(c)); else next.clear(); }
+                    else { if (e.target.checked) next.add(ch); else next.delete(ch); }
+                    setActiveChannels(next);
+                  }} />
                   {label}
                 </label>
               );
             })}
           </div>
-          {activeChannels.size === 0 && (
-            <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>Survey is inactive — not visible anywhere.</p>
-          )}
+          {activeChannels.size === 0 && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>Form is inactive — not visible anywhere.</p>}
         </div>
 
-        {/* User assignment (when active, existing surveys) */}
+        {/* User assignment */}
         {isActive && surveyId && (
-          <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", paddingTop: 16 }}>
+          <div style={{ paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
               <Users size={14} style={{ opacity: 0.5 }} />
               <span style={{ fontSize: 13, fontWeight: 600, opacity: 0.7 }}>Visible to (leave empty = all users)</span>
@@ -869,26 +1043,12 @@ export default function SurveyBuilder({
                 {crmUsers.map((u) => {
                   const checked = assignedUserIds.has(u.id);
                   return (
-                    <label
-                      key={u.id}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
-                        padding: "5px 10px", borderRadius: 20, fontSize: 13,
-                        border: `1px solid ${checked ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
-                        background: checked ? "rgba(37,99,235,0.08)" : "transparent",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        style={{ width: 13, height: 13, cursor: "pointer" }}
-                        onChange={(e) => {
-                          const next = new Set(assignedUserIds);
-                          if (e.target.checked) next.add(u.id);
-                          else next.delete(u.id);
-                          setAssignedUserIds(next);
-                        }}
-                      />
+                    <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "5px 10px", borderRadius: 20, fontSize: 13, border: `1px solid ${checked ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: checked ? "rgba(37,99,235,0.08)" : "transparent" }}>
+                      <input type="checkbox" checked={checked} style={{ width: 13, height: 13, cursor: "pointer" }} onChange={(e) => {
+                        const next = new Set(assignedUserIds);
+                        if (e.target.checked) next.add(u.id); else next.delete(u.id);
+                        setAssignedUserIds(next);
+                      }} />
                       {u.name || u.email}
                     </label>
                   );
@@ -898,341 +1058,338 @@ export default function SurveyBuilder({
           </div>
         )}
 
-        {/* Advanced Options disclosure */}
-        <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", paddingTop: 12 }}>
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            style={{
-              display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600,
-              background: "none", border: "none", cursor: "pointer",
-              color: "var(--gg-text-dim, #6b7280)", padding: 0,
-            }}
-          >
-            <Settings2 size={14} />
-            Advanced Options
-            <ChevronRight size={14} style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.15s" }} />
-          </button>
+        {/* Identity & Appearance group */}
+        <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Identity & Appearance</div>
+          <ToggleRow checked={logoDisplayEnabled} onChange={setLogoDisplayEnabled} note="Show your organization's logo at the top of the form.">
+            Display Logo
+          </ToggleRow>
+          <div style={{ display: "grid", gap: 6 }}>
+            <label style={labelStyle}>Submit Button Label <span style={{ fontWeight: 400, opacity: 0.5 }}>(default: "Submit")</span></label>
+            <input type="text" value={buttonLabel} onChange={(e) => setButtonLabel(e.target.value)} placeholder="Submit" style={{ ...inputStyle, maxWidth: 240 }} />
+          </div>
+        </div>
 
-          {showAdvanced && (
-            <div style={{ display: "grid", gap: 0, marginTop: 16 }}>
+        {/* Notifications group */}
+        <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Notifications</div>
 
-              {/* ── PRESENTATION ─────────────────────────────────────────── */}
-              <div style={{ display: "grid", gap: 14, paddingBottom: 20 }}>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.35 }}>Presentation</p>
+          {/* Staff notification emails */}
+          <div style={{ display: "grid", gap: 8 }}>
+            <label style={labelStyle}>Staff Notification Emails <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--gg-border, #e5e7eb)", minHeight: 40, alignItems: "center" }}>
+              {staffEmails.map((email) => (
+                <span key={email} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 12, background: "rgba(37,99,235,0.1)", fontSize: 13, fontWeight: 500 }}>
+                  {email}
+                  <button type="button" onClick={() => setStaffEmails(prev => prev.filter(e => e !== email))} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, lineHeight: 1, opacity: 0.6, display: "flex", alignItems: "center" }}>×</button>
+                </span>
+              ))}
+              <input
+                type="email" value={staffEmailDraft} onChange={(e) => setStaffEmailDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === "," || e.key === " ") && staffEmailDraft.trim()) {
+                    e.preventDefault();
+                    const email = staffEmailDraft.trim().replace(/,$/, "");
+                    if (email && !staffEmails.includes(email)) setStaffEmails(prev => [...prev, email]);
+                    setStaffEmailDraft("");
+                  }
+                }}
+                onBlur={() => {
+                  const email = staffEmailDraft.trim().replace(/,$/, "");
+                  if (email && !staffEmails.includes(email)) setStaffEmails(prev => [...prev, email]);
+                  setStaffEmailDraft("");
+                }}
+                placeholder={staffEmails.length === 0 ? "Email address, Enter to add…" : ""}
+                style={{ border: "none", outline: "none", background: "transparent", fontSize: 13, flex: 1, minWidth: 140, padding: "2px 0" }}
+              />
+            </div>
+            <p style={{ margin: 0, fontSize: 12, opacity: 0.5 }}>Notified on every submission. Press Enter or comma to add each address.</p>
+          </div>
 
-                {/* Public slug */}
-                <div style={{ display: "grid", gap: 6 }}>
-                  <label style={labelStyle}>Public URL Slug</label>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 13, opacity: 0.5, whiteSpace: "nowrap" }}>/s/</span>
-                    <input
-                      type="text"
-                      value={publicSlug}
-                      onChange={(e) => {
-                        setSlugManual(true);
-                        setPublicSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""));
-                      }}
-                      placeholder="my-survey-slug"
-                      style={{ ...inputStyle, flex: 1 }}
-                    />
-                    {publicSlug && (
-                      <button
-                        type="button"
-                        title="Copy URL"
-                        onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/s/${publicSlug}`)}
-                        style={{ ...ghostBtnStyle, padding: "6px 12px", whiteSpace: "nowrap" }}
-                      >
-                        Copy URL
-                      </button>
-                    )}
-                  </div>
-                  {!isNew && (
-                    <p style={{ margin: 0, fontSize: 12, opacity: 0.5 }}>
-                      Old URL (<code>/s/{surveyId}</code>) still works after renaming.
-                    </p>
-                  )}
-                </div>
+          {/* Respondent confirmation email */}
+          <div style={{ display: "grid", gap: 8 }}>
+            <ToggleRow checked={confirmationEmailEnabled} onChange={setConfirmationEmailEnabled}>
+              Send confirmation email to respondent
+            </ToggleRow>
+            {confirmationEmailEnabled && (
+              <input type="text" value={confirmationEmailSubject} onChange={(e) => setConfirmationEmailSubject(e.target.value)} placeholder='Subject: "Thank you for your submission"' style={{ ...inputStyle, marginLeft: 4 }} />
+            )}
+          </div>
+        </div>
 
-                {/* Thank you message */}
-                <div style={{ display: "grid", gap: 6 }}>
-                  <label style={labelStyle}>Thank You Message <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
-                  <input
-                    type="text"
-                    value={thankyouMessage}
-                    onChange={(e) => setThankyouMessage(e.target.value)}
-                    placeholder="Your response has been recorded."
-                    style={inputStyle}
-                  />
-                </div>
+        {/* Submissions group */}
+        <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Submissions</div>
 
-                {/* Footer text */}
-                <div style={{ display: "grid", gap: 6 }}>
-                  <label style={labelStyle}>Footer Text <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
-                  <input
-                    type="text"
-                    value={footerText}
-                    onChange={(e) => setFooterText(e.target.value)}
-                    placeholder="Paid for by…"
-                    style={inputStyle}
-                  />
-                </div>
+          <ToggleRow checked={allowMultiple} onChange={setAllowMultiple} note="By default one submission per contact is allowed. Turn on to allow repeated submissions.">
+            Allow Multiple Submissions
+          </ToggleRow>
 
-                {/* Learn More URL + label */}
-                <div style={{ display: "grid", gap: 6 }}>
-                  <label style={labelStyle}>"Learn More" URL <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
-                  <input
-                    type="url"
-                    value={websiteUrl}
-                    onChange={(e) => setWebsiteUrl(e.target.value)}
-                    placeholder="https://example.com"
-                    style={inputStyle}
-                  />
-                  {websiteUrl && (
-                    <input
-                      type="text"
-                      value={learnMoreLabel}
-                      onChange={(e) => setLearnMoreLabel(e.target.value)}
-                      placeholder='Button label (default: "Learn More →")'
-                      style={inputStyle}
-                    />
-                  )}
-                </div>
+          <ToggleRow checked={prefillContact} onChange={setPrefillContact} note="When a link includes a contact ID, matching fields are pre-filled from their record.">
+            Pre-fill Known Contact Info
+          </ToggleRow>
 
-                {/* End-of-survey button toggles */}
-                <div style={{ display: "grid", gap: 8 }}>
-                  <label style={labelStyle}>End-of-Survey Buttons</label>
-                  <div style={{ display: "flex", gap: 16 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                      <input type="checkbox" checked={showShare} onChange={(e) => setShowShare(e.target.checked)} />
-                      Show "Share" button
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                      <input type="checkbox" checked={showTakeAgain} onChange={(e) => setShowTakeAgain(e.target.checked)} />
-                      Show "Take Again" button
-                    </label>
-                  </div>
-                </div>
-
-                {/* Branding (FieldPack+) */}
-                {!hasSurveyBranding && (
-                  <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px dashed var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.6 }}>
-                    <strong>Tenant Branding</strong> — custom colors, logo, and fonts on hosted/embedded forms. Available on FieldPack and above.
-                  </div>
-                )}
-              </div>
-
-              {/* ── BEHAVIOR ─────────────────────────────────────────────── */}
-              <div style={{ display: "grid", gap: 14, paddingTop: 20, paddingBottom: 20, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.35 }}>Behavior</p>
-
-                {/* Contact prefill */}
-                <div style={{ display: "grid", gap: 6 }}>
-                  <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <input type="checkbox" checked={prefillContact} onChange={(e) => setPrefillContact(e.target.checked)} />
-                    Pre-fill Known Contact Info
-                  </label>
-                  {prefillContact && (
-                    <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                      When a survey link includes a contact ID, the respondent's name, email, and phone will be automatically filled into matching questions. Disable this if you'd rather not reveal that you already have their information.
-                    </p>
-                  )}
-                </div>
-
-                {/* Auto Pre-filled Fields */}
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div>
-                    <div style={{ ...labelStyle, display: "block", marginBottom: 2 }}>Auto-Tagged Fields</div>
-                    <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                      Values written automatically on every submission — not shown to the respondent.
-                      Use this to tag all responses from this form (e.g. Contact Type = Volunteer).
-                    </p>
-                  </div>
-                  {autoFields.map((af, idx) => (
-                    <div key={af.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "center" }}>
-                      <CrmFieldPicker
-                        value={af.crm_field || null}
-                        onChange={(val) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, crm_field: val ?? "" } : f))}
-                      />
-                      <input
-                        type="text"
-                        value={af.value}
-                        onChange={(e) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, value: e.target.value } : f))}
-                        placeholder="Value"
-                        style={{ ...inputStyle, fontSize: 13 }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setAutoFields(prev => prev.filter((_, i) => i !== idx))}
-                        style={{ border: "none", background: "none", cursor: "pointer", padding: 4, opacity: 0.4, color: "#dc2626", lineHeight: 1 }}
-                        title="Remove"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setAutoFields(prev => [...prev, { id: newTmpId(), crm_field: "", value: "" }])}
-                    style={{ ...ghostBtnStyle, padding: "6px 12px", width: "fit-content" }}
-                  >
-                    <Plus size={13} /> Add field
-                  </button>
-                </div>
-
-                {/* Post-submit embedded form */}
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                    <label style={labelStyle}>Post-Submit Form <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
-                    {postSubmitSurveyId && (
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
-                        <input
-                          type="checkbox"
-                          checked={postSubmitRequired}
-                          onChange={(e) => setPostSubmitRequired(e.target.checked)}
-                        />
-                        Required (no skip)
-                      </label>
-                    )}
-                  </div>
-                  <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                    After completing this survey, show another embeddable form (e.g. a contact form). Only surveys active for the Embedded channel appear here.
-                  </p>
-                  <select
-                    value={postSubmitSurveyId}
-                    onChange={(e) => { setPostSubmitSurveyId(e.target.value); if (!e.target.value) setPostSubmitRequired(false); }}
-                    style={{ ...inputStyle, cursor: "pointer" }}
-                  >
-                    <option value="">(None)</option>
-                    {embeddableSurveys.map((s) => (
-                      <option key={s.id} value={s.id}>{s.title}</option>
-                    ))}
-                  </select>
-                  {postSubmitSurveyId && (
-                    <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
-                      <label style={labelStyle}>Message shown above the form <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
-                      <input
-                        type="text"
-                        value={postSubmitHeader}
-                        onChange={(e) => setPostSubmitHeader(e.target.value)}
-                        placeholder="e.g. Want to stay in the loop? Fill out your contact info below."
-                        style={inputStyle}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* ── INTEGRATIONS ─────────────────────────────────────────── */}
-              <div style={{ display: "grid", gap: 14, paddingTop: 20, paddingBottom: 20, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.35 }}>Integrations</p>
-
-                {/* Opportunity Creation Trigger */}
-                <div style={{ display: "grid", gap: 8 }}>
-                  <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <input type="checkbox" checked={oppEnabled} onChange={(e) => setOppEnabled(e.target.checked)} />
-                    Opportunity Creation Trigger
-                  </label>
-                  {oppEnabled && (
-                    <div style={{ display: "grid", gap: 10, paddingLeft: 4 }}>
-                      {/* Mode */}
-                      <div style={{ display: "flex", gap: 16 }}>
-                        {(["always", "condition"] as const).map((m) => (
-                          <label key={m} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
-                            <input type="radio" name="opp-mode" checked={oppMode === m} onChange={() => setOppMode(m)} />
-                            {m === "always" ? "Always" : "When condition met"}
-                          </label>
-                        ))}
-                      </div>
-
-                      {/* Condition row */}
-                      {oppMode === "condition" && (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
-                          <select value={oppQuestionId} onChange={(e) => setOppQuestionId(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
-                            <option value="">(Select question)</option>
-                            {questions.map((q) => <option key={q.id} value={q.id}>{(q.question_text || "Untitled").slice(0, 50)}</option>)}
-                          </select>
-                          <select value={oppOperator} onChange={(e) => setOppOperator(e.target.value as any)} style={{ ...inputStyle, fontSize: 13, width: "auto" }}>
-                            <option value="equals">equals</option>
-                            <option value="not_equals">≠</option>
-                            <option value="contains">contains</option>
-                          </select>
-                          <input value={oppValue} onChange={(e) => setOppValue(e.target.value)} placeholder="value to match" style={{ ...inputStyle, fontSize: 13 }} />
-                        </div>
-                      )}
-
-                      {/* Pipeline + Stage */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <div>
-                          <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Pipeline (optional)</label>
-                          <select value={oppContactType} onChange={(e) => setOppContactType(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
-                            <option value="">(Default)</option>
-                            {contactTypes.map((ct) => <option key={ct.key} value={ct.key}>{ct.label}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Stage</label>
-                          <select value={oppStage} onChange={(e) => setOppStage(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
-                            <option value="">(First stage)</option>
-                            {oppStages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Title template */}
-                      <OppTitleTemplateEditor value={oppTitleTemplate} onChange={setOppTitleTemplate} />
-
-                      {/* Op intake channels */}
-                      <div>
-                        <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Default intake form for</label>
-                        <p style={{ margin: "0 0 6px", fontSize: 12, opacity: 0.6 }}>After an opportunity is created in a field session, this form will be shown to capture details.</p>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"], ["take_survey", "Take Survey"], ["storefront", "Storefront"]].map(([ch, label]) => (
-                            <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
-                              <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
-                                const next = new Set(opIntakeChannels);
-                                if (e.target.checked) next.add(ch); else next.delete(ch);
-                                setOpIntakeChannels(next);
-                              }} style={{ display: "none" }} />
-                              {label}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Delivery — only shown when opp trigger is enabled */}
-                      <div style={{ display: "grid", gap: 6, paddingTop: 10, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
-                        <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                          <input type="checkbox" checked={deliveryEnabled} onChange={(e) => setDeliveryEnabled(e.target.checked)} />
-                          Enable Delivery Option
-                        </label>
-                        {deliveryEnabled && (
-                          <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                            Respondents can choose Pickup or Delivery. When Delivery is selected, an address form is shown and required before submit.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Payment Gate */}
-                <div style={{ display: "grid", gap: 6 }}>
-                  <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <input type="checkbox" checked={paymentEnabled} onChange={(e) => setPaymentEnabled(e.target.checked)} />
-                    Require Payment After Submission
-                  </label>
-                  {paymentEnabled && (
-                    <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>
-                      After submitting, respondents will be directed to a payment page. Payment processor configuration is set up separately.
-                    </p>
-                  )}
-                </div>
-              </div>
-
+          {/* Require personalized link — survey and custom only */}
+          {(formType === "survey" || formType === "custom") && (
+            <div style={{ display: "grid", gap: 6 }}>
+              <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={requireContactIdUrl} onChange={(e) => setRequireContactIdUrl(e.target.checked)} />
+                Require personalized link
+              </label>
+              {requireContactIdUrl && (
+                <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>Only accept submissions from respondents who arrive via a tracked URL with their contact ID.</p>
+              )}
             </div>
           )}
         </div>
+
+        {/* Pipeline group — opp/custom/survey only */}
+        {(formType === "custom" || formType === "survey" || formType === "opportunity") && (
+          <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Pipeline</div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: formType === "opportunity" ? "default" : "pointer" }}>
+                <input type="checkbox" checked={oppEnabled} disabled={formType === "opportunity"} onChange={(e) => setOppEnabled(e.target.checked)} />
+                Opportunity Creation Trigger
+                {formType === "opportunity" && <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.45, marginLeft: 2 }}>(locked for Order Forms)</span>}
+              </label>
+              {oppEnabled && (
+                <div style={{ display: "grid", gap: 10, paddingLeft: 4 }}>
+                  <div style={{ display: "flex", gap: 16 }}>
+                    {(["always", "condition"] as const).map((m) => (
+                      <label key={m} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                        <input type="radio" name="opp-mode" checked={oppMode === m} onChange={() => setOppMode(m)} />
+                        {m === "always" ? "Always" : "When condition met"}
+                      </label>
+                    ))}
+                  </div>
+                  {oppMode === "condition" && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center" }}>
+                      <select value={oppQuestionId} onChange={(e) => setOppQuestionId(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                        <option value="">(Select question)</option>
+                        {questions.map((q) => <option key={q.id} value={q.id}>{(q.question_text || "Untitled").slice(0, 50)}</option>)}
+                      </select>
+                      <select value={oppOperator} onChange={(e) => setOppOperator(e.target.value as any)} style={{ ...inputStyle, fontSize: 13, width: "auto" }}>
+                        <option value="equals">equals</option>
+                        <option value="not_equals">≠</option>
+                        <option value="contains">contains</option>
+                      </select>
+                      <input value={oppValue} onChange={(e) => setOppValue(e.target.value)} placeholder="value to match" style={{ ...inputStyle, fontSize: 13 }} />
+                    </div>
+                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div>
+                      <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Pipeline (optional)</label>
+                      <select value={oppContactType} onChange={(e) => setOppContactType(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                        <option value="">(Default)</option>
+                        {contactTypes.map((ct) => <option key={ct.key} value={ct.key}>{ct.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Stage</label>
+                      <select value={oppStage} onChange={(e) => setOppStage(e.target.value)} style={{ ...inputStyle, fontSize: 13 }}>
+                        <option value="">(First stage)</option>
+                        {oppStages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <OppTitleTemplateEditor value={oppTitleTemplate} onChange={setOppTitleTemplate} />
+                  <div>
+                    <label style={{ ...labelStyle, marginBottom: 4, display: "block" }}>Default intake form for</label>
+                    <p style={{ margin: "0 0 6px", fontSize: 12, opacity: 0.6 }}>After an opportunity is created in a field session, this form will be shown to capture details.</p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {[["door", "Doors"], ["dials", "Dials"], ["texts", "Texts"], ["take_order", "Take Order"], ["make_sale", "Make Sale"], ["take_survey", "Take Survey"], ["storefront", "Storefront"]].map(([ch, label]) => (
+                        <label key={ch} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${opIntakeChannels.has(ch) ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`, background: opIntakeChannels.has(ch) ? "rgba(37,99,235,0.08)" : "transparent" }}>
+                          <input type="checkbox" checked={opIntakeChannels.has(ch)} onChange={(e) => {
+                            const next = new Set(opIntakeChannels);
+                            if (e.target.checked) next.add(ch); else next.delete(ch);
+                            setOpIntakeChannels(next);
+                          }} style={{ display: "none" }} />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gap: 6, paddingTop: 10, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input type="checkbox" checked={deliveryEnabled} onChange={(e) => setDeliveryEnabled(e.target.checked)} />
+                      Enable Delivery Option
+                    </label>
+                    {deliveryEnabled && <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>Respondents can choose Pickup or Delivery. When Delivery is selected, an address form is shown and required before submit.</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
+      {/* ── SECTION: Advanced Settings (collapsed by default) ── */}
+      <SectionCard
+        title="Advanced Settings"
+        open={advancedOpen}
+        onToggle={() => setAdvancedOpen(o => !o)}
+        summary="Limits, post-submit, integrations"
+      >
+        {/* End-of-survey buttons */}
+        <div style={{ display: "grid", gap: 12 }}>
+          <label style={labelStyle}>End-of-Survey Buttons</label>
+          <ToggleRow checked={showShare} onChange={setShowShare}>Show "Share" button</ToggleRow>
+          <ToggleRow checked={showTakeAgain} onChange={setShowTakeAgain}>Show "Take Again" button</ToggleRow>
+        </div>
+
+        {/* Auto-tagged Fields */}
+        <div style={{ display: "grid", gap: 10, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <div>
+            <div style={{ ...labelStyle, display: "block", marginBottom: 2 }}>Auto-Tagged Fields</div>
+            <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>Values written automatically on every submission — not shown to the respondent.</p>
+          </div>
+          {autoFields.map((af, idx) => (
+            <div key={af.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "center" }}>
+              <CrmFieldPicker value={af.crm_field || null} onChange={(val) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, crm_field: val ?? "" } : f))} />
+              <input type="text" value={af.value} onChange={(e) => setAutoFields(prev => prev.map((f, i) => i === idx ? { ...f, value: e.target.value } : f))} placeholder="Value" style={{ ...inputStyle, fontSize: 13 }} />
+              <button type="button" onClick={() => setAutoFields(prev => prev.filter((_, i) => i !== idx))} style={{ border: "none", background: "none", cursor: "pointer", padding: 4, opacity: 0.4, color: "#dc2626", lineHeight: 1 }} title="Remove"><Trash2 size={14} /></button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setAutoFields(prev => [...prev, { id: newTmpId(), crm_field: "", value: "" }])} style={{ ...ghostBtnStyle, padding: "6px 12px", width: "fit-content" }}>
+            <Plus size={13} /> Add field
+          </button>
+        </div>
+
+        {/* Post-submit form */}
+        <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <label style={labelStyle}>Post-Submit Form <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+            {postSubmitSurveyId && (
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+                <input type="checkbox" checked={postSubmitRequired} onChange={(e) => setPostSubmitRequired(e.target.checked)} />
+                Required (no skip)
+              </label>
+            )}
+          </div>
+          <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>After completing this form, show another embeddable form. Only forms active for Embedded channel appear here.</p>
+          <select value={postSubmitSurveyId} onChange={(e) => { setPostSubmitSurveyId(e.target.value); if (!e.target.value) setPostSubmitRequired(false); }} style={{ ...inputStyle, cursor: "pointer" }}>
+            <option value="">(None)</option>
+            {embeddableSurveys.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+          </select>
+          {postSubmitSurveyId && (
+            <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
+              <label style={labelStyle}>Message shown above the form <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+              <input type="text" value={postSubmitHeader} onChange={(e) => setPostSubmitHeader(e.target.value)} placeholder="e.g. Want to stay in the loop? Fill out your contact info below." style={inputStyle} />
+            </div>
+          )}
+        </div>
+
+        {/* Submission limits */}
+        <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4 }}>Limits</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              <label style={labelStyle}>Max Submissions <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+              <input type="number" min="1" value={submissionLimit} onChange={(e) => setSubmissionLimit(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Unlimited" style={inputStyle} />
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              <label style={labelStyle}>Expiration <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+              <input type="datetime-local" value={expirationAt} onChange={(e) => setExpirationAt(e.target.value)} style={inputStyle} />
+            </div>
+          </div>
+        </div>
+
+        {/* Webhook URL (custom only) */}
+        {formType === "custom" && (
+          <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+            <label style={labelStyle}>Webhook URL <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></label>
+            <input type="url" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://hooks.example.com/intake" style={inputStyle} />
+            <p style={{ margin: 0, fontSize: 12, opacity: 0.5 }}>POST with full session data after each submission.</p>
+          </div>
+        )}
+
+        {/* Show results after submission — Custom only */}
+        {formType === "custom" && (
+          <div style={{ display: "grid", gap: 12, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+            <ToggleRow checked={showResultsAfterSub} onChange={setShowResultsAfterSub}>
+              Show results after submission
+            </ToggleRow>
+            {showResultsAfterSub && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, paddingLeft: 4 }}>
+                {([
+                  { value: "none",          label: "None",               desc: "No additional display" },
+                  { value: "count",         label: "Submission count",    desc: '"X people have responded"' },
+                  { value: "aggregate",     label: "Aggregate results",   desc: "Charts and percentages per question" },
+                  { value: "your_response", label: "Your response",       desc: "Summary of what they submitted" },
+                ] as const).map(({ value, label, desc }) => {
+                  const active = resultsDisplayMode === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setResultsDisplayMode(value)}
+                      style={{
+                        textAlign: "left" as const, padding: "12px 14px", borderRadius: 8,
+                        border: `1.5px solid ${active ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
+                        background: active ? "rgba(37,99,235,0.06)" : "transparent",
+                        cursor: "pointer", transition: "border-color 0.12s, background 0.12s",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3, color: active ? "var(--gg-primary, #2563eb)" : "inherit" }}>{label}</div>
+                      <div style={{ fontSize: 11, opacity: 0.6 }}>{desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Password Protection */}
+        <div style={{ display: "grid", gap: 8, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <ToggleRow
+            checked={passwordEnabled}
+            onChange={(v) => { setPasswordEnabled(v); if (!v) setPasswordInput(""); }}
+          >
+            Password Protection
+          </ToggleRow>
+          {passwordEnabled && (
+            <div style={{ display: "grid", gap: 6, paddingLeft: 4 }}>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder={passwordWasSet ? "Enter new password to change" : "Set a password"}
+                autoComplete="new-password"
+                style={{ ...inputStyle, maxWidth: 280 }}
+              />
+              <p style={{ margin: 0, fontSize: 12, opacity: 0.5 }}>Respondents must enter this password before the form is shown. {passwordWasSet && !passwordInput && "Leave blank to keep current password."}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Payment Gate */}
+        <div style={{ display: "grid", gap: 6, paddingTop: 16, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+          <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input type="checkbox" checked={paymentEnabled} onChange={(e) => setPaymentEnabled(e.target.checked)} />
+            Require Payment After Submission
+          </label>
+          {paymentEnabled && <p style={{ margin: 0, fontSize: 12, opacity: 0.6 }}>After submitting, respondents will be directed to a payment page. Payment processor configuration is set up separately.</p>}
+        </div>
+
+        {/* Branding upsell */}
+        {!hasSurveyBranding && (
+          <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px dashed var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.6 }}>
+            <strong>Tenant Branding</strong> — custom colors, logo, and fonts on hosted/embedded forms. Available on FieldPack and above.
+          </div>
+        )}
+      </SectionCard>
+
+      {/* ── Questions header ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Questions</h2>
+        {questions.length > 0 && (
+          <span style={{ fontSize: 12, fontWeight: 700, padding: "2px 9px", borderRadius: 12, background: "rgba(37,99,235,0.09)", color: "var(--gg-primary, #2563eb)" }}>
+            {questions.length}
+          </span>
+        )}
       </div>
 
       {/* ── Questions ── */}
@@ -1245,19 +1402,20 @@ export default function SurveyBuilder({
 
         {questions.map((q, idx) => {
           const expanded = expandedId === q.id;
-          const typeLabel = QUESTION_TYPE_META[q.question_type]?.label ?? q.question_type;
+          const typeMeta = QUESTION_TYPE_META[q.question_type];
+          const typeLabel = typeMeta?.label ?? q.question_type;
           const isChoice = CHOICE_TYPES.includes(q.question_type);
           const hasOptions = isChoice && q.question_type !== "yes_no";
 
           return (
             <div
               key={q.id}
+              className={expanded ? "gg-q-card gg-q-expanded" : "gg-q-card"}
               style={{
                 background: "var(--gg-card, white)",
                 borderRadius: 12,
                 border: `1px solid ${expanded ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
-                overflow: "hidden",
-                transition: "border-color 0.15s",
+                position: "relative",
               }}
             >
               {/* Question header row */}
@@ -1265,12 +1423,12 @@ export default function SurveyBuilder({
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", cursor: "pointer", userSelect: "none" }}
                 onClick={() => setExpandedId(expanded ? null : q.id)}
               >
-                <GripVertical size={14} style={{ opacity: 0.3, flexShrink: 0 }} />
+                <GripVertical size={14} className="gg-grip" style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.4, flexShrink: 0, minWidth: 24 }}>Q{idx + 1}</span>
                 <span style={{ flex: 1, fontSize: 14, opacity: q.question_text ? 1 : 0.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--gg-text, inherit)" }}>
                   {q.question_text || "Untitled question"}
                 </span>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6, background: "var(--gg-filter-bg, rgba(37,99,235,0.06))", whiteSpace: "nowrap", flexShrink: 0, color: "var(--gg-text, inherit)" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, background: typeMeta?.bg ?? "rgba(37,99,235,0.1)", color: typeMeta?.color ?? "var(--gg-primary, #2563eb)", whiteSpace: "nowrap", flexShrink: 0 }}>
                   {typeLabel}
                 </span>
                 {q.conditions?.show_if?.question_id && (
@@ -1278,11 +1436,36 @@ export default function SurveyBuilder({
                     IF
                   </span>
                 )}
-                <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); updateQuestion(q.id, { required: !q.required }); }}
+                  style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20, border: "none", background: q.required ? "rgba(239,68,68,0.12)" : "rgba(107,114,128,0.1)", color: q.required ? "#dc2626" : "#9ca3af", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+                >
+                  {q.required ? "Required" : "Optional"}
+                </button>
+                <div className="gg-q-actions" style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                   <IconBtn title="Move up" disabled={idx === 0} onClick={() => moveQuestion(q.id, -1)}><ChevronUp size={14} /></IconBtn>
                   <IconBtn title="Move down" disabled={idx === questions.length - 1} onClick={() => moveQuestion(q.id, 1)}><ChevronDown size={14} /></IconBtn>
-                  <IconBtn title="Duplicate question" onClick={() => duplicateQuestion(q.id)}><Copy size={14} /></IconBtn>
-                  <IconBtn title="Delete question" danger onClick={() => { if (confirm("Remove this question?")) removeQuestion(q.id); }}><Trash2 size={14} /></IconBtn>
+                  <div style={{ position: "relative" }}>
+                    <button
+                      type="button"
+                      title="More actions"
+                      onClick={() => setQMenuOpenId(qMenuOpenId === q.id ? null : q.id)}
+                      style={{ border: "none", background: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4, lineHeight: 1, fontSize: 16, fontWeight: 700, opacity: 0.5, letterSpacing: 1, display: "flex", alignItems: "center" }}
+                    >
+                      ···
+                    </button>
+                    {qMenuOpenId === q.id && (
+                      <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: "var(--gg-card, white)", border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 140, overflow: "hidden" }}>
+                        <button type="button" onClick={() => { duplicateQuestion(q.id); setQMenuOpenId(null); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, textAlign: "left" as const, color: "inherit" }}>
+                          <Copy size={13} /> Duplicate
+                        </button>
+                        <button type="button" onClick={() => { if (confirm("Remove this question?")) { removeQuestion(q.id); setQMenuOpenId(null); } }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", border: "none", borderTop: "1px solid var(--gg-border, #e5e7eb)", background: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, textAlign: "left" as const, color: "#dc2626" }}>
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1687,17 +1870,15 @@ export default function SurveyBuilder({
       {/* ── Add Question ── */}
       <button
         type="button"
+        className="gg-add-q-btn"
         onClick={addQuestion}
         style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           padding: "14px", borderRadius: 12,
           border: "2px dashed var(--gg-border, #e5e7eb)",
           background: "transparent", cursor: "pointer", fontSize: 14, fontWeight: 600,
-          width: "100%", color: "var(--gg-text, inherit)",
-          opacity: 0.7, transition: "opacity 0.15s",
+          width: "100%", color: "var(--gg-text-dim, #6b7280)",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-        onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
       >
         <Plus size={16} /> Add Question
       </button>
@@ -2108,20 +2289,20 @@ const ghostBtnStyle: React.CSSProperties = {
 
 // ── Question type metadata ────────────────────────────────────────────────────
 
-const QUESTION_TYPE_META: Record<string, { label: string }> = {
-  multiple_choice:            { label: "Multiple Choice" },
-  multiple_choice_with_other: { label: "Choice + Other" },
-  multiple_select:            { label: "Multi-Select" },
-  multiple_select_with_other: { label: "Multi-Select + Other" },
-  text:                       { label: "Long Text" },
-  text_short:                 { label: "Short Text" },
-  yes_no:                     { label: "Yes / No" },
-  date:                       { label: "Date" },
-  rating:                     { label: "Rating" },
-  number:                     { label: "Number" },
-  email:                      { label: "Email" },
-  phone:                      { label: "Phone" },
-  product_picker:             { label: "Product Picker" },
+const QUESTION_TYPE_META: Record<string, { label: string; color: string; bg: string }> = {
+  multiple_choice:            { label: "Multiple Choice",      color: "#2563eb", bg: "rgba(37,99,235,0.13)"  },
+  multiple_choice_with_other: { label: "Choice + Other",       color: "#2563eb", bg: "rgba(37,99,235,0.13)"  },
+  multiple_select:            { label: "Multi-Select",         color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
+  multiple_select_with_other: { label: "Multi-Select + Other", color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
+  text:                       { label: "Long Text",            color: "#0891b2", bg: "rgba(8,145,178,0.13)"  },
+  text_short:                 { label: "Short Text",           color: "#0891b2", bg: "rgba(8,145,178,0.13)"  },
+  yes_no:                     { label: "Yes / No",             color: "#16a34a", bg: "rgba(22,163,74,0.13)"  },
+  date:                       { label: "Date",                 color: "#d97706", bg: "rgba(217,119,6,0.13)"  },
+  rating:                     { label: "Rating",               color: "#ea580c", bg: "rgba(234,88,12,0.13)"  },
+  number:                     { label: "Number",               color: "#d97706", bg: "rgba(217,119,6,0.13)"  },
+  email:                      { label: "Email",                color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
+  phone:                      { label: "Phone",                color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
+  product_picker:             { label: "Product Picker",       color: "#0d9488", bg: "rgba(13,148,136,0.13)" },
 };
 
 // ── CRM Field Picker ──────────────────────────────────────────────────────────
@@ -2514,6 +2695,173 @@ function OppTitleTemplateEditor({ value, onChange }: { value: string; onChange: 
       <p style={{ margin: 0, fontSize: 11, opacity: 0.45 }}>
         Click a tag to insert it at your cursor. Edit the text freely.
       </p>
+    </div>
+  );
+}
+
+// ── iOS-style toggle ─────────────────────────────────────────────────────────
+
+function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <div
+      role="switch"
+      aria-checked={checked}
+      onClick={() => !disabled && onChange(!checked)}
+      style={{
+        position: "relative", display: "inline-flex", alignItems: "center",
+        width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+        background: checked ? "var(--gg-primary, #2563eb)" : "rgba(107,114,128,0.3)",
+        cursor: disabled ? "default" : "pointer",
+        transition: "background 200ms",
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      <div style={{
+        position: "absolute",
+        left: checked ? 20 : 2,
+        width: 18, height: 18, borderRadius: "50%",
+        background: "white",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+        transition: "left 200ms",
+      }} />
+    </div>
+  );
+}
+
+function ToggleRow({ checked, onChange, disabled, note, children }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; note?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, cursor: disabled ? "default" : "pointer" }} onClick={() => !disabled && onChange(!checked)}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>{children}</div>
+        {note && <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>{note}</div>}
+      </div>
+      <Toggle checked={checked} onChange={onChange} disabled={disabled} />
+    </div>
+  );
+}
+
+// ── Floating label input ──────────────────────────────────────────────────────
+
+function FloatingInput({
+  label, value, onChange, type = "text", maxLength, required, hint, placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  maxLength?: number;
+  required?: boolean;
+  hint?: string;
+  placeholder?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const lifted = focused || value.length > 0;
+  return (
+    <div style={{ position: "relative", paddingTop: 20 }}>
+      <span style={{
+        position: "absolute",
+        top: lifted ? 0 : 23,
+        left: 0,
+        fontSize: lifted ? 10 : 14,
+        fontWeight: 600,
+        letterSpacing: lifted ? "0.06em" : "normal",
+        textTransform: lifted ? "uppercase" : "none",
+        color: focused ? "var(--gg-primary, #2563eb)" : "inherit",
+        opacity: lifted ? 0.5 : 0.35,
+        transition: "top 150ms ease, font-size 150ms ease, opacity 150ms ease, color 150ms ease",
+        pointerEvents: "none",
+        userSelect: "none",
+        whiteSpace: "nowrap",
+      }}>
+        {label}{required ? " *" : ""}
+      </span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        maxLength={maxLength}
+        placeholder={lifted ? (placeholder ?? "") : ""}
+        style={{
+          width: "100%",
+          padding: "4px 0 6px",
+          border: "none",
+          borderBottom: `2px solid ${focused ? "var(--gg-primary, #2563eb)" : "var(--gg-border, #e5e7eb)"}`,
+          fontSize: 14,
+          background: "transparent",
+          boxSizing: "border-box" as const,
+          color: "inherit",
+          outline: "none",
+          transition: "border-color 150ms ease",
+        }}
+      />
+      {(hint || maxLength) && (
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+          <span style={{ fontSize: 11, opacity: 0.4 }}>{hint ?? ""}</span>
+          {maxLength && (
+            <span style={{ fontSize: 11, opacity: value.length >= maxLength ? 0.8 : 0.3, color: value.length >= maxLength ? "#ef4444" : "inherit" }}>
+              {value.length}/{maxLength}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Collapsible section card ──────────────────────────────────────────────────
+
+function SectionCard({
+  title, summary, open, onToggle, children, noPad, headerExtra,
+}: {
+  title: string;
+  summary?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  noPad?: boolean;
+  headerExtra?: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      borderRadius: 10,
+      borderLeft: open ? "3px solid var(--gg-primary, #2563eb)" : "1px solid var(--gg-border, #e5e7eb)",
+      borderTop: "1px solid var(--gg-border, #e5e7eb)",
+      borderRight: "1px solid var(--gg-border, #e5e7eb)",
+      borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+      background: "var(--gg-card, white)",
+      boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+      overflow: "hidden",
+    }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 8,
+          padding: "14px 20px", background: "none", border: "none",
+          borderBottom: open ? "1px solid var(--gg-border, #e5e7eb)" : "none",
+          cursor: "pointer", textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: 14, fontWeight: 700, flex: 1 }}>{title}</span>
+        {headerExtra}
+        {!open && summary && (
+          <span style={{ fontSize: 12, opacity: 0.45, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {summary}
+          </span>
+        )}
+        <ChevronRight size={16} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 200ms ease", opacity: 0.4, flexShrink: 0 }} />
+      </button>
+      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 200ms ease", overflow: "hidden" }}>
+        <div style={{ minHeight: 0 }}>
+          {noPad ? children : (
+            <div style={{ padding: 24, display: "grid", gap: 16 }}>
+              {children}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

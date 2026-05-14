@@ -22,7 +22,7 @@ function slugify(text: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, description, id: customId } = await request.json();
+    const { title, description, id: customId, form_type, status, opp_trigger } = await request.json();
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
       title: title.trim(),
       description: description?.trim(),
       tenantId: tenant.id,
+      form_type: form_type ?? "custom",
+      status: status ?? "draft",
+      opp_trigger: opp_trigger ?? null,
     });
 
     return NextResponse.json({ survey_id }, { status: 201 });

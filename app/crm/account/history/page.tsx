@@ -108,13 +108,13 @@ export default async function HistoryPage() {
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
           <h3 style={{ margin: 0, fontSize: 15 }}>Surveys</h3>
-          <Link href="/crm/survey" style={{ fontSize: 13, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>View all →</Link>
+          <Link href="/crm/intake" style={{ fontSize: 13, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}>View all →</Link>
         </div>
         {surveys.length === 0
           ? <p className="muted" style={{ margin: 0 }}>No surveys yet.</p>
           : <div className="list">
               {surveys.map((s: any) => (
-                <Link key={s.id} href={`/crm/survey/${s.id}/results`} className="list-item" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                <Link key={s.id} href={`/crm/intake/${s.id}/results`} className="list-item" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <h4 style={{ margin: 0 }}>{s.title}</h4>
                     <span className="muted" style={{ fontSize: 12 }}>{relTime(s.updated_at)}</span>

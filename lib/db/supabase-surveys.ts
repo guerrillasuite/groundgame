@@ -45,6 +45,10 @@ export type OppTrigger = {
   title_template?: string;
 };
 
+export type FormType = "person" | "company" | "opportunity" | "event" | "survey" | "custom" | "wspq";
+export type SurveyStatus = "draft" | "live" | "closed";
+export type ResultsDisplayMode = "none" | "count" | "aggregate" | "your_response";
+
 export type Survey = {
   id: string;
   public_slug: string | null;
@@ -71,6 +75,23 @@ export type Survey = {
   order_products: string[] | null; // null = all active; array = curated product IDs
   show_share: boolean;
   show_take_again: boolean;
+  // Intake builder v2
+  form_type: FormType;
+  status: SurveyStatus;
+  button_label: string | null;
+  logo_display_enabled: boolean;
+  staff_notification_emails: string[] | null;
+  respondent_confirmation_email_enabled: boolean;
+  respondent_confirmation_email_subject: string | null;
+  allow_multiple_submissions: boolean;
+  require_contact_id_url: boolean;
+  submission_limit: number | null;
+  expiration_at: string | null;
+  password_hash: string | null;
+  post_submission_redirect_url: string | null;
+  show_results_after_submission: boolean;
+  results_display_mode: ResultsDisplayMode;
+  webhook_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -202,15 +223,21 @@ export async function createSurvey(params: {
   title: string;
   description?: string;
   tenantId: string;
+  form_type?: FormType;
+  status?: SurveyStatus;
+  opp_trigger?: object | null;
 }): Promise<void> {
   const sb = getServiceClient(params.tenantId);
   const { error } = await sb.from("surveys").insert({
     id: params.id,
-    public_slug: params.id, // default public_slug = id
+    public_slug: params.id,
     tenant_id: params.tenantId,
     title: params.title,
     description: params.description ?? null,
     active: true,
+    form_type: params.form_type ?? "custom",
+    status: params.status ?? "draft",
+    opp_trigger: params.opp_trigger ?? null,
   });
   if (error) throw error;
 }
@@ -241,6 +268,22 @@ export async function updateSurvey(
     auto_fields?: { crm_field: string; value: string }[] | null;
     show_share?: boolean;
     show_take_again?: boolean;
+    // Intake builder v2
+    status?: SurveyStatus;
+    button_label?: string | null;
+    logo_display_enabled?: boolean;
+    staff_notification_emails?: string[] | null;
+    respondent_confirmation_email_enabled?: boolean;
+    respondent_confirmation_email_subject?: string | null;
+    allow_multiple_submissions?: boolean;
+    require_contact_id_url?: boolean;
+    submission_limit?: number | null;
+    expiration_at?: string | null;
+    password_hash?: string | null;
+    post_submission_redirect_url?: string | null;
+    show_results_after_submission?: boolean;
+    results_display_mode?: ResultsDisplayMode;
+    webhook_url?: string | null;
   }
 ): Promise<void> {
   const sb = getAdminClient();
@@ -272,6 +315,22 @@ export async function updateSurvey(
   if ("auto_fields" in params) update.auto_fields = params.auto_fields?.length ? params.auto_fields : null;
   if ("show_share" in params) update.show_share = params.show_share ?? true;
   if ("show_take_again" in params) update.show_take_again = params.show_take_again ?? true;
+  // Intake builder v2
+  if ("status" in params) update.status = params.status ?? "draft";
+  if ("button_label" in params) update.button_label = params.button_label || null;
+  if ("logo_display_enabled" in params) update.logo_display_enabled = params.logo_display_enabled ?? true;
+  if ("staff_notification_emails" in params) update.staff_notification_emails = params.staff_notification_emails?.length ? params.staff_notification_emails : null;
+  if ("respondent_confirmation_email_enabled" in params) update.respondent_confirmation_email_enabled = params.respondent_confirmation_email_enabled ?? false;
+  if ("respondent_confirmation_email_subject" in params) update.respondent_confirmation_email_subject = params.respondent_confirmation_email_subject || null;
+  if ("allow_multiple_submissions" in params) update.allow_multiple_submissions = params.allow_multiple_submissions ?? false;
+  if ("require_contact_id_url" in params) update.require_contact_id_url = params.require_contact_id_url ?? false;
+  if ("submission_limit" in params) update.submission_limit = params.submission_limit ?? null;
+  if ("expiration_at" in params) update.expiration_at = params.expiration_at ?? null;
+  if ("password_hash" in params) update.password_hash = params.password_hash || null;
+  if ("post_submission_redirect_url" in params) update.post_submission_redirect_url = params.post_submission_redirect_url || null;
+  if ("show_results_after_submission" in params) update.show_results_after_submission = params.show_results_after_submission ?? false;
+  if ("results_display_mode" in params) update.results_display_mode = params.results_display_mode ?? "none";
+  if ("webhook_url" in params) update.webhook_url = params.webhook_url || null;
   const { error } = await sb.from("surveys").update(update).eq("id", surveyId);
   if (error) throw error;
 }

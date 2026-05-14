@@ -1,8 +1,5 @@
-import SurveyBuilder from "@/app/components/survey/SurveyBuilder";
-import { getTenant } from "@/lib/tenant";
+import { redirect } from "next/navigation";
 
-export default async function NewSurveyPage() {
-  const tenant = await getTenant();
-  const hasSurveyBranding = tenant.features.includes("crm_survey_branding");
-  return <SurveyBuilder hasSurveyBranding={hasSurveyBranding} />;
+export default function NewSurveyRedirect() {
+  redirect("/crm/intake/new");
 }

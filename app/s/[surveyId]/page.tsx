@@ -11,20 +11,23 @@ function makeSb() {
 
 async function fetchSurveyByIdOrSlug(surveyId: string) {
   const sb = makeSb();
-  const cols = "id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, show_share, show_take_again";
+  const cols = "id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, show_share, show_take_again, status, require_contact_id_url, expiration_at, password_hash, show_results_after_submission, results_display_mode";
   // Look up by public_slug only — the canonical public URL is always /s/{public_slug}.
-  // Falling back to ID would keep old slugs alive after a rename.
   const { data: survey } = await sb
     .from("surveys")
     .select(cols)
     .eq("public_slug", surveyId)
-    .eq("active", true)
     .maybeSingle();
-  // If survey has channel restrictions and "hosted" is not included, treat as unavailable
-  if (survey) {
-    const channels: string[] | null = survey.active_channels;
-    if (channels && channels.length > 0 && !channels.includes("hosted")) return null;
-  }
+  if (!survey) return null;
+  // Status gate: null treated as live for backward compat with pre-migration rows
+  const status: string | null = survey.status ?? null;
+  if (status === "draft") return null;           // not publicly accessible
+  if (status === "closed") return { ...survey, _closed: true } as any;
+  // Expiration gate
+  if (survey.expiration_at && new Date(survey.expiration_at) < new Date()) return { ...survey, _closed: true } as any;
+  // Channel restriction: if hosted is not included, treat as unavailable
+  const channels: string[] | null = survey.active_channels;
+  if (channels && channels.length > 0 && !channels.includes("hosted")) return null;
   return survey;
 }
 
@@ -44,6 +47,26 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0f172a" }}>
         <p style={{ color: "#94a3b8" }}>Survey not available.</p>
+      </div>
+    );
+  }
+
+  // Closed state
+  if ((survey as any)._closed) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0f172a", flexDirection: "column", gap: 12, padding: 24, textAlign: "center" }}>
+        <p style={{ color: "#f8fafc", fontSize: 20, fontWeight: 700, margin: 0 }}>This form is closed</p>
+        <p style={{ color: "#94a3b8", margin: 0 }}>This form is no longer accepting responses.</p>
+      </div>
+    );
+  }
+
+  // Personalized-link enforcement
+  if (survey.require_contact_id_url && !contact_id) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0f172a", flexDirection: "column", gap: 12, padding: 24, textAlign: "center" }}>
+        <p style={{ color: "#f8fafc", fontSize: 18, fontWeight: 700, margin: 0 }}>Personalized link required</p>
+        <p style={{ color: "#94a3b8", margin: 0, maxWidth: 400 }}>This survey requires a personalized link. Please use the link that was sent to you.</p>
       </div>
     );
   }
@@ -144,6 +167,9 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
       viewConfig={viewConfig}
       showShare={survey.show_share !== false}
       showTakeAgain={survey.show_take_again !== false}
+      passwordProtected={Boolean((survey as any).password_hash)}
+      showResultsAfterSub={Boolean((survey as any).show_results_after_submission)}
+      resultsDisplayMode={((survey as any).results_display_mode as string) ?? "none"}
     />
   );
 }

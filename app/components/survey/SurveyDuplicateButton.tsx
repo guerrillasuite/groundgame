@@ -13,7 +13,7 @@ export default function SurveyDuplicateButton({ surveyId }: { surveyId: string }
       const res = await fetch(`/api/survey/${surveyId}/duplicate`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      router.push(`/crm/survey/${data.survey_id}/edit`);
+      router.push(`/crm/intake/${data.survey_id}/edit`);
     } catch (err) {
       alert("Failed to duplicate survey.");
     } finally {

@@ -38,8 +38,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ su
     description: survey.description,
     website_url: survey.website_url,
     footer_text: survey.footer_text,
-    active: false, // start inactive so it doesn't accidentally go live
+    active: false,
     active_channels: [],
+    form_type: survey.form_type ?? "custom",
+    status: "draft", // copies always start as draft
     display_title: survey.display_title,
     display_description: survey.display_description,
     post_submit_survey_id: survey.post_submit_survey_id,
@@ -57,6 +59,19 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ su
     auto_fields: survey.auto_fields,
     show_share: survey.show_share ?? true,
     show_take_again: survey.show_take_again ?? true,
+    button_label: survey.button_label ?? null,
+    logo_display_enabled: survey.logo_display_enabled ?? true,
+    staff_notification_emails: survey.staff_notification_emails ?? null,
+    respondent_confirmation_email_enabled: survey.respondent_confirmation_email_enabled ?? false,
+    respondent_confirmation_email_subject: survey.respondent_confirmation_email_subject ?? null,
+    allow_multiple_submissions: survey.allow_multiple_submissions ?? false,
+    require_contact_id_url: survey.require_contact_id_url ?? false,
+    submission_limit: survey.submission_limit ?? null,
+    expiration_at: null, // don't copy expiration — copy starts fresh
+    password_hash: null, // don't copy password — copy starts unprotected
+    show_results_after_submission: survey.show_results_after_submission ?? false,
+    results_display_mode: survey.results_display_mode ?? "none",
+    webhook_url: survey.webhook_url ?? null,
   });
   if (surveyErr) return NextResponse.json({ error: surveyErr.message }, { status: 500 });
 

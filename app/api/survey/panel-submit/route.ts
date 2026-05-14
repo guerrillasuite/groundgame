@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { normalizeCrmField } from "@/lib/db/supabase-surveys";
+import { sendEmail } from "@/lib/email/resend";
 import { applyL2Transform, L2_BOOLEAN_COLS, L2_INTEGER_COLS, L2_SMALLINT_COLS, L2_DATE_COLS, L2_FLOAT_COLS, L2_ARRAY_COLS, L2_BIGINT_COLS } from "@/lib/crm/l2-field-map";
 
 export const dynamic = "force-dynamic";
@@ -254,12 +255,31 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
 
-  // ── Fetch survey meta (title + opportunity trigger + payment flag + auto_fields) ─
+  // ── Fetch survey meta ────────────────────────────────────────────────────────
   const { data: surveyRow } = await sb
     .from("surveys")
-    .select("title, opp_trigger, payment_enabled, auto_fields")
+    .select("title, opp_trigger, payment_enabled, auto_fields, submission_limit, respondent_confirmation_email_enabled, respondent_confirmation_email_subject, webhook_url, show_results_after_submission, results_display_mode, status, expiration_at")
     .eq("id", survey_id)
     .maybeSingle();
+
+  // ── Status / expiration gate ──────────────────────────────────────────────────
+  if (surveyRow?.status === "draft" || surveyRow?.status === "closed") {
+    return NextResponse.json({ error: "This form is not accepting responses" }, { status: 403 });
+  }
+  if (surveyRow?.expiration_at && new Date(surveyRow.expiration_at as string) < new Date()) {
+    return NextResponse.json({ error: "This form is no longer accepting responses" }, { status: 403 });
+  }
+
+  // ── Submission limit enforcement ──────────────────────────────────────────────
+  if (surveyRow?.submission_limit) {
+    const { count } = await sb
+      .from("survey_sessions")
+      .select("*", { count: "exact", head: true })
+      .eq("survey_id", survey_id);
+    if ((count ?? 0) >= (surveyRow.submission_limit as number)) {
+      return NextResponse.json({ error: "This form has reached its submission limit" }, { status: 403 });
+    }
+  }
 
   // ── Apply auto pre-filled fields to table buckets ─────────────────────────
   for (const af of (surveyRow?.auto_fields as { crm_field: string; value: string }[] | null) ?? []) {
@@ -471,9 +491,80 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Webhook (fire-and-forget) ─────────────────────────────────────────────────
+  const webhookUrl = (surveyRow?.webhook_url as string | null)?.trim();
+  if (webhookUrl) {
+    fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        survey_id,
+        person_id: personId,
+        opportunity_id: opportunityId,
+        answers,
+        submitted_at: now,
+      }),
+    }).catch((e) => console.error("[panel-submit] webhook:", e));
+  }
+
+  // ── Respondent confirmation email (fire-and-forget) ──────────────────────────
+  if (surveyRow?.respondent_confirmation_email_enabled) {
+    const respondentEmail = tableFields.people.email?.trim();
+    if (respondentEmail) {
+      const subject = (surveyRow.respondent_confirmation_email_subject as string | null)?.trim()
+        || "Thank you for your submission";
+      const surveyTitle = (surveyRow.title as string | null) ?? "our form";
+      sendEmail(
+        respondentEmail,
+        subject,
+        `<p>Thank you for completing <strong>${surveyTitle}</strong>. We have received your submission.</p>`,
+      ).catch((e) => console.error("[panel-submit] confirmation email:", e));
+    }
+  }
+
+  // Build post-submit results payload if enabled
+  let results: Record<string, unknown> | null = null;
+  if (surveyRow?.show_results_after_submission) {
+    const mode = (surveyRow.results_display_mode as string) || "count";
+    const { count: totalCount } = await sb
+      .from("survey_sessions")
+      .select("*", { count: "exact", head: true })
+      .eq("survey_id", survey_id)
+      .not("completed_at", "is", null);
+
+    if (mode === "aggregate") {
+      const [{ data: responseRows }, { data: qRows }] = await Promise.all([
+        sb.from("responses").select("question_id, answer_value").eq("survey_id", survey_id),
+        sb.from("questions").select("id, question_text, question_type").eq("survey_id", survey_id).order("order_index", { ascending: true }),
+      ]);
+      const qMap: Record<string, { text: string; type: string; counts: Record<string, number> }> = {};
+      for (const q of qRows ?? []) qMap[q.id] = { text: q.question_text, type: q.question_type, counts: {} };
+      for (const r of responseRows ?? []) {
+        if (!qMap[r.question_id]) continue;
+        const val = String(r.answer_value ?? "");
+        qMap[r.question_id].counts[val] = (qMap[r.question_id].counts[val] ?? 0) + 1;
+      }
+      const aggregates = Object.entries(qMap).map(([qid, q]) => {
+        const total = Object.values(q.counts).reduce((s, c) => s + c, 0);
+        return {
+          question_id: qid,
+          question_text: q.text,
+          question_type: q.type,
+          answers: Object.entries(q.counts)
+            .map(([value, count]) => ({ value, count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }))
+            .sort((a, b) => b.count - a.count),
+        };
+      });
+      results = { mode, total_responses: totalCount ?? 0, aggregates };
+    } else {
+      results = { mode, total_responses: totalCount ?? 0 };
+    }
+  }
+
   return NextResponse.json({
     person_id: personId,
     opportunity_id: opportunityId,
     payment_required: Boolean(surveyRow?.payment_enabled),
+    results,
   });
 }

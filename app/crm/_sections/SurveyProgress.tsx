@@ -42,7 +42,7 @@ export async function SurveyProgress({ tenantId }: { tenantId: string }) {
         <span style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: S.dim, flex: 1 }}>
           Survey Progress
         </span>
-        <Link href="/crm/survey" style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", flexShrink: 0 }}>
+        <Link href="/crm/intake" style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", flexShrink: 0 }}>
           View all →
         </Link>
         <svg className="survey-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, transition: "transform .2s ease" }}>
@@ -56,7 +56,7 @@ export async function SurveyProgress({ tenantId }: { tenantId: string }) {
             const done = surveyCompleted.get(survey.id) ?? 0;
             const pct = total > 0 ? (done / total) * 100 : 0;
             return (
-              <Link key={survey.id} href={`/crm/survey/${survey.id}/results`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+              <Link key={survey.id} href={`/crm/intake/${survey.id}/results`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
                 <div className="db-list-row" style={{
                   padding: "12px 14px",
                   background: "rgba(255,255,255,.03)",
