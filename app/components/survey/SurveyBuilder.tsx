@@ -22,6 +22,7 @@ type QuestionType =
   | "text"
   | "text_short"
   | "yes_no"
+  | "yes_unsure_no"
   | "date"
   | "rating"
   | "number"
@@ -501,6 +502,7 @@ export default function SurveyBuilder({
         let options = q.options;
         let display_format = q.display_format;
         if (type === "yes_no") { options = ["Yes", "No"]; display_format = null; }
+        else if (type === "yes_unsure_no") { options = ["Yes", "Unsure", "No"]; display_format = null; }
         else if (type === "rating") { options = ["5"]; display_format = null; }
         else if (type === "approval_voting" || type === "star_voting") {
           // Preserve candidate list when switching between voting types
@@ -1560,6 +1562,7 @@ export default function SurveyBuilder({
                         </optgroup>
                         <optgroup label="Scale">
                           <option value="yes_no">Yes / No</option>
+                          <option value="yes_unsure_no">Yes / Unsure / No</option>
                           <option value="rating">Rating Scale</option>
                         </optgroup>
                         <optgroup label="Open-ended">
@@ -1794,9 +1797,9 @@ export default function SurveyBuilder({
                   )}
 
                   {/* Yes/No preview */}
-                  {q.question_type === "yes_no" && (
+                  {(q.question_type === "yes_no" || q.question_type === "yes_unsure_no") && (
                     <div style={{ display: "flex", gap: 8 }}>
-                      {["Yes", "No"].map((opt) => (
+                      {(q.question_type === "yes_unsure_no" ? ["Yes", "Unsure", "No"] : ["Yes", "No"]).map((opt) => (
                         <span key={opt} style={{ padding: "6px 18px", borderRadius: 20, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.6, color: "var(--gg-text, inherit)" }}>
                           {opt}
                         </span>
@@ -1828,7 +1831,7 @@ export default function SurveyBuilder({
                   )}
 
                   {/* Tag mapping (choice questions only) */}
-                  {(CHOICE_TYPES.includes(q.question_type) || q.question_type === "yes_no") && (
+                  {(CHOICE_TYPES.includes(q.question_type) || q.question_type === "yes_no" || q.question_type === "yes_unsure_no") && (
                     <div style={{ borderTop: "1px solid var(--gg-border, #e5e7eb)", paddingTop: 12 }}>
                       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
                         <input
@@ -2083,7 +2086,7 @@ function cardHeight(qType: string, optionCount: number): number {
   if (["multiple_choice", "multiple_select", "multiple_choice_with_other", "multiple_select_with_other"].includes(qType)) {
     return optionCount >= 4 ? 56 : 44;
   }
-  if (qType === "yes_no" || qType === "rating") return 44;
+  if (qType === "yes_no" || qType === "yes_unsure_no" || qType === "rating") return 44;
   return 36; // text_short, email, phone, number, date
 }
 
@@ -2353,6 +2356,7 @@ const QUESTION_TYPE_META: Record<string, { label: string; color: string; bg: str
   text:                       { label: "Long Text",            color: "#0891b2", bg: "rgba(8,145,178,0.13)"  },
   text_short:                 { label: "Short Text",           color: "#0891b2", bg: "rgba(8,145,178,0.13)"  },
   yes_no:                     { label: "Yes / No",             color: "#16a34a", bg: "rgba(22,163,74,0.13)"  },
+  yes_unsure_no:              { label: "Yes / Unsure / No",   color: "#16a34a", bg: "rgba(22,163,74,0.13)"  },
   date:                       { label: "Date",                 color: "#d97706", bg: "rgba(217,119,6,0.13)"  },
   rating:                     { label: "Rating",               color: "#ea580c", bg: "rgba(234,88,12,0.13)"  },
   number:                     { label: "Number",               color: "#d97706", bg: "rgba(217,119,6,0.13)"  },

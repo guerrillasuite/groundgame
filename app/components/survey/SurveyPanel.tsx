@@ -674,9 +674,9 @@ export default function SurveyPanel({
                             {choiceOpts.map(o => { const checked = multiVals.includes(o); return <label key={o} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "10px 14px", borderRadius: 10, border: `2px solid ${checked ? primaryColor : borderColor}`, background: checked ? `${primaryColor}15` : "transparent" }}><input type="checkbox" checked={checked} onChange={() => { const next = checked ? multiVals.filter(v => v !== o) : [...multiVals, o]; setAnswers({ ...answers, [q.id]: JSON.stringify(next) }); }} style={{ width: 16, height: 16 }} /><span style={{ fontSize: 14, color: textColor }}>{o}</span></label>; })}
                           </div>
                         )}
-                        {qType === "yes_no" && (
+                        {(qType === "yes_no" || qType === "yes_unsure_no") && (
                           <div style={{ display: "flex", gap: 10 }}>
-                            {["Yes", "No"].map(o => { const isSel = val === o; return <button key={o} type="button" onClick={() => setAnswers({ ...answers, [q.id]: o })} style={{ flex: 1, padding: "12px", borderRadius: 10, fontSize: 15, fontWeight: 700, border: `2px solid ${isSel ? primaryColor : borderColor}`, background: isSel ? `${primaryColor}20` : "transparent", color: textColor, cursor: "pointer" }}>{o}</button>; })}
+                            {(qType === "yes_unsure_no" ? ["Yes", "Unsure", "No"] : ["Yes", "No"]).map(o => { const isSel = val === o; const cc = o === "Yes" ? "#16a34a" : o === "No" ? "#dc2626" : primaryColor; return <button key={o} type="button" onClick={() => setAnswers({ ...answers, [q.id]: o })} style={{ flex: 1, padding: "12px", borderRadius: 10, fontSize: 15, fontWeight: 700, border: `2px solid ${isSel ? cc : borderColor}`, background: isSel ? `${cc}22` : "transparent", color: isSel ? cc : textColor, cursor: "pointer" }}>{o}</button>; })}
                           </div>
                         )}
                         {qType === "rating" && (
@@ -964,13 +964,14 @@ export default function SurveyPanel({
           )}
 
           {/* Yes/No */}
-          {qType === "yes_no" && (
+          {(qType === "yes_no" || qType === "yes_unsure_no") && (
             <div style={{ display: "flex", gap: 12 }}>
-              {["Yes", "No"].map((opt) => {
+              {(qType === "yes_unsure_no" ? ["Yes", "Unsure", "No"] : ["Yes", "No"]).map((opt) => {
                 const isSelected = answers[currentQuestion?.id] === opt;
+                const cc = opt === "Yes" ? "#16a34a" : opt === "No" ? "#dc2626" : primaryColor;
                 return (
                   <button key={opt} onClick={() => selectAnswer(opt)}
-                    style={{ flex: 1, padding: "16px", borderRadius: 12, fontSize: 18, fontWeight: 700, border: `2px solid ${isSelected ? primaryColor : borderColor}`, background: isSelected ? `${primaryColor}20` : "transparent", color: textColor, cursor: "pointer" }}
+                    style={{ flex: 1, padding: "16px", borderRadius: 12, fontSize: 18, fontWeight: 700, border: `2px solid ${isSelected ? cc : borderColor}`, background: isSelected ? `${cc}22` : "transparent", color: isSelected ? cc : textColor, cursor: "pointer" }}
                   >
                     {opt}
                   </button>
@@ -1166,9 +1167,9 @@ export default function SurveyPanel({
                     const psType = psQ.question_type ?? "text_short";
                     const psVal = psAnswers[psQ.id] ?? "";
                     const isOpen = ["text", "text_short", "number", "email", "phone", "date"].includes(psType);
-                    const isChoice = ["multiple_choice", "multiple_choice_with_other", "yes_no"].includes(psType);
+                    const isChoice = ["multiple_choice", "multiple_choice_with_other", "yes_no", "yes_unsure_no"].includes(psType);
                     const psOptions = psQ.options ?? [];
-                    const choiceList = psType === "yes_no" ? ["Yes", "No"] : psOptions;
+                    const choiceList = psType === "yes_no" ? ["Yes", "No"] : psType === "yes_unsure_no" ? ["Yes", "Unsure", "No"] : psOptions;
 
                     return (
                       <div key={psQ.id}>
