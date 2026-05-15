@@ -60,6 +60,8 @@ export default function TextScreen({ params }: { params: { id: string; index: st
   const [dispoConfig, setDispoConfig] = useState<DispositionConfig>(DEFAULT_DISPO_CONFIG);
   const [lastStop, setLastStop] = useState<LastStop | null>(null);
 
+  const [surveySlug, setSurveySlug] = useState<string | null>(null);
+
   const [result, setResult] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -219,7 +221,10 @@ export default function TextScreen({ params }: { params: { id: string; index: st
 
     fetch(`/api/doors/${params.id}/survey`)
       .then(r => r.json())
-      .then(d => { if (d.dispositionConfig) setDispoConfig(d.dispositionConfig); })
+      .then(d => {
+        if (d.dispositionConfig) setDispoConfig(d.dispositionConfig);
+        if (d.surveyPublicSlug) setSurveySlug(d.surveyPublicSlug);
+      })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
@@ -374,6 +379,22 @@ export default function TextScreen({ params }: { params: { id: string; index: st
     }
   }
 
+  function applyMergeTags(template: string, person: Person, slug: string | null): string {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const surveyUrl = slug && person.person_id
+      ? `${origin}/s/${slug}?contact_id=${person.person_id}`
+      : slug ? `${origin}/s/${slug}` : "";
+    const full = `${person.first_name ?? ""} ${person.last_name ?? ""}`.trim();
+    return template
+      .replace(/\{First_Name\}/gi, person.first_name ?? "")
+      .replace(/\{Last_Name\}/gi, person.last_name ?? "")
+      .replace(/\{Full_Name\}/gi, full)
+      .replace(/\{Phone\}/gi, person.phone_cell ?? person.phone ?? "")
+      .replace(/\{Person_ID\}/gi, person.person_id ?? "")
+      .replace(/\{Survey_Link\}/gi, surveyUrl)
+      .replace(/\{Survey_URL\}/gi, surveyUrl);
+  }
+
   function fmtLastStop(stop: LastStop): string {
     const colorMap = buildColorMap(dispoConfig);
     const label = dispoConfig.texts.find(d => d.key === stop.result)?.label ?? stop.result;
@@ -383,8 +404,8 @@ export default function TextScreen({ params }: { params: { id: string; index: st
   }
 
   function copyScript() {
-    if (!script) return;
-    navigator.clipboard.writeText(script).then(() => {
+    if (!resolvedScript) return;
+    navigator.clipboard.writeText(resolvedScript).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -416,8 +437,10 @@ export default function TextScreen({ params }: { params: { id: string; index: st
   const colorMap = buildColorMap(dispoConfig);
   const resultColor = result ? colorMap[result] : undefined;
 
+  const resolvedScript = script && p ? applyMergeTags(script, p, surveySlug) : script;
+
   const smsHref = displayPhone
-    ? `sms:${encodeURIComponent(displayPhone)}${script ? `?body=${encodeURIComponent(script)}` : ''}`
+    ? `sms:${encodeURIComponent(displayPhone)}${resolvedScript ? `?body=${encodeURIComponent(resolvedScript)}` : ''}`
     : null;
 
   return (
@@ -486,7 +509,7 @@ export default function TextScreen({ params }: { params: { id: string; index: st
       {!showProfile && (<>
 
       {/* Script card */}
-      {script && (
+      {resolvedScript && (
         <div style={{
           background: "var(--gg-card, white)",
           border: "1px solid var(--gg-border, #e5e7eb)",
@@ -515,7 +538,7 @@ export default function TextScreen({ params }: { params: { id: string; index: st
             </button>
           </div>
           <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-            {script}
+            {resolvedScript}
           </p>
         </div>
       )}

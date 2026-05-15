@@ -21,7 +21,7 @@ export async function GET(
 
   const { data } = await sb
     .from("walklists")
-    .select("survey_id, call_capture_mode")
+    .select("survey_id, call_capture_mode, surveys(public_slug)")
     .eq("id", id)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -30,6 +30,7 @@ export async function GET(
 
   return NextResponse.json({
     survey_id: data?.survey_id ?? null,
+    surveyPublicSlug: (data?.surveys as any)?.public_slug ?? null,
     call_capture_mode: data?.call_capture_mode ?? null,
     dispositionConfig,
   });

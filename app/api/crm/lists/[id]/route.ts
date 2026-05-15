@@ -42,17 +42,23 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  // Build update payload — caller sends either { call_capture_mode, survey_id } or legacy { survey_id }
-  const call_capture_mode: string | null = body.call_capture_mode ?? null;
-  const survey_id: string | null =
-    call_capture_mode === "opportunity" ? null : (body.survey_id ?? null);
-
+  // Build update payload — caller sends { call_capture_mode, survey_id } and/or { description }
+  // Only include fields that were actually sent to avoid unintended overwrites
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
 
+  const updatePayload: Record<string, unknown> = {};
+  if (body.call_capture_mode !== undefined || body.survey_id !== undefined) {
+    const call_capture_mode: string | null = body.call_capture_mode ?? null;
+    updatePayload.call_capture_mode = call_capture_mode;
+    updatePayload.survey_id =
+      call_capture_mode === "opportunity" ? null : (body.survey_id ?? null);
+  }
+  if (body.description !== undefined) updatePayload.description = body.description;
+
   const { error } = await sb
     .from("walklists")
-    .update({ survey_id, call_capture_mode })
+    .update(updatePayload)
     .eq("id", id)
     .eq("tenant_id", tenant.id);
 

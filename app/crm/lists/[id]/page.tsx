@@ -2,6 +2,7 @@
 import ListPage from "../../_shared/ListPage";
 import PeopleSearch from "../../_shared/PeopleSearch";
 import SurveyAssignmentPanel from "@/app/components/lists/SurveyAssignmentPanel";
+import TextScriptEditor from "@/app/components/lists/TextScriptEditor";
 import { getTenant } from "@/lib/tenant";
 import { getSurveys } from "@/lib/db/supabase-surveys";
 import { getCrmUser } from "@/lib/crm-auth";
@@ -54,7 +55,7 @@ async function queryInChunks(
 }
 
 type Params = { params: { id: string } };
-type ListMeta = { id: string; name: string | null; mode: string | null; survey_id: string | null; call_capture_mode: string | null };
+type ListMeta = { id: string; name: string | null; mode: string | null; survey_id: string | null; call_capture_mode: string | null; description: string | null };
 
 const fmtAddr = (l: any) => {
   const nk = (l?.normalized_key ?? "").trim();
@@ -82,11 +83,22 @@ export default async function ListDetail({
   // 1) Meta + survey assignment
   const { data: meta, error: mErr } = await sb
     .from("walklists")
-    .select("id,name,mode,survey_id,call_capture_mode")
+    .select("id,name,mode,survey_id,call_capture_mode,description")
     .eq("id", params.id)
     .eq("tenant_id", tenant.id)
     .single();
   if (mErr || !meta) throw new Error(mErr?.message ?? "List not found");
+
+  // Fetch survey public_slug for text script preview
+  let surveySlug: string | null = null;
+  if ((meta as ListMeta).survey_id) {
+    const { data: surveyRow } = await sb
+      .from("surveys")
+      .select("public_slug")
+      .eq("id", (meta as ListMeta).survey_id!)
+      .maybeSingle();
+    surveySlug = surveyRow?.public_slug ?? null;
+  }
 
   // Guard: field users can only view lists they're assigned to
   if (crmUser && !crmUser.isAdmin) {
@@ -493,6 +505,13 @@ export default async function ListDetail({
           <PeopleSearch placeholder={isText ? "Search text list…" : "Search people in this list…"} />
         </div>
         {surveyPanel}
+        {isText && (
+          <TextScriptEditor
+            listId={params.id}
+            initialScript={(meta as ListMeta).description ?? null}
+            surveySlug={surveySlug}
+          />
+        )}
         {peopleRows.length > 0 && (() => {
           const firstRow = peopleRows[0] as any;
           const showParty = firstRow?._hasPartyData ?? false;
