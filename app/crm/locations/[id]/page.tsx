@@ -6,6 +6,7 @@ import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
+import LocationNameEditor from "./LocationNameEditor";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -61,6 +62,14 @@ export default async function LocationDetail({ params }: Params) {
     .select("id, name")
     .eq("location_id", locId)
     .eq("tenant_id", tenant.id);
+
+  // 3b) Companies linked to this location
+  const { data: companiesRaw } = await sb
+    .from("companies")
+    .select("id, name, tenant_companies!inner(tenant_id)")
+    .eq("location_id", locId)
+    .eq("tenant_companies.tenant_id", tenant.id);
+  const companies = (companiesRaw ?? []) as Array<{ id: string; name: string | null }>;
 
   // 3) People via households
   const hhIds = (households ?? []).map((h: any) => h.id);
@@ -159,10 +168,27 @@ export default async function LocationDetail({ params }: Params) {
       <BackButton href="/crm/locations" label="← Locations" style={{ marginBottom: 4 }} />
 
       <div>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{address || "(No address)"}</h1>
-        {loc.city && <p style={{ marginTop: 4, fontSize: 14, color: "var(--gg-text-dim, #6b7280)", margin: "4px 0 0" }}>
-          {[loc.city, loc.state, loc.postal_code].filter(Boolean).join(", ")}
-        </p>}
+        {(loc as any).place_name ? (
+          <>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{(loc as any).place_name}</h1>
+            <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--gg-text-dim, #6b7280)" }}>{address || ""}</p>
+          </>
+        ) : (
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{address || "(No address)"}</h1>
+        )}
+        {loc.city && !(loc as any).place_name && (
+          <p style={{ marginTop: 4, fontSize: 14, color: "var(--gg-text-dim, #6b7280)", margin: "4px 0 0" }}>
+            {[loc.city, loc.state, loc.postal_code].filter(Boolean).join(", ")}
+          </p>
+        )}
+      </div>
+
+      {/* Name & Notes — always shown, editable */}
+      <div style={cardStyle}>
+        <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gg-text-dim, #6b7280)", marginBottom: 12 }}>
+          Name &amp; Notes
+        </p>
+        <LocationNameEditor locId={locId} initialPlaceName={(loc as any).place_name ?? null} initialNotes={loc.notes ?? null} />
       </div>
 
       {/* Address Details */}
@@ -228,6 +254,26 @@ export default async function LocationDetail({ params }: Params) {
 
       <CustomFieldsWidget recordType="locations" recordId={locId} />
 
+      {/* Companies */}
+      {companies.length > 0 && (
+        <div style={cardStyle}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gg-text-dim, #6b7280)", marginBottom: 12 }}>
+            Companies ({companies.length})
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {companies.map((co) => (
+              <Link
+                key={co.id}
+                href={`/crm/companies/${co.id}`}
+                style={{ fontSize: 14, fontWeight: 600, color: "var(--gg-primary, #2563eb)", textDecoration: "none" }}
+              >
+                {co.name ?? "(Unnamed Company)"} →
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Households & Residents */}
       {hhMap.size > 0 && (
         <div style={cardStyle}>
@@ -279,12 +325,6 @@ export default async function LocationDetail({ params }: Params) {
         </div>
       )}
 
-      {loc.notes && (
-        <div style={cardStyle}>
-          <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gg-text-dim, #6b7280)", marginBottom: 8 }}>Notes</p>
-          <p style={{ fontSize: 14, margin: 0, whiteSpace: "pre-wrap" }}>{loc.notes}</p>
-        </div>
-      )}
     </section>
   );
 }

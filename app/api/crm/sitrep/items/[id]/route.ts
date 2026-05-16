@@ -45,7 +45,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     .from("sitrep_items")
     .select(`
       *,
-      location:locations(place_name, full_address, address_line1, city, state),
+      location:locations!location_id(place_name, full_address, address_line1, city, state),
       sitrep_assignments(user_id, role, accepted),
       sitrep_links(id, record_type, record_id, display_label)
     `)

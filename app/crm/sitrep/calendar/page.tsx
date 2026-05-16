@@ -24,7 +24,7 @@ function makeAdminSb() {
 const ITEM_SELECT = [
   "id", "item_type", "title", "description",
   "location_id", "meeting_url",
-  "location:locations(place_name, full_address, address_line1, city, state)",
+  "location:locations!location_id(place_name, full_address, address_line1, city, state)",
   "status", "priority",
   "due_date", "start_at", "end_at", "is_all_day",
   "mission_id", "parent_item_id", "depth",

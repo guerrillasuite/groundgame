@@ -108,7 +108,12 @@ export default function LocationPicker({
   // Close on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // If the clicked element was removed from the DOM by the same mousedown event
+      // (React flushes state updates synchronously before native bubble reaches document),
+      // treat it as an inside click and ignore.
+      if (!document.contains(target)) return;
+      if (!containerRef.current?.contains(target)) {
         setOpen(false);
         setShowManual(false);
       }

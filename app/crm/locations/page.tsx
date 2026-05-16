@@ -73,7 +73,10 @@ export default async function LocationsPage() {
       searchEndpoint="/api/crm/locations/search"
       searchPlaceholder="Search by address, city, state, zip…"
       target="locations"
-      columns={[{ key: "address", label: "Address", width: 520 }]}
+      columns={[
+        { key: "name",    label: "Name",    width: 220 },
+        { key: "address", label: "Address", width: 380 },
+      ]}
       rowHrefPrefix="/crm/locations/"
       headerActions={
         <div style={{ display: "flex", gap: 8 }}>

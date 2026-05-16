@@ -65,7 +65,7 @@ export async function GET(request: Request) {
 
   let dataQ = sb
     .from("locations")
-    .select("id, normalized_key, address_line1, city, state, postal_code, notes")
+    .select("id, normalized_key, address_line1, city, state, postal_code, place_name, common_place_name")
     .eq("tenant_id", tenant.id)
     .order("address_line1", { ascending: true })
     .range(offset, offset + limit - 1);
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
 
   const rows = (data ?? []).map((l: any) => {
     const addr = fmt(l);
-    const name = (l.notes as string | null)?.trim() || null;
+    const name = (l.place_name as string | null)?.trim() || (l.common_place_name as string | null)?.trim() || null;
     return { id: l.id, address: addr, name, display: name && name !== addr ? `${name} — ${addr}` : addr };
   });
   return NextResponse.json({ rows, total: count ?? 0 });

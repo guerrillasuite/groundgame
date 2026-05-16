@@ -36,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
 
   let query = sb
     .from("sitrep_items")
-    .select("id, item_type, title, status, due_date, start_at, end_at, is_all_day, location_id, meeting_url, location:locations(place_name, full_address, address_line1, city, state), description, visibility")
+    .select("id, item_type, title, status, due_date, start_at, end_at, is_all_day, location_id, meeting_url, location:locations!location_id(place_name, full_address, address_line1, city, state), description, visibility")
     .eq("tenant_id", cal.tenant_id)
     .eq("visibility", "team") // public calendars only show team-visible items
     .order("start_at", { ascending: true, nullsFirst: false })

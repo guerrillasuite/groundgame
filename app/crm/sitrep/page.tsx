@@ -43,7 +43,7 @@ export default async function SitRepPage() {
     admin
       .from("sitrep_items")
       .select(
-        "id, tenant_id, squad_id, item_type, title, description, location_id, meeting_url, location:locations(place_name, full_address, address_line1, city, state), status, priority, due_date, start_at, end_at, is_all_day, mission_id, parent_item_id, depth, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
+        "id, tenant_id, squad_id, item_type, title, description, location_id, meeting_url, location:locations!location_id(place_name, full_address, address_line1, city, state), status, priority, due_date, start_at, end_at, is_all_day, mission_id, parent_item_id, depth, visibility, created_by, created_at, sitrep_assignments(user_id, role)"
       )
       .in("tenant_id", allTenantIds)
       .order("due_date", { ascending: true, nullsFirst: false })
@@ -83,6 +83,8 @@ export default async function SitRepPage() {
       // ok — users list is best-effort for name display
     }
   }
+
+  if (itemsRes.error) console.error("[sitrep/page] sitrep_items query error:", itemsRes.error);
 
   // Apply visibility filter server-side, derive location_display
   const allItems = ((itemsRes.data ?? []) as any[]).map((item) => {

@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       visibility, owner_user_id,
       is_recurring,
       location_id, meeting_url,
-      location:locations(place_name, full_address, address_line1, city, state),
+      location:locations!location_id(place_name, full_address, address_line1, city, state),
       source_product, source_record_type, source_record_id,
       created_by, created_at, updated_at, completed_at, cancelled_at,
       sitrep_assignments(user_id, role)
