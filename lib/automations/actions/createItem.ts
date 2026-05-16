@@ -123,7 +123,7 @@ export async function actionCreateItem(
     visibility,
     depth:         0,
     created_by:    createdBy,
-    custom_fields: Object.keys(mappedCustomFields).length > 0 ? mappedCustomFields : null,
+    custom_fields: Object.keys(mappedCustomFields).length > 0 ? mappedCustomFields : {},
   });
 
   if (error) throw new Error(`createItem insert failed: ${error.message}`);

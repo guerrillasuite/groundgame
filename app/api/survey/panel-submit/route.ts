@@ -441,10 +441,11 @@ export async function POST(req: NextRequest) {
 
       if (opportunityId) {
         console.log(`[panel-submit] opportunity created id=${opportunityId} pipeline=${trigger.contact_type ?? null} stage=${stage} due_at=${parsedDueAt}`);
-        await sb.from("opportunity_people").upsert(
-          { tenant_id: tenant.id, opportunity_id: opportunityId, person_id: personId, role: "contact", is_primary: true },
-          { onConflict: "opportunity_id,person_id" }
+        const { error: opPeopleErr } = await sb.from("opportunity_people").insert(
+          { tenant_id: tenant.id, opportunity_id: opportunityId, person_id: personId, role: "contact", is_primary: true }
         );
+        if (opPeopleErr) console.error("[panel-submit] opportunity_people insert failed:", opPeopleErr.message);
+        else console.log(`[panel-submit] person ${personId} linked to opportunity ${opportunityId}`);
         // Store automation payload — fired AFTER all opp data is written to DB
         oppAutomationPayload = {
           tenant_id:    tenant.id,
