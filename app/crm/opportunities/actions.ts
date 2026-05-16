@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { fireAutomations } from "@/lib/automations/engine";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -22,6 +23,14 @@ const REVALIDATE = (id?: string) => {
 export async function updateOpportunityStage(opportunityId: string, newStage: string) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
+
+  const { data: existing } = await sb
+    .from("opportunities")
+    .select("id, title, stage, pipeline, tenant_id")
+    .eq("id", opportunityId)
+    .eq("tenant_id", tenant.id)
+    .single();
+
   const { error } = await sb
     .from("opportunities")
     .update({ stage: newStage, updated_at: new Date().toISOString() })
@@ -29,6 +38,16 @@ export async function updateOpportunityStage(opportunityId: string, newStage: st
     .eq("tenant_id", tenant.id);
   if (error) throw new Error(error.message);
   REVALIDATE(opportunityId);
+
+  if (existing && (existing as any).stage !== newStage) {
+    const opp = existing as any;
+    void fireAutomations({
+      tenant_id:    tenant.id,
+      trigger_type: "opportunity_stage_changed",
+      opportunity:  { ...opp, stage: newStage },
+      old:          { stage: opp.stage },
+    });
+  }
 }
 
 const ALLOWED_FIELDS = [

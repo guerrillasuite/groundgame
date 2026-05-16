@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
+import { fireAutomations } from "@/lib/automations/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -159,6 +160,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   }
 
   // Assignment management
+  let assignmentAdded = false;
   if (Array.isArray(body.add_assignee_ids) && body.add_assignee_ids.length > 0) {
     const role = body.assignment_role ?? "assignee";
     await sb.from("sitrep_assignments").upsert(
@@ -169,11 +171,37 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       tenant_id: tenant.id, item_id: id, actor_id: crmUser.userId,
       event_type: "assigned", new_value: body.add_assignee_ids.join(","),
     });
+    assignmentAdded = true;
   }
   if (Array.isArray(body.remove_assignee_ids) && body.remove_assignee_ids.length > 0) {
     await sb.from("sitrep_assignments").delete()
       .eq("item_id", id)
       .in("user_id", body.remove_assignee_ids);
+  }
+
+  // Fire automations (non-blocking)
+  const updatedItem = {
+    ...ex,
+    ...Object.fromEntries(Object.entries(patch).filter(([k]) => k !== "updated_at")),
+    id,
+    tenant_id: tenant.id,
+    sitrep_assignments: [],
+  };
+  const triggerBase = { tenant_id: tenant.id, item: updatedItem, old: ex };
+
+  if ("status" in body && body.status !== ex.status) {
+    void fireAutomations({ ...triggerBase, trigger_type: "status_changed" });
+    if (body.status === "done")      void fireAutomations({ ...triggerBase, trigger_type: "item_completed" });
+    if (body.status === "cancelled") void fireAutomations({ ...triggerBase, trigger_type: "item_cancelled" });
+  }
+  if ("priority" in body && body.priority !== ex.priority) {
+    void fireAutomations({ ...triggerBase, trigger_type: "priority_changed" });
+  }
+  if ("due_date" in body && body.due_date !== ex.due_date) {
+    void fireAutomations({ ...triggerBase, trigger_type: "due_date_changed" });
+  }
+  if (assignmentAdded) {
+    void fireAutomations({ ...triggerBase, trigger_type: "assignment_added" });
   }
 
   return NextResponse.json({ ok: true });

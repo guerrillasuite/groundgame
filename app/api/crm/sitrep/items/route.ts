@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
+import { fireAutomations } from "@/lib/automations/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -142,21 +143,22 @@ export async function POST(req: NextRequest) {
     .from("sitrep_items")
     .insert({
       tenant_id:      tenant.id,
+      squad_id:       body.squad_id       ?? null,
       item_type:      body.item_type,
       title:          body.title.trim(),
-      description:    body.description ?? null,
-      status:         body.status ?? (body.item_type === "task" ? "open" : null),
+      description:    body.description    ?? null,
+      status:         body.status         ?? (body.item_type === "task" ? "open" : null),
       priority:       body.item_type === "task" ? (body.priority ?? "normal") : null,
-      due_date:       body.due_date  ?? null,
-      start_at:       body.start_at  ?? null,
-      end_at:         body.end_at     ?? null,
-      is_all_day:     body.is_all_day ?? false,
+      due_date:       body.due_date        ?? null,
+      start_at:       body.start_at        ?? null,
+      end_at:         body.end_at          ?? null,
+      is_all_day:     body.is_all_day      ?? false,
       agenda:         body.item_type === "meeting" ? (body.agenda ?? null) : null,
       meeting_notes:  null,
-      mission_id:     body.mission_id ?? null,
+      mission_id:     body.mission_id      ?? null,
       parent_item_id: resolvedParentId,
       depth,
-      visibility:     body.visibility ?? "assignee_only",
+      visibility:     body.visibility      ?? "assignee_only",
       created_by:     crmUser.userId,
     })
     .select("id")
@@ -197,6 +199,18 @@ export async function POST(req: NextRequest) {
     event_type: "created",
     new_value:  body.title.trim(),
   });
+
+  // Fire automations (non-blocking — errors are logged to sitrep_automation_runs)
+  const createdItem = {
+    id: itemId, tenant_id: tenant.id, squad_id: body.squad_id ?? null,
+    item_type: body.item_type, title: body.title.trim(),
+    status: body.status ?? (body.item_type === "task" ? "open" : null),
+    priority: body.item_type === "task" ? (body.priority ?? "normal") : null,
+    due_date: body.due_date ?? null, start_at: body.start_at ?? null,
+    visibility: body.visibility ?? "assignee_only",
+    created_by: crmUser.userId, sitrep_assignments: [],
+  };
+  void fireAutomations({ tenant_id: tenant.id, trigger_type: "item_created", item: createdItem });
 
   return NextResponse.json({ id: itemId, tenant_id: tenant.id, created: true });
 }

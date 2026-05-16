@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import { fireAutomations } from "@/lib/automations/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -62,5 +63,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error?.message ?? "Failed to create opportunity" }, { status: 500 });
   }
 
-  return NextResponse.json({ id: (data as any).id, created: true });
+  const opportunityId = (data as any).id;
+
+  void fireAutomations({
+    tenant_id:    tenantId,
+    trigger_type: "opportunity_created",
+    opportunity:  { id: opportunityId, tenant_id: tenantId, title: body.title.trim(), stage, pipeline },
+  });
+
+  return NextResponse.json({ id: opportunityId, created: true });
 }

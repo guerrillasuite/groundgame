@@ -37,7 +37,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
   // Field: show dropdown if any child is enabled
   const fieldItems: NavItem[] = [];
   if (f("crm_lists"))   fieldItems.push({ href: "/crm/lists",   label: "Lists" });
-  if (f("crm_surveys")) fieldItems.push({ href: "/crm/survey",  label: "Surveys" });
+  if (f("crm_surveys")) fieldItems.push({ href: "/crm/intake", label: "Intake" });
   if (f("crm_stops"))   fieldItems.push({ href: "/crm/stops",   label: "Stops" });
   if (fieldItems.length > 0) nav.push({ label: "Field", items: fieldItems });
 
@@ -47,7 +47,13 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
   }
 
   // SitRep: always visible — no feature gate
-  nav.push({ href: "/crm/sitrep", label: "SitRep" });
+  nav.push({
+    label: "SitRep",
+    items: [
+      { href: "/crm/sitrep",              label: "Tasks & Calendar" },
+      { href: "/crm/sitrep/automations",  label: "Automations" },
+    ],
+  });
 
   // Dispatch: flat link, WarChest+ — Support can send campaigns
   if (f("crm_dispatch") || isSuperAdmin) {
