@@ -12,7 +12,7 @@ call_cron() {
     -H "Content-Type: application/json" \
     --max-time 310) || true
   BODY=$(cat /tmp/cron_body.txt 2>/dev/null || echo "(no body)")
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ${ENDPOINT} → HTTP ${HTTP_STATUS} — ${BODY}"
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ${ENDPOINT} -> HTTP ${HTTP_STATUS} -- ${BODY}"
   if [ "$HTTP_STATUS" != "200" ]; then
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: ${ENDPOINT} returned ${HTTP_STATUS}" >&2
     return 1
