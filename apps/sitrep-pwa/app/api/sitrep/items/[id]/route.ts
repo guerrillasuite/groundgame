@@ -26,6 +26,7 @@ const PATCHABLE = [
   "title", "description", "status", "priority",
   "due_date", "start_at", "end_at", "is_all_day",
   "location", "visibility", "parent_item_id",
+  "custom_fields",
 ] as const;
 
 // GET /api/sitrep/items/[id]?tenantId=xxx

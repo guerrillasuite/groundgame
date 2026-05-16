@@ -45,6 +45,7 @@ type SitRepItemFull = Record<string, any> & {
 };
 
 type ItemType = { id: string; name: string; slug: string; color: string };
+type CfDef = { field_key: string; label: string; field_type: string; options: { value: string; label: string }[] };
 
 interface Props {
   item: SitRepItemFull;
@@ -52,6 +53,7 @@ interface Props {
   types: ItemType[];
   userId: string;
   tenantId: string;
+  customFieldDefs: CfDef[];
 }
 
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
@@ -85,7 +87,7 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
   );
 }
 
-export default function ItemDetailMobile({ item: initialItem, children, types, userId, tenantId }: Props) {
+export default function ItemDetailMobile({ item: initialItem, children, types, userId, tenantId, customFieldDefs }: Props) {
   const router = useRouter();
   const [tz, setTz]           = useState("UTC");
   const [item, setItem]       = useState(initialItem);
@@ -101,6 +103,7 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
   const [comments, setComments] = useState<any[]>(initialItem.sitrep_comments ?? []);
   const [delConfirm, setDelConfirm] = useState(false);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  const [cfValues, setCfValues] = useState<Record<string, any>>(initialItem.custom_fields ?? {});
 
   useEffect(() => { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone); }, []);
 
@@ -128,6 +131,12 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
   function onDateBlur() {
     const utc = dueDateLocal ? localToUtcIso(dueDateLocal) : null;
     if (utc !== item.due_date) save({ due_date: utc });
+  }
+
+  function saveCf(key: string, value: any) {
+    const updated = { ...cfValues, [key]: value === "" ? null : value };
+    setCfValues(updated);
+    save({ custom_fields: updated });
   }
 
   async function postComment() {
@@ -358,6 +367,108 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
             onFocus={focusIn}
           />
         </Section>
+
+        {/* Custom Fields */}
+        {customFieldDefs.length > 0 && (
+          <Section title="Custom Fields">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {customFieldDefs.map((def) => {
+                const val = cfValues[def.field_key] ?? "";
+                const labelEl = (
+                  <label style={{ fontSize: 11, fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    {def.label}
+                  </label>
+                );
+                if (def.field_type === "textarea") return (
+                  <div key={def.field_key}>
+                    {labelEl}
+                    <textarea
+                      value={val}
+                      onChange={(e) => setCfValues((p) => ({ ...p, [def.field_key]: e.target.value }))}
+                      onBlur={(e) => saveCf(def.field_key, e.target.value)}
+                      rows={3}
+                      style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }}
+                      onFocus={focusIn}
+                    />
+                  </div>
+                );
+                if (def.field_type === "boolean") return (
+                  <div key={def.field_key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    {labelEl}
+                    <button
+                      onClick={() => saveCf(def.field_key, !val)}
+                      style={{
+                        width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+                        background: val ? "var(--gg-primary,#2563eb)" : "rgba(255,255,255,.15)",
+                        position: "relative", flexShrink: 0,
+                      }}
+                    >
+                      <span style={{
+                        position: "absolute", top: 3, left: val ? 21 : 3,
+                        width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                        transition: "left .15s",
+                      }} />
+                    </button>
+                  </div>
+                );
+                if (def.field_type === "select" && def.options?.length > 0) return (
+                  <div key={def.field_key}>
+                    {labelEl}
+                    <select
+                      value={val}
+                      onChange={(e) => saveCf(def.field_key, e.target.value)}
+                      style={{ ...inputStyle }}
+                      onFocus={focusIn}
+                      onBlur={focusOut}
+                    >
+                      <option value="">— select —</option>
+                      {def.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                );
+                if (def.field_type === "number") return (
+                  <div key={def.field_key}>
+                    {labelEl}
+                    <input
+                      type="number"
+                      value={val}
+                      onChange={(e) => setCfValues((p) => ({ ...p, [def.field_key]: e.target.value }))}
+                      onBlur={(e) => saveCf(def.field_key, e.target.value === "" ? null : Number(e.target.value))}
+                      style={inputStyle}
+                      onFocus={focusIn}
+                    />
+                  </div>
+                );
+                if (def.field_type === "date") return (
+                  <div key={def.field_key}>
+                    {labelEl}
+                    <input
+                      type="date"
+                      value={val}
+                      onChange={(e) => saveCf(def.field_key, e.target.value || null)}
+                      style={{ ...inputStyle, colorScheme: "dark" }}
+                      onFocus={focusIn}
+                    />
+                  </div>
+                );
+                // Default: text / email / phone / url
+                return (
+                  <div key={def.field_key}>
+                    {labelEl}
+                    <input
+                      type={def.field_type === "email" ? "email" : def.field_type === "phone" ? "tel" : def.field_type === "url" ? "url" : "text"}
+                      value={val}
+                      onChange={(e) => setCfValues((p) => ({ ...p, [def.field_key]: e.target.value }))}
+                      onBlur={(e) => saveCf(def.field_key, e.target.value)}
+                      style={inputStyle}
+                      onFocus={focusIn}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
 
         {/* Sub-items */}
         {children.length > 0 && (

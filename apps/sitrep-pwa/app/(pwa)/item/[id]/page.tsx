@@ -64,6 +64,20 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     : { data: [] };
   const types = typesData ?? [];
 
+  // Custom field definitions for this item's type
+  const itemTypeRecord = types.find((t: any) => t.slug === i.item_type);
+  const sitrepTypeId = (itemTypeRecord as any)?.id ?? null;
+  const { data: cfDefsData } = (tenantId && sitrepTypeId)
+    ? await sb.from("custom_field_definitions")
+        .select("field_key, label, field_type, options, sort_order")
+        .eq("tenant_id", tenantId)
+        .eq("record_type", "sitrep_items")
+        .eq("sitrep_type_id", sitrepTypeId)
+        .eq("is_archived", false)
+        .order("sort_order", { ascending: true })
+    : { data: [] };
+  const customFieldDefs = cfDefsData ?? [];
+
   return (
     <ItemDetailMobile
       item={{ ...i, sitrep_assignments: rawAssignments, sitrep_comments: rawComments, sitrep_activity: rawActivity }}
@@ -71,6 +85,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       types={types}
       userId={user.userId}
       tenantId={i.tenant_id ?? ""}
+      customFieldDefs={customFieldDefs}
     />
   );
 }
