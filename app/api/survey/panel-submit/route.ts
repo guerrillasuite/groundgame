@@ -70,6 +70,7 @@ async function findOrCreatePerson(
   const personId = crypto.randomUUID();
   const insert: Record<string, any> = {
     id: personId,
+    tenant_id: tenantId,
     data_source: "survey",
     data_updated_at: new Date().toISOString(),
   };
@@ -279,6 +280,7 @@ export async function POST(req: NextRequest) {
       personId = crypto.randomUUID();
       const { error: anonErr } = await sb.from("people").insert({
         id: personId,
+        tenant_id: tenant.id,
         data_source: "survey",
         data_updated_at: new Date().toISOString(),
       });
