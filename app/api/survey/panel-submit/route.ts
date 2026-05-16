@@ -214,6 +214,7 @@ export async function POST(req: NextRequest) {
     .from("questions")
     .select("id, crm_field, question_type, tag_mapping_enabled, tag_prefix")
     .eq("survey_id", survey_id);
+  console.log("[panel-submit] survey_id:", survey_id, "questionRows:", (questionRows ?? []).map(q => ({ id: q.id, crm_field: q.crm_field })));
 
   const tableFields: Record<string, Record<string, string>> = {
     people: {},
