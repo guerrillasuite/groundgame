@@ -31,7 +31,8 @@ type QuestionType =
   | "phone"
   | "product_picker"
   | "approval_voting"
-  | "star_voting";
+  | "star_voting"
+  | "location";
 
 type DisplayFormat = "list" | "dropdown" | null;
 
@@ -504,6 +505,7 @@ export default function SurveyBuilder({
         let display_format = q.display_format;
         if (type === "yes_no") { options = ["Yes", "No"]; display_format = null; }
         else if (type === "yes_unsure_no") { options = ["Yes", "Unsure", "No"]; display_format = null; }
+        else if (type === "location") { options = []; display_format = null; }
         else if (type === "rating") { options = ["5"]; display_format = null; }
         else if (type === "approval_voting" || type === "star_voting") {
           // Preserve candidate list when switching between voting types
@@ -1564,6 +1566,7 @@ export default function SurveyBuilder({
                         <optgroup label="Scale">
                           <option value="yes_no">Yes / No</option>
                           <option value="yes_unsure_no">Yes / Unsure / No</option>
+                          <option value="location">Location (Name + Address)</option>
                           <option value="rating">Rating Scale</option>
                         </optgroup>
                         <optgroup label="Open-ended">
@@ -1804,6 +1807,16 @@ export default function SurveyBuilder({
                       {(q.question_type === "yes_unsure_no" ? ["Yes", "Unsure", "No"] : ["Yes", "No"]).map((opt) => (
                         <span key={opt} style={{ padding: "6px 18px", borderRadius: 20, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.6, color: "var(--gg-text, inherit)" }}>
                           {opt}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {q.question_type === "location" && (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {["Name (optional)", "Street Address", "City / State / Zip"].map((p) => (
+                        <span key={p} style={{ display: "block", padding: "5px 10px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.5, color: "var(--gg-text, inherit)" }}>
+                          {p}
                         </span>
                       ))}
                     </div>
@@ -2090,6 +2103,7 @@ function cardHeight(qType: string, optionCount: number): number {
     return optionCount >= 4 ? 56 : 44;
   }
   if (qType === "yes_no" || qType === "yes_unsure_no" || qType === "rating") return 44;
+  if (qType === "location") return 72;
   return 36; // text_short, email, phone, number, date
 }
 
@@ -2367,6 +2381,7 @@ const QUESTION_TYPE_META: Record<string, { label: string; color: string; bg: str
   email:                      { label: "Email",                color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
   phone:                      { label: "Phone",                color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
   product_picker:             { label: "Product Picker",       color: "#0d9488", bg: "rgba(13,148,136,0.13)" },
+  location:                   { label: "Location",             color: "#0891b2", bg: "rgba(8,145,178,0.13)"  },
   approval_voting:            { label: "Approval Voting",      color: "#059669", bg: "rgba(5,150,105,0.13)"  },
   star_voting:                { label: "STAR Voting",          color: "#d97706", bg: "rgba(217,119,6,0.13)"  },
 };

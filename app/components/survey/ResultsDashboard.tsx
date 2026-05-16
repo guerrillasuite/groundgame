@@ -671,8 +671,25 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
             </div>
           )}
 
+          {/* ── Location type ── */}
+          {question.question_type === 'location' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {question.answers.map((answer, idx) => {
+                let loc: Record<string, string> = {};
+                try { loc = JSON.parse(answer.value); } catch { loc = { address_line1: answer.value }; }
+                const addrLine = [loc.address_line1, [loc.city, loc.state].filter(Boolean).join(", "), loc.postal_code].filter(Boolean).join(" ");
+                return (
+                  <div key={idx} style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid var(--gg-border)", background: "rgba(8,145,178,0.05)" }}>
+                    {loc.name && <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{loc.name}</div>}
+                    <div style={{ fontSize: 13, color: "var(--gg-dim)" }}>{addrLine || answer.value}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* ── Standard types ── */}
-          {question.question_type !== 'approval_voting' && question.question_type !== 'star_voting' && (
+          {question.question_type !== 'approval_voting' && question.question_type !== 'star_voting' && question.question_type !== 'location' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {question.answers.map((answer, answerIdx) => (
                 <div key={`${answer.value}-${answerIdx}`}>

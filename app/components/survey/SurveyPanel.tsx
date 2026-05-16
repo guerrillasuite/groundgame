@@ -604,6 +604,9 @@ export default function SurveyPanel({
           return candidates.length > 0 && candidates.every((c: string) => ballot[c] !== undefined && ballot[c] !== null);
         } catch { return false; }
       }
+      if (q.question_type === "location") {
+        try { const loc = JSON.parse(answers[q.id] || "{}"); return Boolean(loc?.address_line1?.trim()); } catch { return false; }
+      }
       return Boolean(answers[q.id]);
     });
     const deliveryValid = !deliveryEnabled || deliveryMode === "pickup" || deliveryAddr.address_line1.trim();
@@ -689,6 +692,21 @@ export default function SurveyPanel({
                             ? <textarea rows={3} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder="Your answer…" style={{ ...input, resize: "vertical" }} />
                             : <input type={qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "date" ? "date" : qType === "datetime_local" ? "datetime-local" : "text"} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"} style={input} />
                         )}
+                        {qType === "location" && (() => {
+                          const loc: Record<string, string> = (() => { try { return val ? JSON.parse(val) : {}; } catch { return {}; } })();
+                          const upd = (k: string, v: string) => setAnswers({ ...answers, [q.id]: JSON.stringify({ ...loc, [k]: v }) });
+                          return (
+                            <div style={{ display: "grid", gap: 8 }}>
+                              <input type="text" placeholder="Name (optional)" value={loc.name ?? ""} onChange={e => upd("name", e.target.value)} style={input} />
+                              <input type="text" placeholder="Street Address *" value={loc.address_line1 ?? ""} onChange={e => upd("address_line1", e.target.value)} style={input} />
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input type="text" placeholder="City" value={loc.city ?? ""} onChange={e => upd("city", e.target.value)} style={{ ...input, flex: 2 }} />
+                                <input type="text" placeholder="State" value={loc.state ?? ""} onChange={e => upd("state", e.target.value)} style={{ ...input, flex: 1, minWidth: 0 }} />
+                                <input type="text" placeholder="Zip" value={loc.postal_code ?? ""} onChange={e => upd("postal_code", e.target.value)} style={{ ...input, flex: 1, minWidth: 0 }} />
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {(qType === "approval_voting" || qType === "star_voting") && (() => {
                           const candidates = (shuffledOptionsMap[q.id] ?? q.options ?? []).filter((c: string) => c.trim());
                           const ballot: Record<string, any> = (() => { try { return val ? JSON.parse(val) : {}; } catch { return {}; } })();
@@ -1057,6 +1075,33 @@ export default function SurveyPanel({
                   onClick={() => selectAnswer(answers[currentQuestion.id] ?? "{}")}
                   style={btn(primaryColor)}
                   disabled={currentQuestion?.required && !allRated}
+                >
+                  {current === totalQuestions - 1 ? "Submit →" : "Next →"}
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Location */}
+          {qType === "location" && (() => {
+            const loc: Record<string, string> = (() => { try { return JSON.parse(answers[currentQuestion.id] ?? "{}"); } catch { return {}; } })();
+            const upd = (k: string, v: string) => setAnswers({ ...answers, [currentQuestion.id]: JSON.stringify({ ...loc, [k]: v }) });
+            const hasAddr = Boolean(loc.address_line1?.trim());
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <input type="text" placeholder="Name (optional)" value={loc.name ?? ""} onChange={e => upd("name", e.target.value)} style={input} />
+                  <input type="text" placeholder="Street Address *" value={loc.address_line1 ?? ""} onChange={e => upd("address_line1", e.target.value)} style={input} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input type="text" placeholder="City" value={loc.city ?? ""} onChange={e => upd("city", e.target.value)} style={{ ...input, flex: 2 }} />
+                    <input type="text" placeholder="State" value={loc.state ?? ""} onChange={e => upd("state", e.target.value)} style={{ ...input, flex: 1, minWidth: 0 }} />
+                    <input type="text" placeholder="Zip" value={loc.postal_code ?? ""} onChange={e => upd("postal_code", e.target.value)} style={{ ...input, flex: 1, minWidth: 0 }} />
+                  </div>
+                </div>
+                <button
+                  onClick={() => selectAnswer(answers[currentQuestion.id] ?? "{}")}
+                  style={btn(primaryColor)}
+                  disabled={currentQuestion?.required && !hasAddr}
                 >
                   {current === totalQuestions - 1 ? "Submit →" : "Next →"}
                 </button>

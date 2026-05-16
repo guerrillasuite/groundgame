@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import { normalizeCrmField } from "@/lib/db/supabase-surveys";
+import { findOrCreateLocation } from "@/lib/crm/location-utils";
 import { sendEmail } from "@/lib/email/resend";
 import { applyL2Transform, L2_BOOLEAN_COLS, L2_INTEGER_COLS, L2_SMALLINT_COLS, L2_DATE_COLS, L2_FLOAT_COLS, L2_ARRAY_COLS, L2_BIGINT_COLS } from "@/lib/crm/l2-field-map";
 
@@ -190,6 +191,9 @@ export async function POST(req: NextRequest) {
   for (const q of questionRows ?? []) {
     const val = answers[q.id];
     if (!val?.trim()) continue;
+
+    // location answers → findOrCreateLocation later
+    if (q.question_type === "location") continue;
 
     // product_picker answers → order_items later
     if (q.question_type === "product_picker") {
@@ -486,6 +490,33 @@ export async function POST(req: NextRequest) {
       role: "delivery",
       is_primary: true,
     }, { onConflict: "tenant_id,opportunity_id,role" });
+  }
+
+  // ── Create/link location records from location question answers ──────────
+  const locationQuestions = (questionRows ?? []).filter(q => q.question_type === "location" && answers[q.id]?.trim());
+  for (const q of locationQuestions) {
+    try {
+      const loc = JSON.parse(answers[q.id]);
+      if (!loc?.address_line1?.trim()) continue;
+      const { id: locId } = await findOrCreateLocation(sb, tenant.id, {
+        address_line1: loc.address_line1,
+        city: loc.city || undefined,
+        state: loc.state || undefined,
+        postal_code: loc.postal_code || undefined,
+      });
+      if (loc.name?.trim()) {
+        await sb.from("locations").update({ notes: loc.name.trim() }).eq("id", locId).eq("tenant_id", tenant.id);
+      }
+      if (opportunityId) {
+        await sb.from("opportunity_locations").upsert({
+          tenant_id: tenant.id,
+          opportunity_id: opportunityId,
+          location_id: locId,
+          role: "location",
+          is_primary: true,
+        }, { onConflict: "tenant_id,opportunity_id,role" });
+      }
+    } catch { /* best-effort */ }
   }
 
   // ── Insert order_items for product_picker answers ─────────────────────────
