@@ -70,6 +70,18 @@ export type OppData = {
   priority: string | null;
   source: string | null;
   due_at: string | null;
+  custom_fields?: Record<string, unknown> | null;
+};
+
+export type LocationEntry = {
+  location_id: string;
+  role: string;
+  is_primary: boolean;
+  address_line1: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  notes: string | null;
 };
 
 export type ContactTypeOption = {
@@ -243,6 +255,7 @@ export function OppFieldEditor({ opp, stages, contactTypes }: { opp: OppData; st
             onBlur={(e) => save({ source: e.target.value || null })}
           />
         </div>
+
       </div>
     </div>
   );
@@ -557,6 +570,46 @@ export function OppItemsSection({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Locations section ─────────────────────────────────────────────────────────
+
+export function OppLocationsSection({ locations }: { locations: LocationEntry[] }) {
+  if (locations.length === 0) return null;
+
+  return (
+    <div style={SECTION}>
+      <span style={{ fontWeight: 700, fontSize: 15, display: "block", marginBottom: 12 }}>Locations</span>
+      <div style={{ display: "grid", gap: 10 }}>
+        {locations.map((loc) => {
+          const addr = [loc.address_line1, loc.city, loc.state, loc.postal_code]
+            .filter(Boolean)
+            .join(", ");
+          return (
+            <div key={loc.location_id} style={{ display: "flex", gap: 12, fontSize: 13 }}>
+              <span style={{
+                opacity: 0.45,
+                minWidth: 64,
+                flexShrink: 0,
+                textTransform: "capitalize",
+                fontWeight: 600,
+                fontSize: 11,
+                paddingTop: 2,
+              }}>
+                {loc.role}
+              </span>
+              <div>
+                {loc.notes && (
+                  <div style={{ fontWeight: 600, marginBottom: 1 }}>{loc.notes}</div>
+                )}
+                {addr && <div style={{ opacity: 0.65 }}>{addr}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

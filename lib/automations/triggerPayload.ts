@@ -70,7 +70,9 @@ export async function buildNormalizedPayload(
     vars.stage     = opp.stage ?? "";
     vars.pipeline  = opp.pipeline ?? "";
     vars.priority  = opp.priority ?? "";
+    vars.notes     = "";
     vars.due_date  = opp.due_at?.split("T")[0] ?? opp.order_date ?? "";
+    vars.due_at    = opp.due_at ?? "";
     vars.link      = `${APP_URL}/crm/opportunities/${opp.id}`;
 
     // Resolve assigned users
@@ -88,6 +90,81 @@ export async function buildNormalizedPayload(
       vars.assignee_names = names.join(", ");
     } else {
       vars.assignee_names = "";
+    }
+
+    // Fetch linked locations + custom_fields + primary person from DB
+    if (opp.id) {
+      const [locsRes, oppRes, personRes] = await Promise.all([
+        adminSb
+          .from("opportunity_locations")
+          .select("role, locations(address_line1, city, state, postal_code, notes)")
+          .eq("opportunity_id", opp.id),
+        opp.custom_fields === undefined || opp.notes === undefined
+          ? adminSb.from("opportunities").select("custom_fields, notes").eq("id", opp.id).maybeSingle()
+          : Promise.resolve({ data: { custom_fields: opp.custom_fields, notes: opp.notes } }),
+        adminSb
+          .from("opportunity_people")
+          .select("person_id, people(first_name, last_name, email, phone, phone_cell)")
+          .eq("opportunity_id", opp.id)
+          .eq("is_primary", true)
+          .maybeSingle(),
+      ]);
+      for (const loc of (locsRes.data as any[]) ?? []) {
+        const parts = [
+          loc.locations?.address_line1,
+          loc.locations?.city,
+          loc.locations?.state,
+          loc.locations?.postal_code,
+        ].filter(Boolean);
+        const addr = parts.join(", ");
+        const name = loc.locations?.notes ?? addr;
+        if (loc.role === "pickup") {
+          vars.pickup_location = name;
+          vars.pickup_address  = addr;
+        } else if (loc.role === "dropoff") {
+          vars.dropoff_location = name;
+          vars.dropoff_address  = addr;
+        }
+      }
+      const fetchedNotes = (oppRes.data as any)?.notes;
+      if (fetchedNotes) vars.notes = fetchedNotes;
+
+      const cf = (oppRes.data as any)?.custom_fields;
+      if (cf && typeof cf === "object") {
+        for (const [k, v] of Object.entries(cf)) {
+          if (v != null) vars[`custom_fields.${k}`] = String(v);
+        }
+      }
+
+      // Primary person on the opportunity
+      const personRow = personRes.data as any;
+      const person = personRow?.people;
+      if (person) {
+        const firstName = person.first_name ?? "";
+        const lastName  = person.last_name ?? "";
+        vars.person_first_name = firstName;
+        vars.person_last_name  = lastName;
+        vars.person_name       = `${firstName} ${lastName}`.trim();
+        vars.person_email      = person.email ?? "";
+        vars.person_phone      = person.phone_cell ?? person.phone ?? "";
+
+        // Person custom fields from tenant_people.custom_data
+        const personId = personRow?.person_id;
+        if (personId) {
+          const { data: tpRow } = await adminSb
+            .from("tenant_people")
+            .select("custom_data")
+            .eq("person_id", personId)
+            .eq("tenant_id", payload.tenant_id)
+            .maybeSingle();
+          const cd = (tpRow as any)?.custom_data;
+          if (cd && typeof cd === "object") {
+            for (const [k, v] of Object.entries(cd)) {
+              if (v != null) vars[`custom_data.${k}`] = String(v);
+            }
+          }
+        }
+      }
     }
   }
 

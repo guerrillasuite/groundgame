@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ColorFamilyPicker } from "@/app/components/ColorFamilyPicker";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
+import CustomFieldsSection from "@/app/components/crm/CustomFieldsSection";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -539,6 +540,16 @@ function TypeEditorPanel({
                 color: S.dim, cursor: "pointer", width: "100%",
               }}
             >+ Add Stage</button>
+          </div>
+
+          {/* Custom Fields */}
+          <div style={{ borderBottom: `1px solid ${S.border}` }}>
+            <CustomFieldsSection
+              recordType="sitrep_items"
+              sitrepTypeId={t.id}
+              borderColor={S.border}
+              dimColor={S.dim}
+            />
           </div>
 
           {/* Advanced Settings (custom roles) */}

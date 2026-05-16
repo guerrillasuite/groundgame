@@ -505,7 +505,7 @@ export default function SurveyBuilder({
         let display_format = q.display_format;
         if (type === "yes_no") { options = ["Yes", "No"]; display_format = null; }
         else if (type === "yes_unsure_no") { options = ["Yes", "Unsure", "No"]; display_format = null; }
-        else if (type === "location") { options = []; display_format = null; }
+        else if (type === "location") { options = ["location"]; display_format = null; }
         else if (type === "rating") { options = ["5"]; display_format = null; }
         else if (type === "approval_voting" || type === "star_voting") {
           // Preserve candidate list when switching between voting types
@@ -1813,7 +1813,19 @@ export default function SurveyBuilder({
                   )}
 
                   {q.question_type === "location" && (
-                    <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: "var(--gg-text, inherit)", opacity: 0.6, whiteSpace: "nowrap" }}>Location role</label>
+                        <select
+                          value={q.options[0] ?? "location"}
+                          onChange={(e) => updateQuestion(q.id, { options: [e.target.value] })}
+                          style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", color: "var(--gg-text, inherit)" }}
+                        >
+                          {["location", "pickup", "dropoff", "origin", "destination", "waypoint"].map((r) => (
+                            <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                          ))}
+                        </select>
+                      </div>
                       {["Name (optional)", "Street Address", "City / State / Zip"].map((p) => (
                         <span key={p} style={{ display: "block", padding: "5px 10px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.5, color: "var(--gg-text, inherit)" }}>
                           {p}
@@ -2480,10 +2492,18 @@ function normalizeCrmFieldClient(raw: string): { table: string; column: string }
   return idx >= 0 ? { table: raw.slice(0, idx), column: raw.slice(idx + 1) } : { table: "people", column: raw };
 }
 
-function getFieldLabel(value: string | null, schema?: Record<string, SchemaEntry[]>): string {
+function getFieldLabel(value: string | null, schema?: Record<string, SchemaEntry[]>, cfDefs?: { field_key: string; label: string }[]): string {
   if (!value) return "(No mapping)";
   const { table, column } = normalizeCrmFieldClient(value);
   const tableLabel = TABLE_LABELS[table] ?? table;
+  // custom_fields.* or custom_data.* — check definitions first
+  const CF_COL = column.startsWith("custom_fields.") ? "custom_fields." : column.startsWith("custom_data.") ? "custom_data." : null;
+  if (CF_COL) {
+    const rawKey = column.slice(CF_COL.length);
+    const def = cfDefs?.find((d) => d.field_key === rawKey);
+    if (def) return `${tableLabel} › ${def.label}`;
+    return `${tableLabel} › Custom: ${rawKey}`;
+  }
   // Search common fields first
   const common = COMMON_FIELDS[table]?.find((f) => f.column === column);
   if (common) return `${tableLabel} › ${common.label}`;
@@ -2508,7 +2528,31 @@ function CrmFieldPicker({
   const [advancedSchema, setAdvancedSchema] = useState<Record<string, SchemaEntry[]>>({});
   const [advancedLoading, setAdvancedLoading] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const [customKey, setCustomKey] = useState("");
+  const [cfDefs, setCfDefs] = useState<{ id: string; field_key: string; label: string; field_type: string }[]>([]);
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Map picker table names → API record_type values
+  const CF_RECORD_TYPE: Record<string, string> = {
+    opportunities: "opportunities", people: "people", tenant_people: "people",
+    companies: "companies", households: "households", locations: "locations",
+  };
+  // Map picker table names → their JSON column name (for the crm_field value path)
+  const CF_COLUMN: Record<string, string> = {
+    opportunities: "custom_fields", people: "custom_data", tenant_people: "custom_data",
+    companies: "custom_data", households: "custom_data", locations: "custom_data",
+  };
+
+  useEffect(() => {
+    if (!activeTable || !open) return;
+    const recordType = CF_RECORD_TYPE[activeTable];
+    if (!recordType) { setCfDefs([]); return; }
+    fetch(`/api/crm/custom-fields?record_type=${recordType}`)
+      .then(r => r.json())
+      .then(d => setCfDefs((d.definitions ?? []).filter((x: any) => !x.is_archived)))
+      .catch(() => setCfDefs([]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTable, open]);
 
   // Keep dropdown anchored to trigger even when page scrolls
   useEffect(() => {
@@ -2572,7 +2616,7 @@ function CrmFieldPicker({
         }}
       >
         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {getFieldLabel(value, advancedSchema)}
+          {getFieldLabel(value, advancedSchema, cfDefs)}
         </span>
         <ChevronRight size={13} style={{ flexShrink: 0, opacity: 0.4, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.12s" }} />
       </button>
@@ -2699,6 +2743,78 @@ function CrmFieldPicker({
                         </button>
                       );
                     })}
+                  {/* Custom fields section — all tables with definitions */}
+                  {activeTable && CF_COLUMN[activeTable] && (
+                    <>
+                      {cfDefs.length > 0 && (
+                        <>
+                          <div style={{ padding: "5px 14px 3px", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.4, borderTop: "1px solid var(--gg-border, #e5e7eb)" }}>
+                            Custom Fields
+                          </div>
+                          {cfDefs.map(def => {
+                            const fieldVal = `${activeTable}.${CF_COLUMN[activeTable]}.${def.field_key}`;
+                            const isSelected = value === fieldVal;
+                            return (
+                              <button key={def.id} type="button"
+                                onClick={() => { onChange(isSelected ? null : fieldVal); closePicker(); }}
+                                style={{
+                                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                                  width: "100%", textAlign: "left",
+                                  padding: "8px 14px", border: "none", borderBottom: "1px solid var(--gg-border, #e5e7eb)",
+                                  cursor: "pointer", fontSize: 13,
+                                  background: isSelected ? "rgba(37,99,235,0.08)" : "transparent",
+                                  color: isSelected ? "var(--gg-primary, #2563eb)" : "var(--gg-text, inherit)",
+                                  fontWeight: isSelected ? 600 : 400,
+                                }}
+                              >
+                                <span>{def.label}</span>
+                                <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                                  <span style={{ fontSize: 10, fontWeight: 500, padding: "1px 5px", borderRadius: 4, background: "rgba(0,0,0,0.06)", color: "var(--gg-text-dim, #6b7280)", fontFamily: "monospace" }}>{def.field_type}</span>
+                                  {isSelected && <span style={{ opacity: 0.6 }}>✓</span>}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+                      <div style={{ padding: "10px 14px", borderTop: cfDefs.length > 0 ? "none" : "1px solid var(--gg-border, #e5e7eb)" }}>
+                        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 600, opacity: 0.5 }}>
+                          {cfDefs.length > 0 ? "Other key (advanced)" : "Custom field key"}
+                        </p>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input
+                            type="text"
+                            placeholder="e.g. pickup_notes"
+                            value={customKey}
+                            onChange={(e) => setCustomKey(e.target.value.replace(/\s+/g, "_").toLowerCase())}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            style={{ ...inputStyle, flex: 1, fontSize: 12, padding: "5px 8px" }}
+                          />
+                          <button
+                            type="button"
+                            disabled={!customKey.trim()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={() => {
+                              if (!customKey.trim()) return;
+                              onChange(`${activeTable}.${CF_COLUMN[activeTable]}.${customKey.trim()}`);
+                              setCustomKey("");
+                              closePicker();
+                            }}
+                            style={{
+                              padding: "5px 10px", borderRadius: 6, border: "none", cursor: customKey.trim() ? "pointer" : "default",
+                              background: customKey.trim() ? "var(--gg-primary, #2563eb)" : "rgba(0,0,0,0.08)",
+                              color: customKey.trim() ? "white" : "var(--gg-text-dim, #9ca3af)", fontSize: 12, fontWeight: 600,
+                            }}
+                          >
+                            Use
+                          </button>
+                        </div>
+                        <p style={{ margin: "5px 0 0", fontSize: 10, opacity: 0.4 }}>
+                          Stored in {activeTable}.{CF_COLUMN[activeTable]}
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}

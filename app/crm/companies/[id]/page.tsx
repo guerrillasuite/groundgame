@@ -4,6 +4,7 @@ import Link from "next/link";
 import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -138,6 +139,8 @@ export default async function CompanyDetail({ params }: Params) {
           </div>
         </div>
       )}
+
+      <CustomFieldsWidget recordType="companies" recordId={companyId} />
 
       {/* Linked people */}
       {linkedPeople.length > 0 && (

@@ -31,9 +31,6 @@ export async function actionCreateItem(
   // Resolve tenant_id
   const tenantId: string | null = resolveField(config.tenant_id, payload) ?? payload.tenant_id ?? null;
 
-  // Resolve due_date
-  const dueDate: string | null = resolveField(config.due_date, payload) ?? null;
-
   // Resolve priority
   const priority: string = resolveField(config.priority, payload) ?? "normal";
 
@@ -59,22 +56,77 @@ export async function actionCreateItem(
     assigneeIds = [assignTo.user_id];
   }
 
+  // Resolve location fields (support template strings in static values)
+  const location: string | null = config.location
+    ? resolveTemplate(String(resolveField(config.location, payload) ?? ""), vars) || null
+    : null;
+  const locationAddress: string | null = config.location_address
+    ? resolveTemplate(String(resolveField(config.location_address, payload) ?? ""), vars) || null
+    : null;
+
   const itemId = randomUUID();
   const itemType: string = config.item_type ?? "task";
+  const isTask = itemType === "task";
+
+  // For non-task items (rides, events, meetings), start_at holds the datetime; due_date is task-only
+  const resolvedDueValue: string | null = resolveField(config.due_date, payload) ?? null;
+  const startAt: string | null = !isTask ? resolvedDueValue : null;
+  const dueDateOnly: string | null = isTask && resolvedDueValue
+    ? resolvedDueValue.split("T")[0]
+    : null;
+
+  // created_by must be non-null; fall back to first active tenant user for system-triggered automations
+  let createdBy: string | null = assigneeIds[0] ?? null;
+  if (!createdBy && tenantId) {
+    const { data: fallbackUser } = await adminSb
+      .from("user_tenants")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+    createdBy = (fallbackUser as any)?.user_id ?? null;
+  }
+
+  // Process field_mappings — each { target, mode: "var"|"template", value }
+  const mappedFields: Record<string, string | null> = {};
+  const mappedCustomFields: Record<string, string> = {};
+  for (const m of (config.field_mappings ?? []) as { target: string; mode: string; value: string }[]) {
+    if (!m.target) continue;
+    let resolved: string | null = null;
+    if (m.mode === "var") {
+      resolved = vars[m.value] ?? null;
+    } else if (m.mode === "template") {
+      resolved = resolveTemplate(m.value ?? "", vars) || null;
+    }
+    if (resolved !== null) {
+      if (m.target.startsWith("custom_fields.")) {
+        mappedCustomFields[m.target.slice("custom_fields.".length)] = resolved;
+      } else {
+        mappedFields[m.target] = resolved;
+      }
+    }
+  }
 
   const { error } = await adminSb.from("sitrep_items").insert({
-    id:           itemId,
-    tenant_id:    tenantId,
-    squad_id:     squadId,
-    item_type:    itemType,
-    title:        title.trim(),
-    description,
-    status:       "open",
-    priority:     itemType === "task" ? priority : null,
-    due_date:     dueDate,
+    id:               itemId,
+    tenant_id:        tenantId,
+    squad_id:         squadId,
+    item_type:        itemType,
+    title:            (mappedFields.title ?? title).trim(),
+    description:      mappedFields.description ?? description,
+    status:           "open",
+    priority:         isTask ? priority : null,
+    due_date:         dueDateOnly,
+    start_at:         startAt,
+    location:         mappedFields.location ?? location,
+    location_address: mappedFields.location_address ?? locationAddress,
+    agenda:           mappedFields.agenda ?? null,
+    meeting_notes:    mappedFields.meeting_notes ?? null,
     visibility,
-    depth:        0,
-    created_by:   assigneeIds[0] ?? null,
+    depth:            0,
+    created_by:       createdBy,
+    custom_fields:    Object.keys(mappedCustomFields).length > 0 ? mappedCustomFields : null,
   });
 
   if (error) throw new Error(`createItem insert failed: ${error.message}`);

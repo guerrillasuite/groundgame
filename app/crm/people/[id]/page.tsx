@@ -9,6 +9,7 @@ import { updateRowAction } from "@/app/crm/_shared/mutations";
 import ContactTypesSelector from "@/app/crm/_shared/ContactTypesSelector";
 import RemindersSection from "@/app/components/crm/RemindersSection";
 import { TagPicker } from "@/app/components/crm/TagPicker";
+import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -600,26 +601,11 @@ export default async function PersonDetail({ params }: Params) {
         );
       })()}
 
-      {/* Tenant Custom Fields (tenant_people.custom_data) */}
-      {(() => {
-        const cd = (person as any).tenant_people?.[0]?.custom_data;
-        if (!cd || Object.keys(cd).length === 0) return null;
-        return (
-          <details style={cardStyle}>
-            <summary style={{ ...labelStyle, cursor: "pointer", marginBottom: 0 }}>
-              Custom Fields ({Object.keys(cd).length} fields)
-            </summary>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "8px 20px", marginTop: 12 }}>
-              {Object.entries(cd as Record<string, unknown>).map(([k, v]) => (
-                <div key={k}>
-                  <p style={{ ...labelStyle, marginBottom: 2 }}>{k}</p>
-                  <p style={valueStyle}>{String(v ?? "")}</p>
-                </div>
-              ))}
-            </div>
-          </details>
-        );
-      })()}
+      <CustomFieldsWidget
+        recordType="people"
+        recordId={personId}
+        initialValues={(person as any).tenant_people?.[0]?.custom_data}
+      />
 
       {/* Extended Data (meta_json — global shared, Pro only) */}
       {hasFeature(tenant.features, "crm_enrichment") && (person as any).meta_json && Object.keys((person as any).meta_json).length > 0 ? (

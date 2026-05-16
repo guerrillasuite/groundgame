@@ -85,6 +85,7 @@ function buildNav(features: readonly FeatureKey[], isSuperAdmin: boolean, role: 
     }
     settingsItems.push({ href: "/crm/settings/automations", label: "Automations" });
     settingsItems.push({ href: "/crm/settings/sitrep", label: "SitRep" });
+    settingsItems.push({ href: "/crm/settings/custom-fields", label: "Custom Fields" });
     if (f("news")) {
       settingsItems.push({ href: "/crm/settings/intel-brief", label: "Intel Brief" });
     }

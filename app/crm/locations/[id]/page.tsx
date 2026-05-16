@@ -5,6 +5,7 @@ import Link from "next/link";
 import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
+import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -224,6 +225,8 @@ export default async function LocationDetail({ params }: Params) {
           <FieldGrid fields={geoFields} />
         </div>
       )}
+
+      <CustomFieldsWidget recordType="locations" recordId={locId} />
 
       {/* Households & Residents */}
       {hhMap.size > 0 && (

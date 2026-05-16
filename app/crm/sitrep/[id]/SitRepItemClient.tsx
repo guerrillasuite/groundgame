@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 
 type CalSource = { type: string; tenant_id?: string };
 type CalType   = { id: string; name: string; color: string; cal_type: "work"|"family"|"personal"|"custom"; sources: CalSource[] };
@@ -72,6 +73,7 @@ type Props = {
   parentItem: { id: string; title: string; item_type: string } | null;
   users: User[];
   currentUserId: string;
+  sitrepTypeId?: string | null;
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -195,7 +197,7 @@ function th(colorKey: string) { return TYPE_HERO[colorKey]    ?? { bg: "rgba(59,
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function SitRepItemClient({ item, typeDefs, parentItem, users, currentUserId }: Props) {
+export default function SitRepItemClient({ item, typeDefs, parentItem, users, currentUserId, sitrepTypeId }: Props) {
   const router  = useRouter();
   const typeDef = typeDefs[item.item_type] ?? null;
   const stages  = ((typeDef?.stages ?? []) as Stage[]).length > 0
@@ -932,6 +934,13 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
           </div>
         </div>
       )}
+
+      {/* ── Custom Fields ── */}
+      <CustomFieldsWidget
+        recordType="sitrep_items"
+        recordId={item.id}
+        sitrepTypeId={sitrepTypeId}
+      />
 
       {/* ── Comments ── */}
       <div style={sectionCard}>

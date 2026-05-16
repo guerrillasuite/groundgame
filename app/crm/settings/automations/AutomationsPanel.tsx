@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -208,7 +208,7 @@ function FieldMapSelect({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function AutomationsPanel({
-  initialAutomations, squads, users, tenantId, pipelines, customItemTypes,
+  initialAutomations, squads, users, tenantId, pipelines, customItemTypes, sitrepCustomFields,
 }: {
   initialAutomations: Automation[];
   squads:             Squad[];
@@ -216,6 +216,7 @@ export default function AutomationsPanel({
   tenantId:           string;
   pipelines:          { key: string; label: string }[];
   customItemTypes:    { slug: string; name: string }[];
+  sitrepCustomFields: { field_key: string; label: string }[];
 }) {
   const [automations, setAutomations] = useState<Automation[]>(initialAutomations);
   const [editing,     setEditing]     = useState<Automation | null>(null);
@@ -474,6 +475,7 @@ export default function AutomationsPanel({
           <ActionConfigFields
             type={actionType} config={actionConfig} onChange={setActionConfig}
             squads={squads} users={users} customItemTypes={customItemTypes}
+            triggerType={triggerType} sitrepCustomFields={sitrepCustomFields}
           />
 
           {error && (
@@ -635,23 +637,251 @@ function TriggerConfigFields({
   return null;
 }
 
+// ── Field mapper constants ─────────────────────────────────────────────────────
+
+const SITREP_TARGET_FIELDS = [
+  { key: "title",            label: "Title" },
+  { key: "description",      label: "Description" },
+  { key: "location",         label: "Location (name)" },
+  { key: "location_address", label: "Location Address" },
+  { key: "agenda",           label: "Agenda" },
+  { key: "meeting_notes",    label: "Meeting Notes" },
+];
+
+const SOURCE_VAR_GROUPS = [
+  { group: "Opportunity", items: [
+    { key: "title",    label: "Title" },
+    { key: "stage",    label: "Stage" },
+    { key: "pipeline", label: "Pipeline" },
+    { key: "due_at",   label: "Date & Time" },
+    { key: "due_date", label: "Date (date only)" },
+    { key: "notes",    label: "Notes" },
+  ]},
+  { group: "Person (primary contact)", items: [
+    { key: "person_name",       label: "Full Name" },
+    { key: "person_first_name", label: "First Name" },
+    { key: "person_last_name",  label: "Last Name" },
+    { key: "person_phone",      label: "Phone" },
+    { key: "person_email",      label: "Email" },
+  ]},
+  { group: "Pickup Location", items: [
+    { key: "pickup_location", label: "Name" },
+    { key: "pickup_address",  label: "Address" },
+  ]},
+  { group: "Dropoff Location", items: [
+    { key: "dropoff_location", label: "Name" },
+    { key: "dropoff_address",  label: "Address" },
+  ]},
+  { group: "SitRep Item", items: [
+    { key: "assignee_names", label: "Assignee Names" },
+    { key: "squad_name",     label: "Squad Name" },
+  ]},
+];
+
+type FieldMapping = { target: string; mode: "var" | "template"; value: string };
+
+// Trigger types that provide opportunity + person data
+const OPP_TRIGGERS = new Set(["opportunity_created", "opportunity_stage_changed", "opportunity_updated"]);
+
+function FieldMappingsEditor({
+  mappings,
+  onChange,
+  triggerType,
+  sitrepCustomFields,
+}: {
+  mappings: FieldMapping[];
+  onChange: (m: FieldMapping[]) => void;
+  triggerType: string;
+  sitrepCustomFields: { field_key: string; label: string }[];
+}) {
+  const [customDefs, setCustomDefs] = useState<{ field_key: string; label: string; record_type: string }[]>([]);
+
+  useEffect(() => {
+    const types: string[] = OPP_TRIGGERS.has(triggerType)
+      ? ["opportunities", "people"]
+      : ["sitrep_items"];
+    Promise.all(
+      types.map((rt) =>
+        fetch(`/api/crm/custom-fields?record_type=${rt}`)
+          .then((r) => r.json())
+          .then((d) => (d.definitions ?? []).filter((x: any) => !x.is_archived).map((x: any) => ({ ...x, record_type: rt })))
+          .catch(() => [])
+      )
+    ).then((results) => setCustomDefs(results.flat()));
+  }, [triggerType]);
+
+  function add() {
+    onChange([...mappings, { target: "description", mode: "var", value: "title" }]);
+  }
+  function remove(i: number) {
+    onChange(mappings.filter((_, j) => j !== i));
+  }
+  function update(i: number, patch: Partial<FieldMapping>) {
+    onChange(mappings.map((m, j) => j === i ? { ...m, ...patch } : m));
+  }
+
+  const allVarKeys = SOURCE_VAR_GROUPS.flatMap((g) => g.items.map((it) => it.key));
+  // Custom field var keys: custom_fields.{key} for opp/sitrep, custom_data.{key} for people
+  const cfVarKey = (def: { field_key: string; record_type: string }) =>
+    (def.record_type === "opportunities" || def.record_type === "sitrep_items")
+      ? `custom_fields.${def.field_key}`
+      : `custom_data.${def.field_key}`;
+  const allCfKeys = customDefs.map(cfVarKey);
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={labelStyle}>Field Mappings</span>
+        <button
+          type="button"
+          onClick={add}
+          style={{
+            fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 6,
+            border: "none", background: "rgba(255,255,255,.1)", color: S.text, cursor: "pointer",
+          }}
+        >
+          + Add Field
+        </button>
+      </div>
+
+      {/* Column headers */}
+      {mappings.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto", gap: 6, marginBottom: 4 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: S.dim }}>New Item Field</span>
+          <span />
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: S.dim }}>From Trigger</span>
+          <span />
+        </div>
+      )}
+
+      {mappings.length === 0 && (
+        <p style={{ fontSize: 12, color: S.dim, margin: "4px 0 0" }}>
+          No field mappings yet. Click "+ Add Field" to map data from the triggering record into the new SitRep item.
+        </p>
+      )}
+
+      {mappings.map((m, i) => (
+        <div key={i} style={{ marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto", gap: 6, alignItems: "center" }}>
+            {/* Target */}
+            <select
+              value={m.target}
+              onChange={(e) => update(i, { target: e.target.value })}
+              style={inputStyle}
+            >
+              <optgroup label="Standard Fields">
+                {SITREP_TARGET_FIELDS.map((f) => (
+                  <option key={f.key} value={f.key}>{f.label}</option>
+                ))}
+              </optgroup>
+              {sitrepCustomFields.length > 0 && (
+                <optgroup label="Custom Fields">
+                  {sitrepCustomFields.map((def) => (
+                    <option key={`custom_fields.${def.field_key}`} value={`custom_fields.${def.field_key}`}>{def.label}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+
+            <span style={{ fontSize: 13, opacity: 0.4, textAlign: "center" }}>←</span>
+
+            {/* Source */}
+            <select
+              value={
+                m.mode === "template"
+                  ? "__template__"
+                  : (allVarKeys.includes(m.value) || allCfKeys.includes(m.value))
+                    ? m.value
+                    : "__template__"
+              }
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__template__") {
+                  update(i, { mode: "template", value: m.mode === "template" ? m.value : "" });
+                } else {
+                  update(i, { mode: "var", value: v });
+                }
+              }}
+              style={inputStyle}
+            >
+              {SOURCE_VAR_GROUPS.map((g) => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.items.map((it) => (
+                    <option key={it.key} value={it.key}>{it.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+              {/* Custom field definitions grouped by record type */}
+              {["opportunities", "people", "sitrep_items"].map((rt) => {
+                const defs = customDefs.filter((d) => d.record_type === rt);
+                if (defs.length === 0) return null;
+                const groupLabel =
+                  rt === "opportunities" ? "Opportunity: Custom Fields" :
+                  rt === "people"        ? "Person: Custom Fields" :
+                                           "SitRep Item: Custom Fields";
+                return (
+                  <optgroup key={rt} label={groupLabel}>
+                    {defs.map((def) => (
+                      <option key={def.field_key} value={cfVarKey(def)}>{def.label}</option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+              <option value="__template__">— Custom / Template —</option>
+            </select>
+
+            {/* Delete */}
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "#f87171", fontSize: 18, lineHeight: 1, padding: "0 2px" }}
+            >×</button>
+          </div>
+
+          {/* Template input */}
+          {m.mode === "template" && (
+            <div style={{ marginTop: 4, paddingLeft: "calc(50% + 18px)" }}>
+              <input
+                type="text"
+                value={m.value}
+                onChange={(e) => update(i, { value: e.target.value })}
+                placeholder="e.g. {{person_name}} · {{person_phone}}"
+                style={{ ...inputStyle, fontSize: 12 }}
+              />
+              <div style={{ fontSize: 10, color: S.dim, marginTop: 3 }}>
+                Supports: {SOURCE_VAR_GROUPS.flatMap((g) => g.items.map((it) => `{{${it.key}}}`)).join(" ")}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Action config sub-form ─────────────────────────────────────────────────────
 
 function ActionConfigFields({
-  type, config, onChange, squads, users, customItemTypes,
+  type, config, onChange, squads, users, customItemTypes, triggerType, sitrepCustomFields,
 }: {
-  type:            string;
-  config:          Record<string, any>;
-  onChange:        (c: Record<string, any>) => void;
-  squads:          Squad[];
-  users:           User[];
-  customItemTypes: { slug: string; name: string }[];
+  type:               string;
+  config:             Record<string, any>;
+  onChange:           (c: Record<string, any>) => void;
+  squads:             Squad[];
+  users:              User[];
+  customItemTypes:    { slug: string; name: string }[];
+  triggerType:        string;
+  sitrepCustomFields: { field_key: string; label: string }[];
 }) {
   const set = (k: string, v: any) => onChange({ ...config, [k]: v });
 
   const TEMPLATE_HINT = (
     <div style={{ fontSize: 11, color: "rgb(100 116 139)", marginTop: 4 }}>
-      Vars: <code style={{ fontSize: 10 }}>{"{{title}} {{status}} {{priority}} {{due_date}} {{squad_name}} {{assignee_names}} {{link}}"}</code>
+      <div style={{ marginBottom: 2 }}>Item vars: <code style={{ fontSize: 10 }}>{"{{title}} {{status}} {{due_date}} {{squad_name}} {{assignee_names}}"}</code></div>
+      <div style={{ marginBottom: 2 }}>Opp vars: <code style={{ fontSize: 10 }}>{"{{title}} {{due_at}} {{due_date}} {{pipeline}} {{stage}}"}</code></div>
+      <div style={{ marginBottom: 2 }}>Person vars: <code style={{ fontSize: 10 }}>{"{{person_name}} {{person_phone}} {{person_email}}"}</code></div>
+      <div>Location vars: <code style={{ fontSize: 10 }}>{"{{pickup_location}} {{pickup_address}} {{dropoff_location}} {{dropoff_address}}"}</code></div>
     </div>
   );
 
@@ -692,6 +922,7 @@ function ActionConfigFields({
 
   if (type === "create_sitrep_item") return (
     <div style={{ marginBottom: 16 }}>
+      {/* Structural: item type + visibility */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div>
           <label style={labelStyle}>Item type</label>
@@ -717,31 +948,7 @@ function ActionConfigFields({
         </div>
       </div>
 
-      {/* Title */}
-      <div style={{ marginBottom: 12 }}>
-        <label style={labelStyle}>Title</label>
-        <div style={{ display: "flex", gap: 8 }}>
-          <select
-            value={config.title?.mode ?? "static"}
-            onChange={(e) => {
-              const m = e.target.value;
-              set("title", m === "field" ? { mode: "field", field: "title", prefix: "" } : { mode: "static", value: "" });
-            }}
-            style={{ ...inputStyle, width: "auto", flexShrink: 0 }}>
-            <option value="static">Static</option>
-            <option value="field">From trigger: title (with prefix)</option>
-          </select>
-          {(config.title?.mode ?? "static") === "static" ? (
-            <input value={config.title?.value ?? ""} onChange={(e) => set("title", { mode: "static", value: e.target.value })}
-              placeholder="Follow up task" style={{ ...inputStyle, flex: 1 }} />
-          ) : (
-            <input value={config.title?.prefix ?? ""} onChange={(e) => set("title", { ...config.title, prefix: e.target.value })}
-              placeholder='Prefix, e.g. "Follow up: "' style={{ ...inputStyle, flex: 1 }} />
-          )}
-        </div>
-      </div>
-
-      {/* Squad / Calendar */}
+      {/* Structural: squad */}
       <div style={{ marginBottom: 12 }}>
         <label style={labelStyle}>Squad / Calendar</label>
         <div style={{ display: "flex", gap: 8 }}>
@@ -766,7 +973,7 @@ function ActionConfigFields({
         </div>
       </div>
 
-      {/* Due date */}
+      {/* Structural: due date */}
       <FieldMapSelect
         label="Due Date"
         value={config.due_date ?? null}
@@ -777,7 +984,7 @@ function ActionConfigFields({
         fieldOptions={["due_date", "start_at"]}
       />
 
-      {/* Priority */}
+      {/* Structural: priority */}
       <div style={{ marginBottom: 12 }}>
         <label style={labelStyle}>Priority</label>
         <div style={{ display: "flex", gap: 8 }}>
@@ -800,8 +1007,8 @@ function ActionConfigFields({
         </div>
       </div>
 
-      {/* Assign to */}
-      <div style={{ marginBottom: 12 }}>
+      {/* Structural: assign to */}
+      <div style={{ marginBottom: 16 }}>
         <label style={labelStyle}>Assign to</label>
         <div style={{ display: "flex", gap: 8 }}>
           <select
@@ -825,6 +1032,17 @@ function ActionConfigFields({
           )}
         </div>
       </div>
+
+      {/* Divider */}
+      <div style={{ borderTop: "1px solid rgba(255,255,255,.08)", marginBottom: 16 }} />
+
+      {/* Field Mappings */}
+      <FieldMappingsEditor
+        mappings={config.field_mappings ?? []}
+        onChange={(m) => set("field_mappings", m)}
+        triggerType={triggerType}
+        sitrepCustomFields={sitrepCustomFields}
+      />
     </div>
   );
 

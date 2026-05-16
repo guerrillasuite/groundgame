@@ -57,7 +57,7 @@ export default async function SitRepItemPage({ params }: Ctx) {
 
   const typesRes = await sb
     .from("sitrep_item_types")
-    .select("slug, name, color, stages, is_mission_type, show_in_kanban, booking_enabled")
+    .select("id, slug, name, color, stages, is_mission_type, show_in_kanban, booking_enabled")
     .eq("tenant_id", effectiveTenantId);
 
   const item = itemRes.data as any;
@@ -112,6 +112,8 @@ export default async function SitRepItemPage({ params }: Ctx) {
     typeDefs[t.slug] = t;
   }
 
+  const sitrepTypeId: string | null = typeDefs[item.item_type]?.id ?? null;
+
   // Fetch parent item title if item has a parent
   let parentItem: { id: string; title: string; item_type: string } | null = null;
   if (item.parent_item_id) {
@@ -159,6 +161,7 @@ export default async function SitRepItemPage({ params }: Ctx) {
       parentItem={parentItem}
       users={users}
       currentUserId={crmUser.userId}
+      sitrepTypeId={sitrepTypeId}
     />
   );
 }

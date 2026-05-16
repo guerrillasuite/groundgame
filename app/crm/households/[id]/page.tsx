@@ -4,6 +4,7 @@ import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import RemindersSection from "@/app/components/crm/RemindersSection";
+import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -257,6 +258,8 @@ export default async function HouseholdDetail({ params }: Params) {
           </div>
         </div>
       ) : null}
+
+      <CustomFieldsWidget recordType="households" recordId={hhId} />
 
       {/* Reminders */}
       <div style={{

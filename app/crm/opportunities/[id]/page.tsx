@@ -9,8 +9,10 @@ import {
   OppPeopleSection,
   OppUsersSection,
   OppItemsSection,
+  OppLocationsSection,
 } from "./ui/OppDetailClient";
 import RemindersSection from "@/app/components/crm/RemindersSection";
+import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 import type {
   OppData,
   PersonEntry,
@@ -19,6 +21,7 @@ import type {
   ProductOption,
   TenantUser,
   ContactTypeOption,
+  LocationEntry,
 } from "./ui/OppDetailClient";
 
 function makeSb(tenantId: string) {
@@ -57,7 +60,7 @@ export default async function OpportunityDetail({ params }: Params) {
   // ── 1. Opportunity ──────────────────────────────────────────────────────────
   const { data: oppRaw, error: oppErr } = await sb
     .from("opportunities")
-    .select("id,title,stage,amount_cents,description,notes,priority,source,due_at,stop_id,contact_person_id,pipeline")
+    .select("id,title,stage,amount_cents,description,notes,priority,source,due_at,stop_id,contact_person_id,pipeline,custom_fields")
     .eq("tenant_id", tenantId)
     .eq("id", oppId)
     .single();
@@ -84,6 +87,7 @@ export default async function OpportunityDetail({ params }: Params) {
     priority: (oppRaw as any).priority ?? null,
     source: (oppRaw as any).source ?? null,
     due_at: (oppRaw as any).due_at ?? null,
+    custom_fields: (oppRaw as any).custom_fields ?? null,
   };
 
   // ── 2. Stages + contact types (for dropdowns) ───────────────────────────────
@@ -279,7 +283,27 @@ export default async function OpportunityDetail({ params }: Params) {
       }))
     : [];
 
-  // ── 6. Originating stop ─────────────────────────────────────────────────────
+  // ── 6. Opportunity locations ────────────────────────────────────────────────
+  const { data: oppLocRaw } = await sb
+    .from("opportunity_locations")
+    .select("location_id,role,is_primary,locations(address_line1,city,state,postal_code,notes)")
+    .eq("tenant_id", tenantId)
+    .eq("opportunity_id", oppId);
+
+  const oppLocations: LocationEntry[] = Array.isArray(oppLocRaw)
+    ? (oppLocRaw as any[]).map((row) => ({
+        location_id: row.location_id,
+        role: row.role ?? "location",
+        is_primary: row.is_primary ?? false,
+        address_line1: row.locations?.address_line1 ?? null,
+        city: row.locations?.city ?? null,
+        state: row.locations?.state ?? null,
+        postal_code: row.locations?.postal_code ?? null,
+        notes: row.locations?.notes ?? null,
+      }))
+    : [];
+
+  // ── 7. Originating stop ─────────────────────────────────────────────────────
   type StopRow = { id: string; stop_at: string; channel: string; result: string; notes: string | null };
   let stop: StopRow | null = null;
   if ((oppRaw as any).stop_id) {
@@ -344,8 +368,19 @@ export default async function OpportunityDetail({ params }: Params) {
         {/* Editable details */}
         <OppFieldEditor opp={opp} stages={stages} contactTypes={filteredContactTypeOptions} />
 
+        {/* Custom fields */}
+        <CustomFieldsWidget
+          recordType="opportunities"
+          recordId={oppId}
+          pipelineTypeKey={opp.pipeline}
+          initialValues={opp.custom_fields}
+        />
+
         {/* People */}
         <OppPeopleSection opportunityId={oppId} people={people} />
+
+        {/* Locations */}
+        <OppLocationsSection locations={oppLocations} />
 
         {/* Assigned users */}
         <OppUsersSection

@@ -25,6 +25,7 @@ export default async function AutomationsPage() {
     { data: users },
     { data: pipelines },
     { data: customItemTypes },
+    { data: sitrepCFs },
   ] = await Promise.all([
     sb.from("sitrep_automations").select("*").eq("tenant_id", tenant.id).order("created_at", { ascending: false }),
     sb.from("squads").select("id, name, color").order("name"),
@@ -39,6 +40,12 @@ export default async function AutomationsPage() {
     ).then((r) => r.ok ? r.json() : { users: [] }).then((d) => ({ data: d.users ?? [] })),
     sb.from("tenant_contact_types").select("key, label").eq("tenant_id", tenant.id).order("order_index"),
     sb.from("sitrep_item_types").select("slug, name").eq("tenant_id", tenant.id).order("sort_order"),
+    sb.from("custom_field_definitions")
+      .select("field_key, label")
+      .eq("tenant_id", tenant.id)
+      .eq("record_type", "sitrep_items")
+      .eq("is_archived", false)
+      .order("sort_order", { ascending: true }),
   ]);
 
   const userList = (users ?? []).map((u: any) => ({
@@ -55,6 +62,7 @@ export default async function AutomationsPage() {
       tenantId={tenant.id}
       pipelines={(pipelines ?? []) as { key: string; label: string }[]}
       customItemTypes={(customItemTypes ?? []) as { slug: string; name: string }[]}
+      sitrepCustomFields={(sitrepCFs ?? []) as { field_key: string; label: string }[]}
     />
   );
 }

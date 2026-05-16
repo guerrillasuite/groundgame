@@ -5,6 +5,7 @@ import { normalizeCrmField } from "@/lib/db/supabase-surveys";
 import { findOrCreateLocation } from "@/lib/crm/location-utils";
 import { sendEmail } from "@/lib/email/resend";
 import { applyL2Transform, L2_BOOLEAN_COLS, L2_INTEGER_COLS, L2_SMALLINT_COLS, L2_DATE_COLS, L2_FLOAT_COLS, L2_ARRAY_COLS, L2_BIGINT_COLS } from "@/lib/crm/l2-field-map";
+import { fireAutomations } from "@/lib/automations/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,6 @@ async function findOrCreatePerson(
   const email = fields.email?.trim();
   const phone = fields.phone?.trim() || fields.phone_cell?.trim() || fields.phone_landline?.trim();
 
-  console.log("[findOrCreatePerson] email:", email, "phone:", phone);
-
   // 1. Email match (strong)
   if (email) {
     const { data } = await sb
@@ -41,7 +40,6 @@ async function findOrCreatePerson(
       .ilike("email", email)
       .limit(1)
       .maybeSingle();
-    console.log("[findOrCreatePerson] email match:", data?.id ?? "none");
     if (data) {
       await updatePersonFields(sb, data.id, fields);
       return data.id;
@@ -62,7 +60,6 @@ async function findOrCreatePerson(
           .filter(Boolean)
           .some((n: string) => normalizePhone(n) === cleaned)
       );
-      console.log("[findOrCreatePerson] phone match:", match?.id ?? "none", "candidates:", candidates?.length ?? 0);
       if (match) {
         await updatePersonFields(sb, match.id, fields);
         return match.id;
@@ -212,9 +209,8 @@ export async function POST(req: NextRequest) {
   // ── Route answers to table buckets based on crm_field mappings ────────────
   const { data: questionRows } = await sb
     .from("questions")
-    .select("id, crm_field, question_type, tag_mapping_enabled, tag_prefix")
+    .select("id, crm_field, question_type, options, tag_mapping_enabled, tag_prefix")
     .eq("survey_id", survey_id);
-  console.log("[panel-submit] survey_id:", survey_id, "questionRows:", (questionRows ?? []).map(q => ({ id: q.id, crm_field: q.crm_field })));
 
   const tableFields: Record<string, Record<string, string>> = {
     people: {},
@@ -277,7 +273,6 @@ export async function POST(req: NextRequest) {
       personId = await findOrCreatePerson(sb, tenant.id, tableFields.people);
     }
   } else {
-    console.log("[panel-submit] tableFields.people:", JSON.stringify(tableFields.people));
     const hasContact = Object.values(tableFields.people).some((v) => v?.trim());
     if (hasContact) {
       personId = await findOrCreatePerson(sb, tenant.id, tableFields.people);
@@ -372,7 +367,6 @@ export async function POST(req: NextRequest) {
   let opportunityId: string | null = null;
   const trigger = surveyRow?.opp_trigger as Record<string, any> | null;
 
-  console.log("[panel-submit] opp_trigger:", JSON.stringify(trigger));
   if (trigger?.enabled) {
     let shouldCreate = trigger.mode === "always";
     if (trigger.mode === "condition" && trigger.question_id) {
@@ -382,7 +376,6 @@ export async function POST(req: NextRequest) {
       else if (trigger.operator === "not_equals") shouldCreate = answerVal !== condVal;
       else if (trigger.operator === "contains") shouldCreate = answerVal.includes(condVal);
     }
-    console.log("[panel-submit] shouldCreate:", shouldCreate, "stage:", trigger.stage);
     if (shouldCreate) {
       const { data: personRow } = await sb.from("people").select("first_name, last_name, email, phone, phone_cell").eq("id", personId).maybeSingle();
       const firstName = personRow?.first_name ?? "";
@@ -421,32 +414,57 @@ export async function POST(req: NextRequest) {
         stage = (firstStage as any)?.key ?? "new";
       }
 
+      const rawDueAt = datetimeQ ? answers[datetimeQ.id] : null;
+      const parsedDueAt = rawDueAt ? (() => {
+        const d = new Date(rawDueAt);
+        return isNaN(d.getTime()) ? null : d.toISOString();
+      })() : null;
+
       const { data: opp, error: oppErr } = await sb.from("opportunities").insert({
         tenant_id: tenant.id,
         title: oppTitle,
         stage,
         pipeline: trigger.contact_type ?? null,
-        contact_person_id: personId,
         source: "survey",
+        due_at: parsedDueAt,
       }).select("id").single();
       if (oppErr) console.error("[panel-submit] opportunity insert failed:", oppErr.message, oppErr.details);
       opportunityId = (opp as any)?.id ?? null;
 
-      // Link person into opportunity_people junction table
       if (opportunityId) {
         await sb.from("opportunity_people").upsert(
           { tenant_id: tenant.id, opportunity_id: opportunityId, person_id: personId, role: "contact", is_primary: true },
           { onConflict: "opportunity_id,person_id" }
         );
+        void fireAutomations({
+          tenant_id:    tenant.id,
+          trigger_type: "opportunity_created",
+          opportunity:  { id: opportunityId, tenant_id: tenant.id, title: oppTitle, stage, pipeline: trigger.contact_type ?? null, due_at: parsedDueAt },
+        });
       }
     }
   }
 
   // ── Apply opportunity field overrides from crm_field mappings ────────────
   if (opportunityId && Object.keys(tableFields.opportunities).length > 0) {
-    await sb.from("opportunities")
-      .update(tableFields.opportunities)
-      .eq("id", opportunityId);
+    // Separate plain columns from custom_fields.* sub-keys
+    const oppUpdate: Record<string, unknown> = {};
+    const customFields: Record<string, string> = {};
+    for (const [col, val] of Object.entries(tableFields.opportunities)) {
+      if (col.startsWith("custom_fields.")) {
+        customFields[col.slice("custom_fields.".length)] = val;
+      } else {
+        oppUpdate[col] = val;
+      }
+    }
+    if (Object.keys(customFields).length > 0) {
+      // Fetch existing custom_fields and merge so we don't overwrite sibling keys
+      const { data: existing } = await sb.from("opportunities").select("custom_fields").eq("id", opportunityId).maybeSingle();
+      oppUpdate.custom_fields = { ...((existing as any)?.custom_fields ?? {}), ...customFields };
+    }
+    if (Object.keys(oppUpdate).length > 0) {
+      await sb.from("opportunities").update(oppUpdate).eq("id", opportunityId);
+    }
   }
 
   // ── Update tenant_people: contact_types + other mapped fields ───────────────
@@ -538,7 +556,6 @@ export async function POST(req: NextRequest) {
 
   // ── Create/link location records from location question answers ──────────
   const locationQuestions = (questionRows ?? []).filter(q => q.question_type === "location" && answers[q.id]?.trim());
-  console.log("[panel-submit] location questions found:", locationQuestions.length, "answer keys:", Object.keys(answers));
   for (const q of locationQuestions) {
     let locId: string | null = null;
     try {
@@ -560,7 +577,7 @@ export async function POST(req: NextRequest) {
           tenant_id: tenant.id,
           opportunity_id: opportunityId,
           location_id: locId,
-          role: "location",
+          role: q.options?.[0] || "location",
           is_primary: true,
         }, { onConflict: "tenant_id,opportunity_id,role" });
         if (linkErr) console.error("[panel-submit] opportunity_locations upsert:", linkErr.message);
