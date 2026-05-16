@@ -365,6 +365,7 @@ export async function POST(req: NextRequest) {
 
   // ── Opportunity trigger ───────────────────────────────────────────────────
   let opportunityId: string | null = null;
+  let oppAutomationPayload: Parameters<typeof fireAutomations>[0] | null = null;
   const trigger = surveyRow?.opp_trigger as Record<string, any> | null;
 
   if (trigger?.enabled) {
@@ -432,15 +433,19 @@ export async function POST(req: NextRequest) {
       opportunityId = (opp as any)?.id ?? null;
 
       if (opportunityId) {
+        console.log(`[panel-submit] opportunity created id=${opportunityId} pipeline=${trigger.contact_type ?? null} stage=${stage} due_at=${parsedDueAt}`);
         await sb.from("opportunity_people").upsert(
           { tenant_id: tenant.id, opportunity_id: opportunityId, person_id: personId, role: "contact", is_primary: true },
           { onConflict: "opportunity_id,person_id" }
         );
-        void fireAutomations({
+        // Store automation payload — fired AFTER all opp data is written to DB
+        oppAutomationPayload = {
           tenant_id:    tenant.id,
           trigger_type: "opportunity_created",
           opportunity:  { id: opportunityId, tenant_id: tenant.id, title: oppTitle, stage, pipeline: trigger.contact_type ?? null, due_at: parsedDueAt },
-        });
+        };
+      } else {
+        console.error("[panel-submit] opportunity insert failed — automation will NOT fire");
       }
     }
   }
@@ -585,6 +590,12 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.error("[panel-submit] location create/link failed:", e);
     }
+  }
+
+  // ── Fire automations AFTER all opportunity data is written ──────────────────
+  if (oppAutomationPayload) {
+    console.log(`[panel-submit] firing automations for opportunity ${oppAutomationPayload.opportunity?.id} pipeline=${oppAutomationPayload.opportunity?.pipeline}`);
+    void fireAutomations(oppAutomationPayload);
   }
 
   // ── Insert order_items for product_picker answers ─────────────────────────
