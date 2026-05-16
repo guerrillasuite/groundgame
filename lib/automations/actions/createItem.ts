@@ -56,14 +56,6 @@ export async function actionCreateItem(
     assigneeIds = [assignTo.user_id];
   }
 
-  // Resolve location fields (support template strings in static values)
-  const location: string | null = config.location
-    ? resolveTemplate(String(resolveField(config.location, payload) ?? ""), vars) || null
-    : null;
-  const locationAddress: string | null = config.location_address
-    ? resolveTemplate(String(resolveField(config.location_address, payload) ?? ""), vars) || null
-    : null;
-
   const itemId = randomUUID();
   const itemType: string = config.item_type ?? "task";
   const isTask = itemType === "task";
@@ -119,7 +111,6 @@ export async function actionCreateItem(
     priority:      isTask ? priority : null,
     due_date:      dueDateOnly,
     start_at:      startAt,
-    location:      mappedFields.location ?? location,
     visibility,
     depth:         0,
     created_by:    createdBy,

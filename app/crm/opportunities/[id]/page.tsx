@@ -286,15 +286,18 @@ export default async function OpportunityDetail({ params }: Params) {
   // ── 6. Opportunity locations ────────────────────────────────────────────────
   const { data: oppLocRaw } = await sb
     .from("opportunity_locations")
-    .select("location_id,role,is_primary,locations(address_line1,city,state,postal_code,notes)")
+    .select("id,location_id,role,is_primary,locations(place_name,address_line1,city,state,postal_code,notes)")
     .eq("tenant_id", tenantId)
-    .eq("opportunity_id", oppId);
+    .eq("opportunity_id", oppId)
+    .order("is_primary", { ascending: false });
 
   const oppLocations: LocationEntry[] = Array.isArray(oppLocRaw)
     ? (oppLocRaw as any[]).map((row) => ({
+        id: row.id,
         location_id: row.location_id,
-        role: row.role ?? "location",
+        role: row.role ?? "service_at",
         is_primary: row.is_primary ?? false,
+        place_name: row.locations?.place_name ?? null,
         address_line1: row.locations?.address_line1 ?? null,
         city: row.locations?.city ?? null,
         state: row.locations?.state ?? null,
@@ -380,7 +383,7 @@ export default async function OpportunityDetail({ params }: Params) {
         <OppPeopleSection opportunityId={oppId} people={people} />
 
         {/* Locations */}
-        <OppLocationsSection locations={oppLocations} />
+        <OppLocationsSection locations={oppLocations} opportunityId={oppId} />
 
         {/* Assigned users */}
         <OppUsersSection

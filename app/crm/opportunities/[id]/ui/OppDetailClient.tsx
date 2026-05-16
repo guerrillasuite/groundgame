@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import LocationPicker, { type LocationValue } from "@/app/components/crm/LocationPicker";
 import {
   updateOpportunityField,
   addPersonToOpportunity,
@@ -74,6 +75,7 @@ export type OppData = {
 };
 
 export type LocationEntry = {
+  id: string;
   location_id: string;
   role: string;
   is_primary: boolean;
@@ -82,6 +84,7 @@ export type LocationEntry = {
   state: string | null;
   postal_code: string | null;
   notes: string | null;
+  place_name: string | null;
 };
 
 export type ContactTypeOption = {
@@ -576,40 +579,153 @@ export function OppItemsSection({
 
 // ── Locations section ─────────────────────────────────────────────────────────
 
-export function OppLocationsSection({ locations }: { locations: LocationEntry[] }) {
-  if (locations.length === 0) return null;
+export function OppLocationsSection({
+  locations: initial,
+  opportunityId,
+}: {
+  locations: LocationEntry[];
+  opportunityId: string;
+}) {
+  const [locs, setLocs] = useState<LocationEntry[]>(initial);
+  const [adding, setAdding]   = useState(false);
+  const [picker, setPicker]   = useState<LocationValue>(null);
+  const [saving, setSaving]   = useState(false);
+  const [err, setErr]         = useState<string | null>(null);
+
+  async function handleAdd() {
+    if (!picker || picker.type !== "location") return;
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/crm/opportunities/${opportunityId}/locations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ location_id: picker.locationId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error ?? "Failed to add location"); setSaving(false); return; }
+      // Refresh list
+      const refreshRes = await fetch(`/api/crm/opportunities/${opportunityId}/locations`);
+      if (refreshRes.ok) {
+        const rows = await refreshRes.json();
+        setLocs(rows.map((r: any) => ({
+          id: r.id, location_id: r.location_id, role: r.role, is_primary: r.is_primary,
+          address_line1: null, city: null, state: null, postal_code: null, notes: null, place_name: null,
+          ...parseDisplay(r.location_display),
+        })));
+      }
+      setPicker(null);
+      setAdding(false);
+    } catch { setErr("Network error"); }
+    setSaving(false);
+  }
+
+  async function handleRemove(entryId: string, locationId: string) {
+    const res = await fetch(`/api/crm/opportunities/${opportunityId}/locations/${entryId}`, { method: "DELETE" });
+    if (res.ok) setLocs((prev) => prev.filter((l) => l.id !== entryId));
+  }
+
+  async function handlePromote(entryId: string) {
+    const res = await fetch(`/api/crm/opportunities/${opportunityId}/locations/${entryId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_primary: true }),
+    });
+    if (res.ok) setLocs((prev) => prev.map((l) => ({ ...l, is_primary: l.id === entryId })));
+  }
+
+  function parseDisplay(display: string | null): Partial<LocationEntry> {
+    // Best-effort parse from display text for local state refresh
+    return {};
+  }
+
+  const dim = "rgb(100 116 139)";
 
   return (
     <div style={SECTION}>
-      <span style={{ fontWeight: 700, fontSize: 15, display: "block", marginBottom: 12 }}>Locations</span>
-      <div style={{ display: "grid", gap: 10 }}>
-        {locations.map((loc) => {
-          const addr = [loc.address_line1, loc.city, loc.state, loc.postal_code]
-            .filter(Boolean)
-            .join(", ");
-          return (
-            <div key={loc.location_id} style={{ display: "flex", gap: 12, fontSize: 13 }}>
-              <span style={{
-                opacity: 0.45,
-                minWidth: 64,
-                flexShrink: 0,
-                textTransform: "capitalize",
-                fontWeight: 600,
-                fontSize: 11,
-                paddingTop: 2,
-              }}>
-                {loc.role}
-              </span>
-              <div>
-                {loc.notes && (
-                  <div style={{ fontWeight: 600, marginBottom: 1 }}>{loc.notes}</div>
-                )}
-                {addr && <div style={{ opacity: 0.65 }}>{addr}</div>}
-              </div>
-            </div>
-          );
-        })}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <span style={{ fontWeight: 700, fontSize: 15 }}>Locations</span>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            style={{ background: "none", border: "none", color: dim, fontSize: 13, cursor: "pointer", padding: 0 }}
+          >
+            + Add Location
+          </button>
+        )}
       </div>
+
+      {locs.length > 0 && (
+        <div style={{ display: "grid", gap: 8, marginBottom: adding ? 12 : 0 }}>
+          {locs.map((loc) => {
+            const addr = [loc.place_name ?? loc.address_line1, loc.city, loc.state, loc.postal_code]
+              .filter(Boolean).join(", ");
+            return (
+              <div key={loc.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>📍</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ color: "inherit" }}>{addr || "(no address)"}</span>
+                </div>
+                {loc.is_primary ? (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 5,
+                    background: "color-mix(in srgb, var(--gg-primary, #2563eb) 18%, transparent)",
+                    color: "color-mix(in srgb, var(--gg-primary, #2563eb) 90%, #fff)",
+                    border: "1px solid color-mix(in srgb, var(--gg-primary, #2563eb) 50%, transparent)",
+                    flexShrink: 0,
+                  }}>Primary</span>
+                ) : (
+                  <button
+                    onClick={() => handlePromote(loc.id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: dim, fontSize: 11, padding: 0, flexShrink: 0 }}
+                    title="Make primary"
+                  >
+                    Set primary
+                  </button>
+                )}
+                <button
+                  onClick={() => handleRemove(loc.id, loc.location_id)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: dim, fontSize: 16, padding: "0 2px", flexShrink: 0, lineHeight: 1 }}
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {adding && (
+        <div style={{ marginTop: locs.length > 0 ? 4 : 0 }}>
+          <LocationPicker value={picker} onChange={setPicker} mode="compact" />
+          {err && <div style={{ fontSize: 12, color: "#fca5a5", marginTop: 6 }}>{err}</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => { setAdding(false); setPicker(null); setErr(null); }}
+              style={{ background: "none", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, color: dim, fontSize: 13, padding: "5px 12px", cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAdd}
+              disabled={!picker || picker.type !== "location" || saving}
+              style={{
+                background: "linear-gradient(135deg, var(--gg-primary, #2563eb), color-mix(in srgb, var(--gg-primary, #2563eb) 68%, #7c3aed))",
+                border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: 13,
+                padding: "6px 16px", cursor: saving ? "not-allowed" : "pointer",
+                opacity: (!picker || picker.type !== "location" || saving) ? 0.5 : 1,
+              }}
+            >
+              {saving ? "Adding…" : "Add"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {locs.length === 0 && !adding && (
+        <div style={{ fontSize: 13, color: dim, fontStyle: "italic" }}>No locations added</div>
+      )}
     </div>
   );
 }

@@ -44,6 +44,7 @@ const FIELD_TYPE_LABELS: Record<string, string> = {
   email:       "Email",
   phone:       "Phone",
   url:         "URL",
+  location:    "Location",
 };
 
 const FIELD_TYPE_ICON: Record<string, string> = {
@@ -57,6 +58,7 @@ const FIELD_TYPE_ICON: Record<string, string> = {
   email:       "✉",
   phone:       "✆",
   url:         "🔗",
+  location:    "📍",
 };
 
 // ── Styles ────────────────────────────────────────────────────────────────────

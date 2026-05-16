@@ -640,12 +640,8 @@ function TriggerConfigFields({
 // ── Field mapper constants ─────────────────────────────────────────────────────
 
 const SITREP_TARGET_FIELDS = [
-  { key: "title",            label: "Title" },
-  { key: "description",      label: "Description" },
-  { key: "location",         label: "Location (name)" },
-  { key: "location_address", label: "Location Address" },
-  { key: "agenda",           label: "Agenda" },
-  { key: "meeting_notes",    label: "Meeting Notes" },
+  { key: "title",       label: "Title" },
+  { key: "description", label: "Description" },
 ];
 
 const SOURCE_VAR_GROUPS = [
@@ -665,12 +661,14 @@ const SOURCE_VAR_GROUPS = [
     { key: "person_email",      label: "Email" },
   ]},
   { group: "Pickup Location", items: [
-    { key: "pickup_location", label: "Name" },
-    { key: "pickup_address",  label: "Address" },
+    { key: "pickup_full",     label: "Name + Address" },
+    { key: "pickup_location", label: "Name only" },
+    { key: "pickup_address",  label: "Address only" },
   ]},
   { group: "Dropoff Location", items: [
-    { key: "dropoff_location", label: "Name" },
-    { key: "dropoff_address",  label: "Address" },
+    { key: "dropoff_full",     label: "Name + Address" },
+    { key: "dropoff_location", label: "Name only" },
+    { key: "dropoff_address",  label: "Address only" },
   ]},
   { group: "SitRep Item", items: [
     { key: "assignee_names", label: "Assignee Names" },
@@ -881,7 +879,7 @@ function ActionConfigFields({
       <div style={{ marginBottom: 2 }}>Item vars: <code style={{ fontSize: 10 }}>{"{{title}} {{status}} {{due_date}} {{squad_name}} {{assignee_names}}"}</code></div>
       <div style={{ marginBottom: 2 }}>Opp vars: <code style={{ fontSize: 10 }}>{"{{title}} {{due_at}} {{due_date}} {{pipeline}} {{stage}}"}</code></div>
       <div style={{ marginBottom: 2 }}>Person vars: <code style={{ fontSize: 10 }}>{"{{person_name}} {{person_phone}} {{person_email}}"}</code></div>
-      <div>Location vars: <code style={{ fontSize: 10 }}>{"{{pickup_location}} {{pickup_address}} {{dropoff_location}} {{dropoff_address}}"}</code></div>
+      <div>Location vars: <code style={{ fontSize: 10 }}>{"{{pickup_full}} {{pickup_location}} {{pickup_address}} {{dropoff_full}} {{dropoff_location}} {{dropoff_address}}"}</code></div>
     </div>
   );
 
@@ -981,7 +979,7 @@ function ActionConfigFields({
         type="date"
         showNone
         showDateField
-        fieldOptions={["due_date", "start_at"]}
+        fieldOptions={["due_at", "due_date", "start_at"]}
       />
 
       {/* Structural: priority */}

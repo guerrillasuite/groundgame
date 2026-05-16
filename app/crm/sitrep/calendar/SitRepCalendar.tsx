@@ -398,23 +398,18 @@ function ItemDetailPanel({
           )}
 
           {/* Location */}
-          {(item.location || item.location_address) && (
-            <Row icon="📍">
+          {(item.meeting_url || item.location_display) && (
+            <Row icon={item.meeting_url ? "🔗" : "📍"}>
               <div>
-                {item.location && (
-                  <div style={{ fontSize: 13, fontWeight: 600, color: S.text, marginBottom: 2 }}>{item.location}</div>
-                )}
-                {item.location_address && (() => {
-                  const addr = item.location_address!;
-                  const isUrl = /^https?:\/\//i.test(addr);
-                  return (
-                    <a
-                      href={isUrl ? addr : `https://maps.google.com/?q=${encodeURIComponent(addr)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: 12, color: "#60a5fa", textDecoration: "underline", wordBreak: "break-all" }}
-                    >{addr}</a>
-                  );
-                })()}
+                {item.meeting_url ? (
+                  <a
+                    href={item.meeting_url}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 12, color: "#60a5fa", textDecoration: "underline", wordBreak: "break-all" }}
+                  >{item.meeting_url}</a>
+                ) : item.location_display ? (
+                  <div style={{ fontSize: 13, color: S.text }}>{item.location_display}</div>
+                ) : null}
               </div>
             </Row>
           )}
@@ -708,7 +703,7 @@ export default function SitRepCalendar({ initialItems, missions, users, currentU
         item_type: createType, title: createTitle.trim(),
         status: createType === "task" ? "open" : null,
         priority: createType === "task" ? "normal" : null,
-        description: null, location: null, location_address: null,
+        description: null, location_id: null, meeting_url: null, location_display: null,
         due_date:  createType === "task" ? (createDate || null) : null,
         start_at:  createType !== "task" ? utcStartAt : null,
         end_at: null, is_all_day: createAllDay,

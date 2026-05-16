@@ -23,7 +23,9 @@ function makeAdminSb() {
 
 const ITEM_SELECT = [
   "id", "item_type", "title", "description",
-  "location", "location_address", "status", "priority",
+  "location_id", "meeting_url",
+  "location:locations(place_name, full_address, address_line1, city, state)",
+  "status", "priority",
   "due_date", "start_at", "end_at", "is_all_day",
   "mission_id", "parent_item_id", "depth",
   "visibility", "created_by", "created_at",
@@ -87,10 +89,20 @@ export default async function SitRepCalendarPage() {
     if (t.slug && t.color) typeColors[t.slug] = t.color;
   }
 
+  const calendarItems = ((itemsRes.data ?? []) as any[]).map((item) => {
+    const loc = item.location;
+    const location_display = loc
+      ? ((loc.place_name ?? loc.address_line1 ?? loc.full_address ?? "") +
+         (loc.city ? `, ${loc.city}` : "") +
+         (loc.state ? `, ${loc.state}` : "")).trim() || null
+      : null;
+    return { ...item, location_display, location: undefined };
+  });
+
   return (
     <Suspense>
       <CalendarLayout
-        initialItems={(itemsRes.data ?? []) as any[]}
+        initialItems={calendarItems}
         missions={[]}
         users={users}
         currentUserId={crmUser.userId}

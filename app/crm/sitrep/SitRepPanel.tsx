@@ -17,8 +17,9 @@ export type SitRepItem = {
   item_type: string;
   title: string;
   description: string | null;
-  location: string | null;
-  location_address: string | null;
+  location_id: string | null;
+  meeting_url: string | null;
+  location_display: string | null;
   status: string | null;
   priority: string | null;
   due_date: string | null;
@@ -458,7 +459,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
         const newItem: SitRepItem = {
           id: data.id, tenant_id: data.tenant_id ?? null,
           item_type: "task", title, status: "open", priority: "normal",
-          description: null, location: null, location_address: null,
+          description: null, location_id: null, meeting_url: null, location_display: null,
           due_date: dueDate, start_at: null, end_at: null, is_all_day: false,
           mission_id: null, parent_item_id: null, depth: 0,
           visibility: "assignee_only",
@@ -524,7 +525,7 @@ export default function SitRepPanel({ initialItems, users, currentUserId, hasMis
           title: createTitle.trim(),
           status: isMissionType ? "open" : null,
           priority: isMissionType ? createPriority : null,
-          description: createDesc || null, location: null, location_address: null,
+          description: createDesc || null, location_id: null, meeting_url: null, location_display: null,
           due_date:   isMissionType ? (createDueDate || null) : null,
           start_at:   isMissionType
             ? ((createDueDate && createDueTime) ? localToUtcIso(`${createDueDate}T${createDueTime}`) : null)

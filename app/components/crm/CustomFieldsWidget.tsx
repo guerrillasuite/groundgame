@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { FieldDefinition } from "@/app/crm/settings/custom-fields/CustomFieldsPanel";
 import type { RecordType } from "@/lib/crm/custom-fields";
 
@@ -32,6 +32,114 @@ const LABEL: React.CSSProperties = {
   display: "block",
 };
 
+type LocationResult = { id: string; display: string; name: string | null; address: string };
+
+function LocationInput({ value, onChange, onBlur, placeholder }: {
+  value: unknown;
+  onChange: (v: unknown) => void;
+  onBlur: () => void;
+  placeholder?: string;
+}) {
+  const str = value != null ? String(value) : "";
+  const [query, setQuery]     = useState(str);
+  const [results, setResults] = useState<LocationResult[]>([]);
+  const [open, setOpen]       = useState(false);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Keep query in sync when value changes externally
+  useEffect(() => { setQuery(value != null ? String(value) : ""); }, [value]);
+
+  const search = useCallback((q: string) => {
+    if (debounce.current) clearTimeout(debounce.current);
+    debounce.current = setTimeout(async () => {
+      const res = await fetch(`/api/crm/locations/search?q=${encodeURIComponent(q)}&limit=10`).catch(() => null);
+      if (!res?.ok) return;
+      const data = await res.json().catch(() => null);
+      setResults(data?.rows ?? []);
+    }, 200);
+  }, []);
+
+  function handleInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const q = e.target.value;
+    setQuery(q);
+    onChange(q);
+    setOpen(true);
+    search(q);
+  }
+
+  function handleFocus() {
+    setOpen(true);
+    search(query);
+  }
+
+  function handleSelect(loc: LocationResult) {
+    setQuery(loc.display);
+    onChange(loc.display);
+    setResults([]);
+    setOpen(false);
+    onBlur();
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        onBlur();
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onBlur]);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative" }}>
+      <div style={{ position: "relative" }}>
+        <span style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", fontSize: 14, pointerEvents: "none", opacity: 0.5 }}>📍</span>
+        <input
+          style={{ ...INPUT, paddingLeft: 28 }}
+          value={query}
+          onChange={handleInput}
+          onFocus={handleFocus}
+          placeholder={placeholder ?? "Search or type address…"}
+        />
+      </div>
+      {open && results.length > 0 && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, marginTop: 4,
+          background: "rgb(20 25 38)", border: "1px solid rgba(255,255,255,.12)",
+          borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,.5)",
+        }}>
+          {results.map((loc) => (
+            <button
+              key={loc.id}
+              type="button"
+              onMouseDown={() => handleSelect(loc)}
+              style={{
+                width: "100%", textAlign: "left", padding: "9px 12px", border: "none",
+                background: "none", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.06)",
+                display: "flex", flexDirection: "column", gap: 2,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.06)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+            >
+              {loc.name && loc.name !== loc.address ? (
+                <>
+                  <span style={{ fontSize: 13, color: "rgb(236 240 245)", fontWeight: 500 }}>{loc.name}</span>
+                  <span style={{ fontSize: 11, color: "rgb(100 116 139)" }}>{loc.address}</span>
+                </>
+              ) : (
+                <span style={{ fontSize: 13, color: "rgb(236 240 245)" }}>{loc.address}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FieldInput({
   def,
   value,
@@ -44,6 +152,17 @@ function FieldInput({
   onBlur: () => void;
 }) {
   const str = value != null ? String(value) : "";
+
+  if (def.field_type === "location") {
+    return (
+      <LocationInput
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        placeholder={def.placeholder ?? undefined}
+      />
+    );
+  }
 
   if (def.field_type === "boolean") {
     return (

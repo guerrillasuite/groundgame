@@ -121,9 +121,11 @@ export async function buildNormalizedPayload(
         if (loc.role === "pickup") {
           vars.pickup_location = name;
           vars.pickup_address  = addr;
+          vars.pickup_full     = name && name !== addr ? `${name} — ${addr}` : addr;
         } else if (loc.role === "dropoff") {
           vars.dropoff_location = name;
           vars.dropoff_address  = addr;
+          vars.dropoff_full     = name && name !== addr ? `${name} — ${addr}` : addr;
         }
       }
       const fetchedNotes = (oppRes.data as any)?.notes;

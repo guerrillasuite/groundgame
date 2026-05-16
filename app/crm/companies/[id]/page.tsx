@@ -5,6 +5,7 @@ import BackButton from "@/app/crm/_shared/BackButton";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
+import CompanyLocationPicker from "./CompanyLocationPicker";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -112,7 +113,6 @@ export default async function CompanyDetail({ params }: Params) {
     { label: "Email",      val: company.email },
     { label: "Status",     val: company.status },
     { label: "Presence",   val: company.presence },
-    { label: "Address",    val: address || null, href: company.location_id ? `/crm/locations/${company.location_id}` : undefined },
   ].filter((f) => f.val);
 
   return (
@@ -139,6 +139,18 @@ export default async function CompanyDetail({ params }: Params) {
           </div>
         </div>
       )}
+
+      {/* Location */}
+      <div style={cardStyle}>
+        <p style={labelStyle}>Address</p>
+        <div style={{ marginTop: 8 }}>
+          <CompanyLocationPicker
+            companyId={companyId}
+            locationId={company.location_id ?? null}
+            displayText={address}
+          />
+        </div>
+      </div>
 
       <CustomFieldsWidget recordType="companies" recordId={companyId} />
 

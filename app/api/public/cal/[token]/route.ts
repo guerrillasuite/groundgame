@@ -36,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
 
   let query = sb
     .from("sitrep_items")
-    .select("id, item_type, title, status, due_date, start_at, end_at, is_all_day, location, location_address, description, visibility")
+    .select("id, item_type, title, status, due_date, start_at, end_at, is_all_day, location_id, meeting_url, location:locations(place_name, full_address, address_line1, city, state), description, visibility")
     .eq("tenant_id", cal.tenant_id)
     .eq("visibility", "team") // public calendars only show team-visible items
     .order("start_at", { ascending: true, nullsFirst: false })
@@ -66,19 +66,27 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
   if (itemsErr) return NextResponse.json({ error: itemsErr.message }, { status: 500 });
 
   // Return only public-safe fields
-  const safeItems = (items ?? []).map((i: any) => ({
-    id: i.id,
-    item_type: i.item_type,
-    title: i.title,
-    status: i.status,
-    due_date: i.due_date,
-    start_at: i.start_at,
-    end_at: i.end_at,
-    is_all_day: i.is_all_day,
-    location: i.location ?? null,
-    location_address: i.location_address ?? null,
-    description: i.description ?? null,
-  }));
+  const safeItems = (items ?? []).map((i: any) => {
+    const loc = i.location;
+    const location_display = loc
+      ? ((loc.place_name ?? loc.address_line1 ?? loc.full_address ?? "") +
+         (loc.city ? `, ${loc.city}` : "") +
+         (loc.state ? `, ${loc.state}` : "")).trim() || null
+      : null;
+    return {
+      id: i.id,
+      item_type: i.item_type,
+      title: i.title,
+      status: i.status,
+      due_date: i.due_date,
+      start_at: i.start_at,
+      end_at: i.end_at,
+      is_all_day: i.is_all_day,
+      meeting_url: i.meeting_url ?? null,
+      location_display,
+      description: i.description ?? null,
+    };
+  });
 
   return NextResponse.json({
     calendar: {

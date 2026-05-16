@@ -22,6 +22,32 @@ export async function GET(request: Request) {
   const sb = makeSb(tenant.id);
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
+
+  // Picker mode: lightweight search for LocationPicker component
+  if (url.searchParams.get("picker") === "1") {
+    if (!q || q.length < 2) return NextResponse.json([]);
+
+    const { data } = await sb
+      .from("locations")
+      .select("id, place_name, common_place_name, full_address, address_line1, city, state, postal_code")
+      .eq("tenant_id", tenant.id)
+      .or(
+        `full_address.ilike.%${q}%,place_name.ilike.%${q}%,` +
+        `common_place_name.ilike.%${q}%,address_line1.ilike.%${q}%`
+      )
+      .limit(10);
+
+    const qLower = q.toLowerCase();
+    const ranked = (data ?? []).sort((a: any, b: any) => {
+      const score = (r: any) =>
+        (r.place_name?.toLowerCase().includes(qLower) ? 2 : 0) +
+        (r.common_place_name?.toLowerCase().includes(qLower) ? 1 : 0);
+      return score(b) - score(a);
+    });
+
+    return NextResponse.json(ranked);
+  }
+
   const like = q ? `%${q}%` : null;
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 2000);
   const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0"), 0);
@@ -39,7 +65,7 @@ export async function GET(request: Request) {
 
   let dataQ = sb
     .from("locations")
-    .select("id, normalized_key, address_line1, city, state, postal_code")
+    .select("id, normalized_key, address_line1, city, state, postal_code, notes")
     .eq("tenant_id", tenant.id)
     .order("address_line1", { ascending: true })
     .range(offset, offset + limit - 1);
@@ -53,7 +79,11 @@ export async function GET(request: Request) {
   if (countErr) return NextResponse.json({ error: countErr.message }, { status: 500 });
   if (dataErr) return NextResponse.json({ error: dataErr.message }, { status: 500 });
 
-  const rows = (data ?? []).map((l: any) => ({ id: l.id, address: fmt(l) }));
+  const rows = (data ?? []).map((l: any) => {
+    const addr = fmt(l);
+    const name = (l.notes as string | null)?.trim() || null;
+    return { id: l.id, address: addr, name, display: name && name !== addr ? `${name} — ${addr}` : addr };
+  });
   return NextResponse.json({ rows, total: count ?? 0 });
 }
 

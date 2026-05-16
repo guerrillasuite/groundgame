@@ -19,7 +19,7 @@ function makeSb(tenantId: string) {
 const PATCHABLE = [
   "title", "description", "status", "priority", "due_date",
   "start_at", "end_at", "is_all_day", "agenda", "meeting_notes",
-  "mission_id", "visibility", "location", "location_address",
+  "mission_id", "visibility", "location_id", "meeting_url",
   "parent_item_id",
 ] as const;
 
@@ -45,6 +45,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     .from("sitrep_items")
     .select(`
       *,
+      location:locations(place_name, full_address, address_line1, city, state),
       sitrep_assignments(user_id, role, accepted),
       sitrep_links(id, record_type, record_id, display_label)
     `)
@@ -58,6 +59,14 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if (i.visibility === "private" && i.created_by !== crmUser.userId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Derive location_display from joined location row
+  const loc = i.location;
+  const location_display = loc
+    ? ((loc.place_name ?? loc.address_line1 ?? loc.full_address ?? "") +
+       (loc.city ? `, ${loc.city}` : "") +
+       (loc.state ? `, ${loc.state}` : "")).trim() || null
+    : null;
 
   // Fetch child count
   const { count: childCount } = await sb
@@ -75,6 +84,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
   return NextResponse.json({
     ...item,
+    location_display,
+    location: undefined,
     child_count: childCount ?? 0,
     children_done: childDoneCount ?? 0,
   });
@@ -105,6 +116,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const key of PATCHABLE) {
     if (key in body) patch[key] = body[key];
+  }
+
+  // Mutual exclusivity: location_id and meeting_url cannot coexist
+  if (patch.location_id && patch.meeting_url) {
+    patch.meeting_url = null;
   }
 
   // If reparenting, recompute depth

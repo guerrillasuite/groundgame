@@ -12,7 +12,7 @@ export function makeAdminSb(tenantId: string) {
 export const RECORD_TYPES = ["people", "companies", "households", "locations", "opportunities", "sitrep_items"] as const;
 export type RecordType = typeof RECORD_TYPES[number];
 
-export const FIELD_TYPES = ["text", "textarea", "number", "date", "boolean", "select", "multiselect", "email", "phone", "url"] as const;
+export const FIELD_TYPES = ["text", "textarea", "number", "date", "boolean", "select", "multiselect", "email", "phone", "url", "location"] as const;
 export type FieldType = typeof FIELD_TYPES[number];
 
 const RECORD_ABBREVS: Record<RecordType, string> = {

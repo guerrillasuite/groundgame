@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import RemindersSection from "@/app/components/crm/RemindersSection";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
+import HouseholdLocationPicker from "./HouseholdLocationPicker";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -125,18 +126,26 @@ export default async function HouseholdDetail({ params }: Params) {
       {/* Header */}
       <div>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{household.name ?? "(Unnamed Household)"}</h1>
-        {address && (
-          household.location_id ? (
-            <Link
-              href={`/crm/locations/${household.location_id}`}
-              style={{ marginTop: 4, fontSize: 14, color: "var(--gg-primary, #2563eb)", textDecoration: "none", display: "block" }}
-            >
-              {address} →
-            </Link>
-          ) : (
-            <p style={{ marginTop: 4, fontSize: 14, color: "var(--gg-text-dim, #6b7280)" }}>{address}</p>
-          )
+        {household.location_id && address && (
+          <Link
+            href={`/crm/locations/${household.location_id}`}
+            style={{ marginTop: 4, fontSize: 14, color: "var(--gg-primary, #2563eb)", textDecoration: "none", display: "block" }}
+          >
+            {address} →
+          </Link>
         )}
+      </div>
+
+      {/* Location picker */}
+      <div style={cardStyle}>
+        <p style={labelStyle}>Address</p>
+        <div style={{ marginTop: 8 }}>
+          <HouseholdLocationPicker
+            householdId={hhId}
+            locationId={household.location_id ?? null}
+            displayText={address}
+          />
+        </div>
       </div>
 
       {/* Members */}

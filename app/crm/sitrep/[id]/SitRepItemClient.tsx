@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
+import LocationPicker, { type LocationValue } from "@/app/components/crm/LocationPicker";
 
 type CalSource = { type: string; tenant_id?: string };
 type CalType   = { id: string; name: string; color: string; cal_type: "work"|"family"|"personal"|"custom"; sources: CalSource[] };
@@ -45,8 +46,9 @@ type FullItem = {
   item_type: string;
   title: string;
   description: string | null;
-  location: string | null;
-  location_address: string | null;
+  location_id: string | null;
+  meeting_url: string | null;
+  location_display: string | null;
   status: string | null;
   priority: string | null;
   due_date: string | null;
@@ -61,6 +63,7 @@ type FullItem = {
   created_by: string;
   created_at: string;
   updated_at: string | null;
+  custom_fields: Record<string, unknown> | null;
   sitrep_assignments: Assignment[];
   sitrep_links: SitRepLink[];
 };
@@ -224,8 +227,13 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [isAllDay,     setIsAllDay]     = useState(item.is_all_day ?? false);
-  const [location,     setLocation]     = useState(item.location ?? "");
-  const [locationAddr, setLocationAddr] = useState(item.location_address ?? "");
+  const [locationValue, setLocationValue] = useState<LocationValue>(
+    item.location_id
+      ? { type: "location", locationId: item.location_id, displayText: item.location_display ?? "" }
+      : item.meeting_url
+      ? { type: "url", url: item.meeting_url }
+      : null
+  );
   const [agenda,       setAgenda]       = useState(item.agenda ?? "");
   const [meetingNotes, setMeetingNotes] = useState(item.meeting_notes ?? "");
   const [visibility,   setVisibility]   = useState(item.visibility);
@@ -673,18 +681,20 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
               </div>
             ),
           },
-          !isTask && { label: "Location", content: <input type="text" value={location} onChange={(e) => { setLocation(e.target.value); patchDebounced({ location: e.target.value || null }); }} placeholder="e.g. City Hall, Zoom" style={{ ...fieldStyle, width: "100%" }} onFocus={focusField} onBlur={blurField} /> },
           !isTask && {
-            label: "Address / Link",
+            label: "Location / Link",
             content: (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
-                <input type="text" value={locationAddr} onChange={(e) => { setLocationAddr(e.target.value); patchDebounced({ location_address: e.target.value || null }); }} placeholder="Street address or https://…" style={{ ...fieldStyle, flex: 1, minWidth: 0 }} onFocus={focusField} onBlur={blurField} />
-                {locationAddr.trim() && (
-                  <a href={/^https?:\/\//i.test(locationAddr.trim()) ? locationAddr.trim() : `https://maps.google.com/?q=${encodeURIComponent(locationAddr.trim())}`} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,.07)", border: `1px solid ${S.border}`, fontSize: 15, textDecoration: "none" }}>
-                    {/^https?:\/\//i.test(locationAddr.trim()) ? "🔗" : "📍"}
-                  </a>
-                )}
-              </div>
+              <LocationPicker
+                value={locationValue}
+                onChange={(v) => {
+                  setLocationValue(v);
+                  patchNow({
+                    location_id: v?.type === "location" ? v.locationId : null,
+                    meeting_url: v?.type === "url" ? v.url : null,
+                  });
+                }}
+                mode="compact"
+              />
             ),
           },
           calTypes.length > 0 && {
@@ -940,6 +950,7 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
         recordType="sitrep_items"
         recordId={item.id}
         sitrepTypeId={sitrepTypeId}
+        initialValues={item.custom_fields ?? {}}
       />
 
       {/* ── Comments ── */}

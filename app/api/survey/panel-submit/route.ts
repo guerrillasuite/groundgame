@@ -614,7 +614,7 @@ export async function POST(req: NextRequest) {
   // ── Fire automations AFTER all opportunity data is written ──────────────────
   if (oppAutomationPayload) {
     console.log(`[panel-submit] firing automations for opportunity ${oppAutomationPayload.opportunity?.id} pipeline=${oppAutomationPayload.opportunity?.pipeline}`);
-    void fireAutomations(oppAutomationPayload);
+    await fireAutomations(oppAutomationPayload);
   }
 
   // ── Insert order_items for product_picker answers ─────────────────────────

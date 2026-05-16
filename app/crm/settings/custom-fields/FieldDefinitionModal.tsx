@@ -14,6 +14,7 @@ const FIELD_TYPES = [
   { value: "email",       label: "Email" },
   { value: "phone",       label: "Phone" },
   { value: "url",         label: "URL" },
+  { value: "location",    label: "Location (address picker)" },
 ];
 
 const INPUT: React.CSSProperties = {

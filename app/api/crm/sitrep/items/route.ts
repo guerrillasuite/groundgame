@@ -48,6 +48,8 @@ export async function GET(req: NextRequest) {
       mission_id, parent_item_id, depth,
       visibility, owner_user_id,
       is_recurring,
+      location_id, meeting_url,
+      location:locations(place_name, full_address, address_line1, city, state),
       source_product, source_record_type, source_record_id,
       created_by, created_at, updated_at, completed_at, cancelled_at,
       sitrep_assignments(user_id, role)
@@ -69,7 +71,15 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  let items = (data ?? []) as any[];
+  let items = ((data ?? []) as any[]).map((item) => {
+    const loc = item.location;
+    const location_display = loc
+      ? ((loc.place_name ?? loc.address_line1 ?? loc.full_address ?? "") +
+         (loc.city ? `, ${loc.city}` : "") +
+         (loc.state ? `, ${loc.state}` : "")).trim() || null
+      : null;
+    return { ...item, location_display, location: undefined };
+  });
 
   if (mine) {
     items = items.filter((item) => {
