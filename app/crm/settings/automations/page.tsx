@@ -19,7 +19,13 @@ export default async function AutomationsPage() {
 
   const sb = makeAdminSb(tenant.id);
 
-  const [{ data: automations }, { data: squads }, { data: users }] = await Promise.all([
+  const [
+    { data: automations },
+    { data: squads },
+    { data: users },
+    { data: pipelines },
+    { data: customItemTypes },
+  ] = await Promise.all([
     sb.from("sitrep_automations").select("*").eq("tenant_id", tenant.id).order("created_at", { ascending: false }),
     sb.from("squads").select("id, name, color").order("name"),
     fetch(
@@ -31,6 +37,8 @@ export default async function AutomationsPage() {
         },
       },
     ).then((r) => r.ok ? r.json() : { users: [] }).then((d) => ({ data: d.users ?? [] })),
+    sb.from("tenant_contact_types").select("key, label").eq("tenant_id", tenant.id).order("order_index"),
+    sb.from("sitrep_item_types").select("slug, name").eq("tenant_id", tenant.id).order("sort_order"),
   ]);
 
   const userList = (users ?? []).map((u: any) => ({
@@ -45,6 +53,8 @@ export default async function AutomationsPage() {
       squads={squads ?? []}
       users={userList}
       tenantId={tenant.id}
+      pipelines={(pipelines ?? []) as { key: string; label: string }[]}
+      customItemTypes={(customItemTypes ?? []) as { slug: string; name: string }[]}
     />
   );
 }

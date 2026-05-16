@@ -208,12 +208,14 @@ function FieldMapSelect({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function AutomationsPanel({
-  initialAutomations, squads, users, tenantId,
+  initialAutomations, squads, users, tenantId, pipelines, customItemTypes,
 }: {
   initialAutomations: Automation[];
-  squads: Squad[];
-  users:  User[];
-  tenantId: string;
+  squads:             Squad[];
+  users:              User[];
+  tenantId:           string;
+  pipelines:          { key: string; label: string }[];
+  customItemTypes:    { slug: string; name: string }[];
 }) {
   const [automations, setAutomations] = useState<Automation[]>(initialAutomations);
   const [editing,     setEditing]     = useState<Automation | null>(null);
@@ -414,7 +416,7 @@ export default function AutomationsPanel({
           </div>
 
           {/* Trigger config sub-fields */}
-          <TriggerConfigFields type={triggerType} config={triggerConfig} onChange={setTriggerConfig} />
+          <TriggerConfigFields type={triggerType} config={triggerConfig} onChange={setTriggerConfig} pipelines={pipelines} />
 
           {/* Conditions */}
           <div style={{ marginBottom: 16 }}>
@@ -471,7 +473,7 @@ export default function AutomationsPanel({
           {/* Action config sub-fields */}
           <ActionConfigFields
             type={actionType} config={actionConfig} onChange={setActionConfig}
-            squads={squads} users={users}
+            squads={squads} users={users} customItemTypes={customItemTypes}
           />
 
           {error && (
@@ -502,12 +504,27 @@ export default function AutomationsPanel({
 // ── Trigger config sub-form ────────────────────────────────────────────────────
 
 function TriggerConfigFields({
-  type, config, onChange,
-}: { type: string; config: Record<string, any>; onChange: (c: Record<string, any>) => void }) {
+  type, config, onChange, pipelines,
+}: {
+  type: string;
+  config: Record<string, any>;
+  onChange: (c: Record<string, any>) => void;
+  pipelines: { key: string; label: string }[];
+}) {
   const set = (k: string, v: any) => onChange({ ...config, [k]: v });
   const inp = (k: string, placeholder: string) => (
     <input value={config[k] ?? ""} onChange={(e) => set(k, e.target.value || undefined)}
       placeholder={placeholder} style={{ ...inputStyle, marginBottom: 8 }} />
+  );
+
+  const PipelineSelect = () => (
+    <div style={{ marginBottom: 16 }}>
+      <label style={labelStyle}>Filter pipeline (optional)</label>
+      <select value={config.pipeline ?? ""} onChange={(e) => set("pipeline", e.target.value || undefined)} style={inputStyle}>
+        <option value="">Any pipeline</option>
+        {pipelines.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+      </select>
+    </div>
   );
 
   if (type === "status_changed") return (
@@ -570,17 +587,17 @@ function TriggerConfigFields({
   );
 
   if (type === "opportunity_stage_changed") return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-      <div><label style={labelStyle}>From stage (optional)</label>{inp("from_stage", "e.g. new")}</div>
-      <div><label style={labelStyle}>To stage (optional)</label>{inp("to_stage", "e.g. won")}</div>
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <div><label style={labelStyle}>From stage (optional)</label>{inp("from_stage", "e.g. new")}</div>
+        <div><label style={labelStyle}>To stage (optional)</label>{inp("to_stage", "e.g. won")}</div>
+      </div>
+      <PipelineSelect />
     </div>
   );
 
   if (type === "opportunity_created") return (
-    <div style={{ marginBottom: 16 }}>
-      <label style={labelStyle}>Filter pipeline (optional)</label>
-      {inp("pipeline", "e.g. fundraising")}
-    </div>
+    <PipelineSelect />
   );
 
   if (type === "item_created") return (
@@ -621,13 +638,14 @@ function TriggerConfigFields({
 // ── Action config sub-form ─────────────────────────────────────────────────────
 
 function ActionConfigFields({
-  type, config, onChange, squads, users,
+  type, config, onChange, squads, users, customItemTypes,
 }: {
-  type: string;
-  config: Record<string, any>;
-  onChange: (c: Record<string, any>) => void;
-  squads: Squad[];
-  users:  User[];
+  type:            string;
+  config:          Record<string, any>;
+  onChange:        (c: Record<string, any>) => void;
+  squads:          Squad[];
+  users:           User[];
+  customItemTypes: { slug: string; name: string }[];
 }) {
   const set = (k: string, v: any) => onChange({ ...config, [k]: v });
 
@@ -678,7 +696,14 @@ function ActionConfigFields({
         <div>
           <label style={labelStyle}>Item type</label>
           <select value={config.item_type ?? "task"} onChange={(e) => set("item_type", e.target.value)} style={inputStyle}>
-            {ITEM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            <optgroup label="System">
+              {ITEM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </optgroup>
+            {customItemTypes.length > 0 && (
+              <optgroup label="Custom">
+                {customItemTypes.map((t) => <option key={t.slug} value={t.slug}>{t.name}</option>)}
+              </optgroup>
+            )}
           </select>
         </div>
         <div>
