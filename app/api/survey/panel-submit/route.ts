@@ -331,6 +331,7 @@ export async function POST(req: NextRequest) {
   let opportunityId: string | null = null;
   const trigger = surveyRow?.opp_trigger as Record<string, any> | null;
 
+  console.log("[panel-submit] opp_trigger:", JSON.stringify(trigger));
   if (trigger?.enabled) {
     let shouldCreate = trigger.mode === "always";
     if (trigger.mode === "condition" && trigger.question_id) {
@@ -340,6 +341,7 @@ export async function POST(req: NextRequest) {
       else if (trigger.operator === "not_equals") shouldCreate = answerVal !== condVal;
       else if (trigger.operator === "contains") shouldCreate = answerVal.includes(condVal);
     }
+    console.log("[panel-submit] shouldCreate:", shouldCreate, "stage:", trigger.stage);
     if (shouldCreate) {
       const { data: personRow } = await sb.from("people").select("first_name, last_name, email, phone, phone_cell").eq("id", personId).maybeSingle();
       const firstName = personRow?.first_name ?? "";
@@ -378,7 +380,7 @@ export async function POST(req: NextRequest) {
         stage = (firstStage as any)?.key ?? "new";
       }
 
-      const { data: opp } = await sb.from("opportunities").insert({
+      const { data: opp, error: oppErr } = await sb.from("opportunities").insert({
         tenant_id: tenant.id,
         title: oppTitle,
         stage,
@@ -386,6 +388,7 @@ export async function POST(req: NextRequest) {
         contact_person_id: personId,
         source: "survey",
       }).select("id").single();
+      if (oppErr) console.error("[panel-submit] opportunity insert failed:", oppErr.message, oppErr.details);
       opportunityId = (opp as any)?.id ?? null;
 
       // Link person into opportunity_people junction table
