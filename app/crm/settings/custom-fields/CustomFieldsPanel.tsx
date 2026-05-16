@@ -126,6 +126,17 @@ export default function CustomFieldsPanel({
     setModal({ open: false });
   }
 
+  async function handleRename(def: FieldDefinition, newLabel: string) {
+    const res = await fetch(`/api/crm/custom-fields/${def.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: newLabel }),
+    });
+    if (res.ok) {
+      setDefs(prev => prev.map(d => d.id === def.id ? { ...d, label: newLabel } : d));
+    }
+  }
+
   async function handleArchive(def: FieldDefinition) {
     const res = await fetch(`/api/crm/custom-fields/${def.id}`, { method: "DELETE" });
     if (res.ok) {
@@ -162,7 +173,7 @@ export default function CustomFieldsPanel({
             <span style={S.sectionLabel}>General <span style={{ opacity: 0.5 }}>({generalDefs.length})</span></span>
             <button style={S.btn("ghost")} onClick={() => openCreate({ contact_type_keys: [] })}>+ Add field</button>
           </div>
-          {generalDefs.map(def => <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} />)}
+          {generalDefs.map(def => <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} onRename={handleRename} />)}
           {generalDefs.length === 0 && <p style={{ fontSize: 12, opacity: 0.35, margin: "4px 0 0" }}>No general fields yet.</p>}
           <button style={S.btn("dashed")} onClick={() => openCreate({ contact_type_keys: [] })}>+ Add general field</button>
         </div>
@@ -174,7 +185,7 @@ export default function CustomFieldsPanel({
               <span style={S.sectionLabel}>{ct.label} <span style={{ opacity: 0.5 }}>({fields.length})</span></span>
               <button style={S.btn("ghost")} onClick={() => openCreate({ contact_type_keys: [ct.key] })}>+ Add field</button>
             </div>
-            {fields.map(def => <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} />)}
+            {fields.map(def => <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} onRename={handleRename} />)}
             <button style={S.btn("dashed")} onClick={() => openCreate({ contact_type_keys: [ct.key] })}>
               + Add field to {ct.label}
             </button>
@@ -191,7 +202,7 @@ export default function CustomFieldsPanel({
               {showArchived ? "Hide" : "Show"} {archived.length} archived field{archived.length !== 1 ? "s" : ""}
             </button>
             {showArchived && archived.map(def => (
-              <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} onUnarchive={handleUnarchive} />
+              <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} onUnarchive={handleUnarchive} onRename={handleRename} />
             ))}
           </div>
         )}
@@ -208,7 +219,7 @@ export default function CustomFieldsPanel({
           <span style={S.sectionLabel}>Fields <span style={{ opacity: 0.5 }}>({visible.length})</span></span>
           <button style={S.btn("ghost")} onClick={() => openCreate()}>+ Add field</button>
         </div>
-        {visible.map(def => <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} />)}
+        {visible.map(def => <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} onRename={handleRename} />)}
         {visible.length === 0 && <p style={{ fontSize: 12, opacity: 0.35, margin: "4px 0 0" }}>No fields yet.</p>}
         <button style={S.btn("dashed")} onClick={() => openCreate()}>+ Add field</button>
 
@@ -221,7 +232,7 @@ export default function CustomFieldsPanel({
               {showArchived ? "Hide" : "Show"} {archived.length} archived
             </button>
             {showArchived && archived.map(def => (
-              <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} onUnarchive={handleUnarchive} />
+              <FieldRow key={def.id} def={def} onEdit={openEdit} onArchive={handleArchive} onUnarchive={handleUnarchive} onRename={handleRename} />
             ))}
           </div>
         )}
@@ -285,13 +296,31 @@ function FieldRow({
   onEdit,
   onArchive,
   onUnarchive,
+  onRename,
 }: {
   def: FieldDefinition;
   onEdit: (d: FieldDefinition) => void;
   onArchive: (d: FieldDefinition) => void;
   onUnarchive?: (d: FieldDefinition) => void;
+  onRename: (d: FieldDefinition, newLabel: string) => Promise<void>;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(def.label);
+  const [renameSaving, setRenameSaving] = useState(false);
+
+  async function commitRename() {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === def.label) {
+      setRenaming(false);
+      setRenameValue(def.label);
+      return;
+    }
+    setRenameSaving(true);
+    await onRename(def, trimmed);
+    setRenameSaving(false);
+    setRenaming(false);
+  }
 
   return (
     <div style={{ ...S.fieldRow, opacity: def.is_archived ? 0.45 : 1 }}>
@@ -299,9 +328,36 @@ function FieldRow({
         {FIELD_TYPE_ICON[def.field_type] ?? "·"}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>{def.label}</span>
+        {renaming ? (
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => {
+              if (e.key === "Enter") { e.preventDefault(); commitRename(); }
+              if (e.key === "Escape") { setRenaming(false); setRenameValue(def.label); }
+            }}
+            disabled={renameSaving}
+            style={{
+              fontSize: 13, fontWeight: 600,
+              background: "rgba(255,255,255,.08)",
+              border: "1px solid rgba(255,255,255,.2)",
+              borderRadius: 5, padding: "2px 6px",
+              color: "inherit", width: "100%", boxSizing: "border-box" as const,
+            }}
+          />
+        ) : (
+          <span
+            style={{ fontSize: 13, fontWeight: 600, cursor: def.is_archived ? "default" : "text" }}
+            title={def.is_archived ? undefined : "Click to rename"}
+            onClick={() => { if (!def.is_archived) { setRenaming(true); setRenameValue(def.label); } }}
+          >
+            {def.label}
+          </span>
+        )}
         {def.is_archived && <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.5 }}>archived</span>}
-        {def.help_text && (
+        {def.help_text && !renaming && (
           <div style={{ fontSize: 11, opacity: 0.45, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {def.help_text}
           </div>
