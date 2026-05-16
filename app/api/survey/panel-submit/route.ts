@@ -30,6 +30,8 @@ async function findOrCreatePerson(
   const email = fields.email?.trim();
   const phone = fields.phone?.trim() || fields.phone_cell?.trim() || fields.phone_landline?.trim();
 
+  console.log("[findOrCreatePerson] email:", email, "phone:", phone);
+
   // 1. Email match (strong)
   if (email) {
     const { data } = await sb
@@ -39,6 +41,7 @@ async function findOrCreatePerson(
       .ilike("email", email)
       .limit(1)
       .maybeSingle();
+    console.log("[findOrCreatePerson] email match:", data?.id ?? "none");
     if (data) {
       await updatePersonFields(sb, data.id, fields);
       return data.id;
@@ -59,6 +62,7 @@ async function findOrCreatePerson(
           .filter(Boolean)
           .some((n: string) => normalizePhone(n) === cleaned)
       );
+      console.log("[findOrCreatePerson] phone match:", match?.id ?? "none", "candidates:", candidates?.length ?? 0);
       if (match) {
         await updatePersonFields(sb, match.id, fields);
         return match.id;
@@ -272,6 +276,7 @@ export async function POST(req: NextRequest) {
       personId = await findOrCreatePerson(sb, tenant.id, tableFields.people);
     }
   } else {
+    console.log("[panel-submit] tableFields.people:", JSON.stringify(tableFields.people));
     const hasContact = Object.values(tableFields.people).some((v) => v?.trim());
     if (hasContact) {
       personId = await findOrCreatePerson(sb, tenant.id, tableFields.people);
