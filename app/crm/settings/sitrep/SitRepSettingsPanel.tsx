@@ -2855,32 +2855,6 @@ export default function SitRepSettingsPanel({ isDirector = true, currentUserId =
           )}
         </div>
 
-        {/* Automations card */}
-        <div style={{
-          background: S.card, border: `1px solid ${S.border}`,
-          borderRadius: 16, padding: 24, display: "grid", gap: 16,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Automations</h2>
-              <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim }}>
-                Trigger emails, create items, and update fields automatically based on item changes.
-              </p>
-            </div>
-            <a
-              href="/crm/sitrep/automations"
-              style={{
-                marginLeft: "auto", flexShrink: 0,
-                fontSize: 13, fontWeight: 600, padding: "7px 16px",
-                borderRadius: 8, cursor: "pointer", textDecoration: "none",
-                background: "rgba(99,102,241,.15)", color: "#a5b4fc",
-                border: "1px solid rgba(99,102,241,.3)",
-              }}
-            >
-              Manage Automations →
-            </a>
-          </div>
-        </div>
 
       </div>
 
