@@ -78,7 +78,6 @@ async function findOrCreatePerson(
     if (!val?.trim()) continue;
     const dotIdx = col.indexOf(".");
     if (dotIdx >= 0) {
-      // JSONB path: build nested object directly (new record, nothing to merge with)
       const jsonCol = col.slice(0, dotIdx);
       const jsonKey = col.slice(dotIdx + 1);
       insert[jsonCol] = { ...(insert[jsonCol] ?? {}), [jsonKey]: val.trim() };
@@ -87,13 +86,47 @@ async function findOrCreatePerson(
       if (coerced !== null) insert[col] = coerced;
     }
   }
-  await sb.from("people").insert(insert);
-  await sb.from("tenant_people").insert({
-    tenant_id: tenantId,
-    person_id: personId,
-    linked_at: new Date().toISOString(),
-  });
-  return personId;
+
+  const { error: insertErr } = await sb.from("people").insert(insert);
+
+  // If insert failed (e.g. duplicate email/phone in the global people table), fall back
+  // to finding the existing global record and linking them to this tenant instead.
+  let resolvedPersonId = personId;
+  if (insertErr) {
+    console.warn("[findOrCreatePerson] people insert failed:", insertErr.message, "— trying global lookup");
+    let existingId: string | null = null;
+    if (fields.email?.trim()) {
+      const { data } = await sb.from("people").select("id").ilike("email", fields.email.trim()).limit(1).maybeSingle();
+      existingId = (data as any)?.id ?? null;
+    }
+    if (!existingId && (fields.phone?.trim() || fields.phone_cell?.trim())) {
+      const ph = (fields.phone_cell ?? fields.phone ?? "").trim();
+      const { data: cands } = await sb.from("people").select("id, phone, phone_cell, phone_landline").limit(2000);
+      const cleaned = ph.replace(/\D/g, "");
+      const match = (cands ?? []).find((p: any) =>
+        [p.phone, p.phone_cell, p.phone_landline].filter(Boolean).some((n: string) => n.replace(/\D/g, "") === cleaned)
+      );
+      existingId = match?.id ?? null;
+    }
+    if (existingId) {
+      resolvedPersonId = existingId;
+      // Link to this tenant if not already linked
+      await sb.from("tenant_people").upsert(
+        { tenant_id: tenantId, person_id: existingId, linked_at: new Date().toISOString() },
+        { onConflict: "tenant_id,person_id" }
+      );
+      await updatePersonFields(sb, existingId, fields);
+      return existingId;
+    }
+    // No global match — this is an unexpected failure; log it
+    console.error("[findOrCreatePerson] could not resolve person after insert failure:", insertErr.message);
+  }
+
+  await sb.from("tenant_people").upsert(
+    { tenant_id: tenantId, person_id: resolvedPersonId, linked_at: new Date().toISOString() },
+    { onConflict: "tenant_id,person_id" }
+  );
+  return resolvedPersonId;
 }
 
 /** Coerce a plain (non-path) column value to the correct DB type. */
@@ -244,16 +277,16 @@ export async function POST(req: NextRequest) {
     } else {
       // Anonymous — still create a person record to link responses
       personId = crypto.randomUUID();
-      await sb.from("people").insert({
+      const { error: anonErr } = await sb.from("people").insert({
         id: personId,
         data_source: "survey",
         data_updated_at: new Date().toISOString(),
       });
-      await sb.from("tenant_people").insert({
-        tenant_id: tenant.id,
-        person_id: personId,
-        linked_at: new Date().toISOString(),
-      });
+      if (anonErr) console.error("[panel-submit] anonymous people insert failed:", anonErr.message);
+      await sb.from("tenant_people").upsert(
+        { tenant_id: tenant.id, person_id: personId, linked_at: new Date().toISOString() },
+        { onConflict: "tenant_id,person_id" }
+      );
     }
   }
 
