@@ -494,29 +494,36 @@ export async function POST(req: NextRequest) {
 
   // ── Create/link location records from location question answers ──────────
   const locationQuestions = (questionRows ?? []).filter(q => q.question_type === "location" && answers[q.id]?.trim());
+  console.log("[panel-submit] location questions found:", locationQuestions.length, "answer keys:", Object.keys(answers));
   for (const q of locationQuestions) {
+    let locId: string | null = null;
     try {
       const loc = JSON.parse(answers[q.id]);
       if (!loc?.address_line1?.trim()) continue;
-      const { id: locId } = await findOrCreateLocation(sb, tenant.id, {
+      const result = await findOrCreateLocation(sb, tenant.id, {
         address_line1: loc.address_line1,
         city: loc.city || undefined,
         state: loc.state || undefined,
         postal_code: loc.postal_code || undefined,
       });
+      locId = result.id;
       if (loc.name?.trim()) {
-        await sb.from("locations").update({ notes: loc.name.trim() }).eq("id", locId).eq("tenant_id", tenant.id);
+        const { error: notesErr } = await sb.from("locations").update({ notes: loc.name.trim() }).eq("id", locId).eq("tenant_id", tenant.id);
+        if (notesErr) console.error("[panel-submit] location notes update:", notesErr.message);
       }
-      if (opportunityId) {
-        await sb.from("opportunity_locations").upsert({
+      if (opportunityId && locId) {
+        const { error: linkErr } = await sb.from("opportunity_locations").upsert({
           tenant_id: tenant.id,
           opportunity_id: opportunityId,
           location_id: locId,
           role: "location",
           is_primary: true,
         }, { onConflict: "tenant_id,opportunity_id,role" });
+        if (linkErr) console.error("[panel-submit] opportunity_locations upsert:", linkErr.message);
       }
-    } catch { /* best-effort */ }
+    } catch (e) {
+      console.error("[panel-submit] location create/link failed:", e);
+    }
   }
 
   // ── Insert order_items for product_picker answers ─────────────────────────
