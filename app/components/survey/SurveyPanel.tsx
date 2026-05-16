@@ -343,7 +343,7 @@ export default function SurveyPanel({
   // ── Sync openAnswer from prefilled answers when navigating to a text question ──
   useEffect(() => {
     if (!currentQuestion) return;
-    if (["text", "text_short", "number", "email", "phone", "date"].includes(currentQuestion.question_type ?? "")) {
+    if (["text", "text_short", "number", "email", "phone", "date", "datetime_local"].includes(currentQuestion.question_type ?? "")) {
       setOpenAnswer(answers[currentQuestion.id] ?? "");
     }
   }, [current]);
@@ -439,7 +439,7 @@ export default function SurveyPanel({
     }).catch(() => {}); // fire-and-forget, don't block UX
   }
 
-  const OPEN_TYPES = ["text", "text_short", "number", "email", "phone", "date"];
+  const OPEN_TYPES = ["text", "text_short", "number", "email", "phone", "date", "datetime_local"];
   const isOpenType = OPEN_TYPES.includes(currentQuestion?.question_type ?? "");
 
   // ── Submit main survey answers ──────────────────────────────────────────────
@@ -687,7 +687,7 @@ export default function SurveyPanel({
                         {OPEN_TYPES.includes(qType) && (
                           qType === "text"
                             ? <textarea rows={3} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder="Your answer…" style={{ ...input, resize: "vertical" }} />
-                            : <input type={qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "date" ? "date" : "text"} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"} style={input} />
+                            : <input type={qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "date" ? "date" : qType === "datetime_local" ? "datetime-local" : "text"} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"} style={input} />
                         )}
                         {(qType === "approval_voting" || qType === "star_voting") && (() => {
                           const candidates = (shuffledOptionsMap[q.id] ?? q.options ?? []).filter((c: string) => c.trim());
@@ -1071,7 +1071,7 @@ export default function SurveyPanel({
                 <textarea rows={4} value={openAnswer} onChange={(e) => setOpenAnswer(e.target.value)} placeholder="Your answer…" style={{ ...input, resize: "vertical" }} />
               ) : (
                 <input
-                  type={qType === "text_short" ? "text" : qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : "date"}
+                  type={qType === "text_short" ? "text" : qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "datetime_local" ? "datetime-local" : "date"}
                   value={openAnswer}
                   onChange={(e) => setOpenAnswer(e.target.value)}
                   placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"}
@@ -1166,7 +1166,7 @@ export default function SurveyPanel({
                   {postSubmitQuestions!.map((psQ) => {
                     const psType = psQ.question_type ?? "text_short";
                     const psVal = psAnswers[psQ.id] ?? "";
-                    const isOpen = ["text", "text_short", "number", "email", "phone", "date"].includes(psType);
+                    const isOpen = ["text", "text_short", "number", "email", "phone", "date", "datetime_local"].includes(psType);
                     const isChoice = ["multiple_choice", "multiple_choice_with_other", "yes_no", "yes_unsure_no"].includes(psType);
                     const psOptions = psQ.options ?? [];
                     const choiceList = psType === "yes_no" ? ["Yes", "No"] : psType === "yes_unsure_no" ? ["Yes", "Unsure", "No"] : psOptions;
@@ -1186,7 +1186,7 @@ export default function SurveyPanel({
                               value={psVal} onChange={e => setPsAnswers({ ...psAnswers, [psQ.id]: e.target.value })} />
                           ) : (
                             <input
-                              type={psType === "number" ? "number" : psType === "email" ? "email" : psType === "phone" ? "tel" : psType === "date" ? "date" : "text"}
+                              type={psType === "number" ? "number" : psType === "email" ? "email" : psType === "phone" ? "tel" : psType === "date" ? "date" : psType === "datetime_local" ? "datetime-local" : "text"}
                               style={input}
                               placeholder={psType === "email" ? "email@example.com" : psType === "phone" ? "(555) 555-5555" : ""}
                               value={psVal}

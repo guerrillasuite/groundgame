@@ -24,6 +24,7 @@ type QuestionType =
   | "yes_no"
   | "yes_unsure_no"
   | "date"
+  | "datetime_local"
   | "rating"
   | "number"
   | "email"
@@ -1572,6 +1573,7 @@ export default function SurveyBuilder({
                           <option value="email">Email</option>
                           <option value="phone">Phone</option>
                           <option value="date">Date</option>
+                          <option value="datetime_local">Date &amp; Time</option>
                         </optgroup>
                         <optgroup label="Storefront">
                           <option value="product_picker">Product Picker</option>
@@ -1819,7 +1821,7 @@ export default function SurveyBuilder({
                   )}
 
                   {/* Open-ended type hint */}
-                  {["text", "text_short", "number", "email", "phone", "date"].includes(q.question_type) && (
+                  {["text", "text_short", "number", "email", "phone", "date", "datetime_local"].includes(q.question_type) && (
                     <div style={{ fontSize: 13, opacity: 0.5, color: "var(--gg-text, inherit)" }}>
                       {q.question_type === "text" && "Renders as a multi-line text area"}
                       {q.question_type === "text_short" && "Renders as a single-line text input"}
@@ -1827,6 +1829,7 @@ export default function SurveyBuilder({
                       {q.question_type === "email" && "Renders as an email input with validation"}
                       {q.question_type === "phone" && "Renders as a phone number input"}
                       {q.question_type === "date" && "Renders as a date picker"}
+                      {q.question_type === "datetime_local" && "Renders as a date + time picker"}
                     </div>
                   )}
 
@@ -2358,6 +2361,7 @@ const QUESTION_TYPE_META: Record<string, { label: string; color: string; bg: str
   yes_no:                     { label: "Yes / No",             color: "#16a34a", bg: "rgba(22,163,74,0.13)"  },
   yes_unsure_no:              { label: "Yes / Unsure / No",   color: "#16a34a", bg: "rgba(22,163,74,0.13)"  },
   date:                       { label: "Date",                 color: "#d97706", bg: "rgba(217,119,6,0.13)"  },
+  datetime_local:             { label: "Date & Time",          color: "#d97706", bg: "rgba(217,119,6,0.13)"  },
   rating:                     { label: "Rating",               color: "#ea580c", bg: "rgba(234,88,12,0.13)"  },
   number:                     { label: "Number",               color: "#d97706", bg: "rgba(217,119,6,0.13)"  },
   email:                      { label: "Email",                color: "#7c3aed", bg: "rgba(124,58,237,0.13)" },
@@ -2698,6 +2702,7 @@ const OPP_TEMPLATE_VARS: { token: string; label: string }[] = [
   { token: "{{first_name}}",    label: "First Name" },
   { token: "{{name}}",          label: "Full Name" },
   { token: "{{date}}",          label: "Date" },
+  { token: "{{datetime}}",      label: "Date & Time (from question)" },
   { token: "{{email}}",         label: "Email" },
   { token: "{{survey}}",        label: "Survey Name" },
   { token: "{{amount}}",        label: "Amount" },

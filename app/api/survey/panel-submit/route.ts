@@ -343,6 +343,14 @@ export async function POST(req: NextRequest) {
       const personName = [firstName, lastName].filter(Boolean).join(" ") || personRow?.email || "Unknown";
       const rawTitle = (trigger.title_template as string | undefined) ?? "{{last_name}} — {{date}}";
       const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      // Resolve {{datetime}} from the first datetime_local question answer
+      const datetimeQ = (questionRows ?? []).find(q => q.question_type === "datetime_local" && answers[q.id]);
+      const datetimeVal = datetimeQ ? (() => {
+        try {
+          const d = new Date(answers[datetimeQ.id]);
+          return isNaN(d.getTime()) ? answers[datetimeQ.id] : d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+        } catch { return answers[datetimeQ.id]; }
+      })() : today;
       const oppTitle = rawTitle
         .replace(/\{\{survey\}\}/g,     surveyRow?.title ?? survey_id)
         .replace(/\{\{name\}\}/g,       personName)
@@ -351,6 +359,7 @@ export async function POST(req: NextRequest) {
         .replace(/\{\{email\}\}/g,      personRow?.email ?? "")
         .replace(/\{\{phone\}\}/g,      personRow?.phone ?? personRow?.phone_cell ?? "")
         .replace(/\{\{date\}\}/g,       today)
+        .replace(/\{\{datetime\}\}/g,   datetimeVal)
         .replace(/\{\{channel\}\}/g,    "survey")
         .replace(/\{\{amount\}\}/g,     tableFields.opportunities?.amount_cents ? `$${(Number(tableFields.opportunities.amount_cents) / 100).toFixed(2)}` : "")
         .replace(/\{\{company\}\}/g,    tableFields.companies?.name ?? "")
