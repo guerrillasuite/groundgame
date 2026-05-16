@@ -207,10 +207,13 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Route answers to table buckets based on crm_field mappings ────────────
-  const { data: questionRows } = await sb
+  const { data: questionRows, error: qErr } = await sb
     .from("questions")
     .select("id, crm_field, question_type, options, tag_mapping_enabled, tag_prefix")
     .eq("survey_id", survey_id);
+
+  if (qErr) console.error("[panel-submit] questions SELECT failed:", qErr.message, qErr.details);
+  console.log(`[panel-submit] questionRows count=${questionRows?.length ?? "NULL"} survey_id=${survey_id}`);
 
   const tableFields: Record<string, Record<string, string>> = {
     people: {},
@@ -251,6 +254,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  console.log("[panel-submit] tableFields:", JSON.stringify(tableFields));
+
   // ── Find or create person ─────────────────────────────────────────────────
   let personId: string;
 
@@ -276,9 +281,11 @@ export async function POST(req: NextRequest) {
     const hasContact = Object.values(tableFields.people).some((v) => v?.trim());
     if (hasContact) {
       personId = await findOrCreatePerson(sb, tenant.id, tableFields.people);
+      console.log(`[panel-submit] person resolved id=${personId} fields=${Object.keys(tableFields.people).join(",")}`);
     } else {
       // Anonymous — still create a person record to link responses
       personId = crypto.randomUUID();
+      console.log(`[panel-submit] anonymous person created id=${personId} (no people crm_field mappings)`);
       const { error: anonErr } = await sb.from("people").insert({
         id: personId,
         tenant_id: tenant.id,
@@ -468,8 +475,14 @@ export async function POST(req: NextRequest) {
       oppUpdate.custom_fields = { ...((existing as any)?.custom_fields ?? {}), ...customFields };
     }
     if (Object.keys(oppUpdate).length > 0) {
-      await sb.from("opportunities").update(oppUpdate).eq("id", opportunityId);
+      console.log(`[panel-submit] updating opportunity ${opportunityId} with:`, JSON.stringify(oppUpdate));
+      const { error: oppUpdateErr } = await sb.from("opportunities").update(oppUpdate).eq("id", opportunityId);
+      if (oppUpdateErr) console.error("[panel-submit] opportunity UPDATE failed:", oppUpdateErr.message, oppUpdateErr.details);
     }
+  } else if (!opportunityId) {
+    console.log("[panel-submit] no opportunityId — skipping opportunity field update");
+  } else {
+    console.log("[panel-submit] no opportunity field mappings to apply");
   }
 
   // ── Update tenant_people: contact_types + other mapped fields ───────────────
@@ -550,17 +563,19 @@ export async function POST(req: NextRequest) {
       state: delivery.state ?? null,
       postal_code: delivery.postal_code ?? null,
     });
-    await sb.from("opportunity_locations").upsert({
+    const { error: dlLinkErr } = await sb.from("opportunity_locations").insert({
       tenant_id: tenant.id,
       opportunity_id: opportunityId,
       location_id: locId,
       role: "delivery",
       is_primary: true,
-    }, { onConflict: "tenant_id,opportunity_id,role" });
+    });
+    if (dlLinkErr) console.error("[panel-submit] delivery opportunity_locations insert:", dlLinkErr.message);
   }
 
   // ── Create/link location records from location question answers ──────────
   const locationQuestions = (questionRows ?? []).filter(q => q.question_type === "location" && answers[q.id]?.trim());
+  console.log(`[panel-submit] location questions count=${locationQuestions.length}`);
   for (const q of locationQuestions) {
     let locId: string | null = null;
     try {
@@ -573,19 +588,22 @@ export async function POST(req: NextRequest) {
         postal_code: loc.postal_code || undefined,
       });
       locId = result.id;
+      // Store human-readable location name in `notes` column (requires migration 20260518000000)
       if (loc.name?.trim()) {
-        const { error: notesErr } = await sb.from("locations").update({ notes: loc.name.trim() }).eq("id", locId).eq("tenant_id", tenant.id);
-        if (notesErr) console.error("[panel-submit] location notes update:", notesErr.message);
+        await sb.from("locations").update({ notes: loc.name.trim() }).eq("id", locId).eq("tenant_id", tenant.id)
+          .then(() => {}, () => {}); // best-effort — column may not exist yet
       }
+      const role = q.options?.[0] || "location";
       if (opportunityId && locId) {
-        const { error: linkErr } = await sb.from("opportunity_locations").upsert({
+        const { error: linkErr } = await sb.from("opportunity_locations").insert({
           tenant_id: tenant.id,
           opportunity_id: opportunityId,
           location_id: locId,
-          role: q.options?.[0] || "location",
+          role,
           is_primary: true,
-        }, { onConflict: "tenant_id,opportunity_id,role" });
-        if (linkErr) console.error("[panel-submit] opportunity_locations upsert:", linkErr.message);
+        });
+        if (linkErr) console.error(`[panel-submit] opportunity_locations insert role=${role}:`, linkErr.message);
+        else console.log(`[panel-submit] location linked opp=${opportunityId} loc=${locId} role=${role}`);
       }
     } catch (e) {
       console.error("[panel-submit] location create/link failed:", e);

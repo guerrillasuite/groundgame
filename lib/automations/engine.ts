@@ -101,11 +101,12 @@ export async function fireAutomations(payload: TriggerPayload): Promise<void> {
           .then(() => {}, () => {});
 
       } catch (e: any) {
+        console.error(`[automation] action failed for automation ${auto.id}:`, e?.message ?? String(e));
         await logRun(adminSb, auto.id, payload, "error", e?.message ?? String(e));
       }
     }
-  } catch {
-    // outer guard — automation errors must never affect the caller
+  } catch (e: any) {
+    console.error("[automation] outer error in fireAutomations:", e?.message ?? String(e));
   }
 }
 

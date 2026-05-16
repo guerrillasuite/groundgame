@@ -109,24 +109,21 @@ export async function actionCreateItem(
   }
 
   const { error } = await adminSb.from("sitrep_items").insert({
-    id:               itemId,
-    tenant_id:        tenantId,
-    squad_id:         squadId,
-    item_type:        itemType,
-    title:            (mappedFields.title ?? title).trim(),
-    description:      mappedFields.description ?? description,
-    status:           "open",
-    priority:         isTask ? priority : null,
-    due_date:         dueDateOnly,
-    start_at:         startAt,
-    location:         mappedFields.location ?? location,
-    location_address: mappedFields.location_address ?? locationAddress,
-    agenda:           mappedFields.agenda ?? null,
-    meeting_notes:    mappedFields.meeting_notes ?? null,
+    id:            itemId,
+    tenant_id:     tenantId,
+    squad_id:      squadId,
+    item_type:     itemType,
+    title:         (mappedFields.title ?? title).trim(),
+    description:   mappedFields.description ?? description,
+    status:        "open",
+    priority:      isTask ? priority : null,
+    due_date:      dueDateOnly,
+    start_at:      startAt,
+    location:      mappedFields.location ?? location,
     visibility,
-    depth:            0,
-    created_by:       createdBy,
-    custom_fields:    Object.keys(mappedCustomFields).length > 0 ? mappedCustomFields : null,
+    depth:         0,
+    created_by:    createdBy,
+    custom_fields: Object.keys(mappedCustomFields).length > 0 ? mappedCustomFields : null,
   });
 
   if (error) throw new Error(`createItem insert failed: ${error.message}`);
