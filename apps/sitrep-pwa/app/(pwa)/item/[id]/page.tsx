@@ -5,9 +5,6 @@ import ItemDetailMobile from "./ItemDetailMobile";
 
 export const dynamic = "force-dynamic";
 
-// Unscoped service-role client — matches how the GET /api/sitrep/items list route
-// fetches items across all tenants. No tenant_id filter so work-calendar items
-// and sub-tasks owned by other tenants are always reachable.
 function makeAdminSb() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,22 +20,29 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
   const sb = makeAdminSb();
 
-  // Fetch by ID only — no tenant filter, so work-calendar / mission sub-task items load
   const { data: item, error } = await sb
     .from("sitrep_items")
     .select("*")
     .eq("id", id)
     .single();
 
-  if (error || !item) redirect("/list");
+  if (error || !item) {
+    return (
+      <ItemDetailMobile
+        item={null}
+        error="This item could not be found. It may have been deleted."
+        children={[]}
+        types={[]}
+        userId={user.userId}
+        tenantId=""
+        customFieldDefs={[]}
+      />
+    );
+  }
 
   const i = item as any;
-
-  // Access check: must be creator or assignee (mirrors the GET list route)
-  // Private items additionally require the user to be the creator.
   const isCreator = i.created_by === user.userId;
 
-  // Fetch relations — each wrapped so a missing table returns [] silently
   const [assignmentsRes, commentsRes, activityRes, childrenRes] = await Promise.allSettled([
     sb.from("sitrep_assignments").select("user_id, role").eq("item_id", id),
     sb.from("sitrep_comments").select("id, body, author_id, created_at").eq("item_id", id).order("created_at"),
@@ -52,11 +56,20 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
   const rawActivity    = activityRes.status    === "fulfilled" ? (activityRes.value.data    ?? []) : [];
   const children       = childrenRes.status    === "fulfilled" ? (childrenRes.value.data    ?? []) : [];
 
-  const isAssigned = rawAssignments.some((a: any) => a.user_id === user.userId);
-  if (!isCreator && !isAssigned) redirect("/list");
-  if (i.visibility === "private" && !isCreator) redirect("/list");
+  if (i.visibility === "private" && !isCreator) {
+    return (
+      <ItemDetailMobile
+        item={null}
+        error="This is a private item."
+        children={[]}
+        types={[]}
+        userId={user.userId}
+        tenantId=""
+        customFieldDefs={[]}
+      />
+    );
+  }
 
-  // Item types — scoped to the item's own tenant
   const tenantId = i.tenant_id as string | undefined;
   const { data: typesData } = tenantId
     ? await sb.from("sitrep_item_types").select("id, name, slug, color, sort_order")
@@ -64,19 +77,40 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
     : { data: [] };
   const types = typesData ?? [];
 
-  // Custom field definitions for this item's type
   const itemTypeRecord = types.find((t: any) => t.slug === i.item_type);
   const sitrepTypeId = (itemTypeRecord as any)?.id ?? null;
-  const { data: cfDefsData } = (tenantId && sitrepTypeId)
-    ? await sb.from("custom_field_definitions")
-        .select("field_key, label, field_type, options, sort_order")
-        .eq("tenant_id", tenantId)
-        .eq("record_type", "sitrep_items")
-        .eq("sitrep_type_id", sitrepTypeId)
-        .eq("is_archived", false)
-        .order("sort_order", { ascending: true })
-    : { data: [] };
-  const customFieldDefs = cfDefsData ?? [];
+  const [cfDefsRes, overridesRes] = await Promise.allSettled([
+    tenantId
+      ? (() => {
+          let q = sb.from("custom_field_definitions")
+            .select("field_key, label, field_type, options, sort_order, display_scope")
+            .eq("tenant_id", tenantId)
+            .eq("record_type", "sitrep_items")
+            .eq("is_archived", false)
+            .order("sort_order", { ascending: true });
+          if (sitrepTypeId) q = q.eq("sitrep_type_id", sitrepTypeId);
+          return q;
+        })()
+      : Promise.resolve({ data: [] }),
+    tenantId
+      ? sb.from("standard_field_overrides")
+          .select("field_key, custom_label, hidden, display_scope, sort_order")
+          .eq("tenant_id", tenantId)
+          .eq("record_type", "sitrep_items")
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const customFieldDefs = (cfDefsRes.status === "fulfilled" ? (cfDefsRes.value as any).data : null) ?? [];
+  const rawOverrides    = (overridesRes.status === "fulfilled" ? (overridesRes.value as any).data : null) ?? [];
+  const fieldOverrides: Record<string, { label?: string; hidden: boolean; display_scope: string; sort_order?: number }> = {};
+  for (const row of rawOverrides as any[]) {
+    fieldOverrides[row.field_key] = {
+      label:         row.custom_label ?? undefined,
+      hidden:        row.hidden === true,
+      display_scope: row.display_scope ?? "snapshot",
+      sort_order:    row.sort_order ?? undefined,
+    };
+  }
 
   return (
     <ItemDetailMobile
@@ -86,6 +120,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
       userId={user.userId}
       tenantId={i.tenant_id ?? ""}
       customFieldDefs={customFieldDefs}
+      fieldOverrides={fieldOverrides}
     />
   );
 }

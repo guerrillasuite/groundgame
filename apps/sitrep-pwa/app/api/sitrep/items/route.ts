@@ -7,9 +7,10 @@ import { makeServiceSb } from "@/lib/tenant";
 export const dynamic = "force-dynamic";
 
 const SELECT = `
-  id, tenant_id, squad_id, item_type, title, description, location, status, priority,
+  id, tenant_id, squad_id, item_type, title, description, status, priority,
   due_date, start_at, end_at, is_all_day,
   mission_id, parent_item_id, depth,
+  location_id, meeting_url, custom_fields,
   visibility, created_by, created_at,
   sitrep_assignments(user_id, role)
 `;
@@ -126,7 +127,8 @@ export async function POST(req: NextRequest) {
       priority:    body.item_type === "task" ? (body.priority ?? "normal") : null,
       due_date:    body.due_date  ?? null,
       start_at:    body.start_at  ?? null,
-      location:    body.location ?? null,
+      location_id: body.location_id ?? null,
+      meeting_url: body.meeting_url ?? null,
       visibility:  body.visibility ?? "team",
       created_by:  user.userId,
       depth:       0,

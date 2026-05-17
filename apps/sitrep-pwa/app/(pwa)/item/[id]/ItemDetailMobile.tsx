@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 import { utcToDatetimeLocal, localToUtcIso, fmtItemDate, todayStr, localDateStr, effectiveDate } from "@/lib/date-utils";
-import MapPicker, { isUrl, locationHref } from "@/components/MapPicker";
+import SitRepLocationPicker from "@/components/SitRepLocationPicker";
 
 const S = {
   bg:        "rgb(10 13 20)",
@@ -45,15 +45,31 @@ type SitRepItemFull = Record<string, any> & {
 };
 
 type ItemType = { id: string; name: string; slug: string; color: string };
-type CfDef = { field_key: string; label: string; field_type: string; options: { value: string; label: string }[] };
+type CfDef = { field_key: string; label: string; field_type: string; options: { value: string; label: string }[]; display_scope?: string };
+type FieldOverride = { label?: string; hidden: boolean; display_scope: string; sort_order?: number };
 
 interface Props {
-  item: SitRepItemFull;
+  item: SitRepItemFull | null;
+  error?: string;
   children: any[];
   types: ItemType[];
   userId: string;
   tenantId: string;
   customFieldDefs: CfDef[];
+  fieldOverrides?: Record<string, FieldOverride>;
+}
+
+function LocationCfField({ fieldKey, locationId, tenantId, onSave }: { fieldKey: string; locationId: string | null; tenantId: string; onSave: (id: string | null, display: string) => void }) {
+  const [display, setDisplay] = useState("");
+  useEffect(() => {
+    if (!locationId || !tenantId) { setDisplay(""); return; }
+    fetch(`/api/sitrep/locations?tenantId=${encodeURIComponent(tenantId)}&id=${encodeURIComponent(locationId)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => setDisplay(d?.display ?? ""))
+      .catch(() => {});
+  }, [locationId, tenantId]);
+  function handleSelect(id: string | null, disp: string) { setDisplay(disp); onSave(id, disp); }
+  return <SitRepLocationPicker tenantId={tenantId} locationId={locationId} locationDisplay={display} onSelect={handleSelect} />;
 }
 
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
@@ -87,8 +103,11 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
   );
 }
 
-export default function ItemDetailMobile({ item: initialItem, children, types, userId, tenantId, customFieldDefs }: Props) {
+export default function ItemDetailMobile({ item: rawItem, error, children, types, userId, tenantId, customFieldDefs, fieldOverrides = {} }: Props) {
   const router = useRouter();
+  // Safe defaults so hooks always run, even when item is null (error state)
+  const initialItem = rawItem ?? { id: "", item_type: "task", title: "", status: "open" } as SitRepItemFull;
+
   const [tz, setTz]           = useState("UTC");
   const [item, setItem]       = useState(initialItem);
   const [title, setTitle]     = useState(initialItem.title ?? "");
@@ -96,21 +115,37 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
   const [dueDateLocal, setDueDateLocal] = useState(
     (initialItem.due_date ?? initialItem.start_at) ? utcToDatetimeLocal(initialItem.due_date ?? initialItem.start_at) : ""
   );
-  const [location, setLocation] = useState(initialItem.location ?? "");
+  const [locationId,      setLocationId]      = useState<string | null>(initialItem.location_id ?? null);
+  const [locationDisplay, setLocationDisplay] = useState("");
   const [saving, setSaving]   = useState(false);
   const [comment, setComment] = useState("");
   const [posting, setPosting] = useState(false);
   const [comments, setComments] = useState<any[]>(initialItem.sitrep_comments ?? []);
   const [delConfirm, setDelConfirm] = useState(false);
-  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const [cfValues, setCfValues] = useState<Record<string, any>>(initialItem.custom_fields ?? {});
 
   useEffect(() => { setTz(Intl.DateTimeFormat().resolvedOptions().timeZone); }, []);
+
+  // Resolve location display name when location_id is set
+  useEffect(() => {
+    if (!locationId || !tenantId) { setLocationDisplay(""); return; }
+    fetch(`/api/sitrep/locations?tenantId=${encodeURIComponent(tenantId)}&id=${encodeURIComponent(locationId)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => setLocationDisplay(data?.display ?? ""))
+      .catch(() => {});
+  }, [locationId, tenantId]);
 
   const typeMap = Object.fromEntries(types.map((t) => [t.slug, t]));
   const t       = typeMap[item.item_type];
   const family  = getFamilyByKey(t?.color ?? "blue");
   const accent  = family?.shades[2] ?? "#3b82f6";
+
+  function lbl(key: string, defaultLabel: string): string {
+    return fieldOverrides[key]?.label ?? defaultLabel;
+  }
+  function isHidden(key: string): boolean {
+    return fieldOverrides[key]?.hidden === true;
+  }
 
   async function save(patch: Record<string, unknown>) {
     setSaving(true);
@@ -127,7 +162,11 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
 
   function onTitleBlur() { if (title.trim() !== item.title) save({ title: title.trim() }); }
   function onDescBlur()  { if (desc !== (item.description ?? "")) save({ description: desc || null }); }
-  function onLocationBlur() { if (location !== (item.location ?? "")) save({ location: location || null }); }
+  function onLocationSelect(id: string | null, display: string) {
+    setLocationId(id);
+    setLocationDisplay(display);
+    save({ location_id: id });
+  }
   function onDateBlur() {
     const utc = dueDateLocal ? localToUtcIso(dueDateLocal) : null;
     if (utc !== item.due_date) save({ due_date: utc });
@@ -175,14 +214,70 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
     return ds < todayStr();
   })();
 
-  return (
-    <div style={{ minHeight: "100dvh", background: S.bg }}>
-      {/* Sticky back header */}
+  // Shared card overlay markup used for both the error state and the full detail
+  const cardOverlay = (cardContent: React.ReactNode) => (
+    <>
+      <style>{`@keyframes sitrepSlideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }`}</style>
+      {/* Backdrop */}
+      <div
+        onClick={() => router.back()}
+        style={{
+          position: "fixed", inset: 0,
+          background: "rgba(0,0,0,.55)", backdropFilter: "blur(4px)",
+          zIndex: 200,
+        }}
+      />
+      {/* Floating card */}
       <div style={{
-        position: "sticky", top: 0, zIndex: 50, background: S.bg,
+        position: "fixed", left: 0, right: 0, bottom: 0, top: 44,
+        background: S.bg,
+        borderRadius: "20px 20px 0 0",
+        borderTop: "1px solid rgba(255,255,255,.10)",
+        boxShadow: "0 -16px 80px rgba(0,0,0,.85), 0 -1px 0 rgba(255,255,255,.08)",
+        zIndex: 201,
+        display: "flex", flexDirection: "column",
+        overflow: "hidden",
+        animation: "sitrepSlideUp 260ms cubic-bezier(.32,1,.23,1)",
+      }}>
+        {/* Drag handle */}
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", height: 20, paddingTop: 6 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,.22)" }} />
+        </div>
+        {cardContent}
+      </div>
+    </>
+  );
+
+  // Error / not-found state
+  if (!rawItem || error) {
+    return cardOverlay(
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 12, padding: 32, textAlign: "center" }}>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="1.5" strokeLinecap="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span style={{ color: S.dimBright, fontSize: 15, fontWeight: 600 }}>Could not load this item</span>
+        <span style={{ color: S.dim, fontSize: 13 }}>{error ?? "It may have been deleted or you may no longer have access."}</span>
+        <button
+          onClick={() => router.back()}
+          style={{
+            marginTop: 8, padding: "10px 24px", borderRadius: 10,
+            background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.12)",
+            color: S.text, fontSize: 14, cursor: "pointer",
+          }}
+        >
+          Go Back
+        </button>
+      </div>
+    );
+  }
+
+  return cardOverlay(<>
+      {/* Header */}
+      <div style={{
+        flexShrink: 0,
+        background: S.bg,
         borderBottom: `1px solid ${S.border}`,
-        padding: "12px 16px",
-        paddingTop: "max(12px, env(safe-area-inset-top))",
+        padding: "10px 16px",
         display: "flex", alignItems: "center", gap: 12,
       }}>
         <button
@@ -209,7 +304,8 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
         {saving && <span style={{ fontSize: 11, color: S.dim }}>Saving…</span>}
       </div>
 
-      {/* Content */}
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" as any }}>
       <div style={{ padding: "16px 16px 32px", display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Hero banner */}
         <div style={{
@@ -252,124 +348,83 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
           </div>
         </div>
 
-        {/* Details section */}
-        <Section title="Details">
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Due date */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {item.item_type === "task" ? "Due Date" : "Start Time"}
-              </label>
-              <input
-                type="datetime-local"
-                value={dueDateLocal}
-                onChange={(e) => setDueDateLocal(e.target.value)}
-                onBlur={onDateBlur}
-                style={{ ...inputStyle, colorScheme: "dark" }}
-                onFocus={focusIn}
-              />
-            </div>
+        {/* Unified fields: standard + custom, sorted by sort_order */}
+        {(() => {
+          const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" };
+          // Standard field entries (key → render fn), default sort_order
+          const STD_DEFAULT_ORDER: Record<string, number> = { due_date: 10, priority: 20, location_id: 30, description: 40, meeting_url: 50, visibility: 60 };
+          type FieldEntry = { key: string; sortOrder: number; node: React.ReactNode };
+          const entries: FieldEntry[] = [];
 
-            {/* Priority (tasks only) */}
-            {item.item_type === "task" && (
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Priority
-                </label>
-                <select
-                  value={item.priority ?? "normal"}
-                  onChange={(e) => save({ priority: e.target.value })}
-                  style={{ ...inputStyle }}
-                  onFocus={focusIn}
-                  onBlur={focusOut}
-                >
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-              </div>
-            )}
+          // due_date
+          if (!isHidden("due_date")) entries.push({ key: "due_date", sortOrder: fieldOverrides.due_date?.sort_order ?? STD_DEFAULT_ORDER.due_date, node: (
+            <Section key="due_date" title={lbl("due_date", item.item_type === "task" ? "Due Date" : "Start Time")}>
+              <input type="datetime-local" value={dueDateLocal} onChange={(e) => setDueDateLocal(e.target.value)} onBlur={onDateBlur} style={{ ...inputStyle, colorScheme: "dark" }} onFocus={focusIn} />
+            </Section>
+          )});
 
-            {/* Location */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Location
-              </label>
-              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  onBlur={onLocationBlur}
-                  placeholder="Add location"
-                  style={{ ...inputStyle, paddingRight: location ? 40 : 12 }}
-                  onFocus={focusIn}
-                />
-                {location && (
-                  isUrl(location) ? (
-                    <a
-                      href={locationHref(location) ?? "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        width: 24, height: 24, borderRadius: 7,
-                        background: "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)",
-                        border: "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 35%, transparent)",
-                        color: "var(--gg-primary,#2563eb)", textDecoration: "none",
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                        <polyline points="15 3 21 3 21 9"/>
-                        <line x1="10" y1="14" x2="21" y2="3"/>
-                      </svg>
-                    </a>
-                  ) : (
-                    <button
-                      onClick={() => setMapPickerOpen(true)}
-                      style={{
-                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        width: 24, height: 24, borderRadius: 7,
-                        background: "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)",
-                        border: "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 35%, transparent)",
-                        color: "var(--gg-primary,#2563eb)", cursor: "pointer",
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                        <circle cx="12" cy="10" r="3"/>
-                      </svg>
-                    </button>
-                  )
-                )}
-              </div>
-              {mapPickerOpen && location && !isUrl(location) && (
-                <div style={{ position: "relative", marginTop: 6 }}>
-                  <MapPicker location={location} onClose={() => setMapPickerOpen(false)} />
-                </div>
-              )}
-            </div>
-          </div>
-        </Section>
+          // priority (tasks only)
+          if (item.item_type === "task" && !isHidden("priority")) entries.push({ key: "priority", sortOrder: fieldOverrides.priority?.sort_order ?? STD_DEFAULT_ORDER.priority, node: (
+            <Section key="priority" title={lbl("priority", "Priority")}>
+              <select value={item.priority ?? "normal"} onChange={(e) => save({ priority: e.target.value })} style={{ ...inputStyle }} onFocus={focusIn} onBlur={focusOut}>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </Section>
+          )});
 
-        {/* Description */}
-        <Section title="Description">
-          <textarea
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-            onBlur={onDescBlur}
-            placeholder="Add notes or description…"
-            rows={4}
-            style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }}
-            onFocus={focusIn}
-          />
-        </Section>
+          // location
+          if (!isHidden("location_id")) entries.push({ key: "location_id", sortOrder: fieldOverrides.location_id?.sort_order ?? STD_DEFAULT_ORDER.location_id, node: (
+            <Section key="location_id" title={lbl("location_id", "Location")}>
+              <SitRepLocationPicker tenantId={tenantId} locationId={locationId} locationDisplay={locationDisplay} onSelect={onLocationSelect} />
+            </Section>
+          )});
 
-        {/* Custom Fields */}
-        {customFieldDefs.length > 0 && (
+          // description
+          if (!isHidden("description")) entries.push({ key: "description", sortOrder: fieldOverrides.description?.sort_order ?? STD_DEFAULT_ORDER.description, node: (
+            <Section key="description" title={lbl("description", "Description")}>
+              <textarea value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={onDescBlur} placeholder="Add notes or description…" rows={4} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} onFocus={focusIn} />
+            </Section>
+          )});
+
+          // custom fields
+          customFieldDefs.forEach((def) => {
+            const val = cfValues[def.field_key] ?? "";
+            const labelEl = <label style={labelStyle}>{def.label}</label>;
+            let fieldNode: React.ReactNode;
+
+            if (def.field_type === "location") {
+              fieldNode = <LocationCfField fieldKey={def.field_key} locationId={val || null} tenantId={tenantId} onSave={(id) => saveCf(def.field_key, id)} />;
+            } else if (def.field_type === "textarea") {
+              fieldNode = <textarea value={val} onChange={(e) => setCfValues((p) => ({ ...p, [def.field_key]: e.target.value }))} onBlur={(e) => saveCf(def.field_key, e.target.value)} rows={3} style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }} onFocus={focusIn} />;
+            } else if (def.field_type === "boolean") {
+              fieldNode = <button onClick={() => saveCf(def.field_key, !val)} style={{ width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer", background: val ? "var(--gg-primary,#2563eb)" : "rgba(255,255,255,.15)", position: "relative", flexShrink: 0 }}><span style={{ position: "absolute", top: 3, left: val ? 21 : 3, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .15s" }} /></button>;
+            } else if (def.field_type === "select" && def.options?.length > 0) {
+              fieldNode = <select value={val} onChange={(e) => saveCf(def.field_key, e.target.value)} style={{ ...inputStyle }} onFocus={focusIn} onBlur={focusOut}><option value="">— select —</option>{def.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>;
+            } else if (def.field_type === "number") {
+              fieldNode = <input type="number" value={val} onChange={(e) => setCfValues((p) => ({ ...p, [def.field_key]: e.target.value }))} onBlur={(e) => saveCf(def.field_key, e.target.value === "" ? null : Number(e.target.value))} style={inputStyle} onFocus={focusIn} />;
+            } else if (def.field_type === "date") {
+              fieldNode = <input type="date" value={val} onChange={(e) => saveCf(def.field_key, e.target.value || null)} style={{ ...inputStyle, colorScheme: "dark" }} onFocus={focusIn} />;
+            } else {
+              fieldNode = <input type={def.field_type === "email" ? "email" : def.field_type === "phone" ? "tel" : def.field_type === "url" ? "url" : "text"} value={val} onChange={(e) => setCfValues((p) => ({ ...p, [def.field_key]: e.target.value }))} onBlur={(e) => saveCf(def.field_key, e.target.value)} style={inputStyle} onFocus={focusIn} />;
+            }
+
+            const wrapperNode = def.field_type === "boolean"
+              ? <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>{labelEl}{fieldNode}</div>
+              : <div>{labelEl}{fieldNode}</div>;
+
+            entries.push({ key: def.field_key, sortOrder: def.sort_order ?? 100, node: (
+              <Section key={def.field_key} title={def.label}>{wrapperNode}</Section>
+            )});
+          });
+
+          entries.sort((a, b) => a.sortOrder - b.sortOrder);
+          return <>{entries.map(e => e.node)}</>;
+        })()}
+
+        {/* (legacy custom fields block replaced by unified sorted rendering above) */}
+        {false && customFieldDefs.length > 0 && (
           <Section title="Custom Fields">
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {customFieldDefs.map((def) => {
@@ -448,6 +503,17 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
                       onChange={(e) => saveCf(def.field_key, e.target.value || null)}
                       style={{ ...inputStyle, colorScheme: "dark" }}
                       onFocus={focusIn}
+                    />
+                  </div>
+                );
+                if (def.field_type === "location") return (
+                  <div key={def.field_key}>
+                    {labelEl}
+                    <LocationCfField
+                      fieldKey={def.field_key}
+                      locationId={val || null}
+                      tenantId={tenantId}
+                      onSave={(id) => saveCf(def.field_key, id)}
                     />
                   </div>
                 );
@@ -586,6 +652,6 @@ export default function ItemDetailMobile({ item: initialItem, children, types, u
           </button>
         )}
       </div>
-    </div>
-  );
+      </div>{/* end scrollable */}
+    </>);
 }

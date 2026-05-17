@@ -57,7 +57,7 @@ export default async function SurveyPage({ params, searchParams }: Props) {
     { data: contactRow },
   ] = await Promise.all([
     sb.from("surveys")
-      .select("id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, payment_enabled, delivery_enabled, order_products, opp_trigger, auto_fields, show_share, show_take_again")
+      .select("id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, payment_enabled, delivery_enabled, order_products, opp_trigger, auto_fields, show_share, show_take_again, button_label")
       .eq("id", surveyId)
       .eq("active", true)
       .maybeSingle(),
@@ -173,6 +173,7 @@ export default async function SurveyPage({ params, searchParams }: Props) {
         orderProducts={Array.isArray(survey.order_products) ? survey.order_products : null}
         showShare={survey.show_share !== false}
         showTakeAgain={survey.show_take_again !== false}
+        buttonLabel={(survey as any).button_label ?? null}
       />
 
       {/* Financial Disclosure */}

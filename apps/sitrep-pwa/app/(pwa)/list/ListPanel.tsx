@@ -242,6 +242,17 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   const [sheetCreate, setSheetCreate] = useState(false);
   const [rescheduleItem, setRescheduleItem] = useState<SitRepItem | null>(null);
 
+  // Field overrides (hidden/renamed standard fields)
+  const [fieldOverrides, setFieldOverrides] = useState<Record<string, { hidden: boolean }>>({});
+  useEffect(() => {
+    if (!tenantId) return;
+    fetch(`/api/sitrep/org-context?tenantId=${encodeURIComponent(tenantId)}`)
+      .then((r) => r.ok ? r.json() : {})
+      .then((data) => { if (data.fieldOverrides) setFieldOverrides(data.fieldOverrides); })
+      .catch(() => {});
+  }, [tenantId]);
+  const isHidden = (key: string) => fieldOverrides[key]?.hidden === true;
+
   const typeMap = Object.fromEntries(initialTypes.map((t) => [t.slug, t]));
 
   // Load views + squads, then init context from saved active view
@@ -418,22 +429,26 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(context.favoriteIds)]);
 
-  // Apply calendar visibility filter first, dedup overlay items already visible via membership
-  const filteredItems = filterItems(items as any[], userId, context) as SitRepItem[];
-  const filteredIds   = new Set(filteredItems.map((i) => i.id));
-  const calFiltered   = [...filteredItems, ...overlayItems.filter((o) => !filteredIds.has(o.id))];
-  const hiddenCount   = items.length - filteredItems.length;
+  // "Mine" mode skips the calendar context filter — show all directly assigned items regardless
+  // of which squad/org calendar they belong to. "All" mode respects calendar visibility.
+  const calItems = scopeFilter === "mine"
+    ? (items as SitRepItem[])
+    : filterItems(items as any[], userId, context) as SitRepItem[];
+  const calIds      = new Set(calItems.map((i) => i.id));
+  const calFiltered = [...calItems, ...overlayItems.filter((o) => !calIds.has(o.id))];
 
-  // Compute stats from unfiltered (calendar-visible) items
+  // hiddenCount only matters in "All" mode (used to show ☰ badge)
+  const calFilteredForAll = filterItems(items as any[], userId, context) as SitRepItem[];
+  const hiddenCount = scopeFilter === "mine" ? 0 : items.length - calFilteredForAll.length;
+
+  // Compute stats from current calendar-visible items
   const openCount    = calFiltered.filter((i) => i.status !== "done" && i.status !== "cancelled").length;
   const overdueCount = calFiltered.filter((i) => isItemOverdue(i)).length;
 
   // Apply search + scope + type + status filters
   let filtered = calFiltered;
   if (scopeFilter === "mine") {
-    filtered = filtered.filter((i) =>
-      !(i as any)._is_overlay && isAssigned(i as any, userId)
-    );
+    filtered = filtered.filter((i) => isAssigned(i as any, userId));
   }
   if (typeFilter !== "all") {
     filtered = filtered.filter((i) => i.item_type === typeFilter);
@@ -848,6 +863,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                           onComplete={() => handleComplete(item)}
                           onReschedule={() => setRescheduleItem(item)}
                           completing={completing.has(item.id)}
+                          isHidden={isHidden}
                         />
                       );
                     })}

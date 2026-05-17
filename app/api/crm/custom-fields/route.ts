@@ -33,6 +33,9 @@ export async function GET(req: NextRequest) {
   if (searchParams.get("sitrep_type_id")) {
     query = query.eq("sitrep_type_id", searchParams.get("sitrep_type_id")!);
   }
+  if (searchParams.get("display_scope")) {
+    query = query.eq("display_scope", searchParams.get("display_scope")!);
+  }
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

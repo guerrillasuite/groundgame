@@ -10,6 +10,7 @@ import ContactTypesSelector from "@/app/crm/_shared/ContactTypesSelector";
 import RemindersSection from "@/app/components/crm/RemindersSection";
 import { TagPicker } from "@/app/components/crm/TagPicker";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
+import { getFieldOverrides, makeLbl, makeIsHidden } from "@/lib/crm/standard-field-overrides";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -32,6 +33,10 @@ export default async function PersonDetail({ params }: Params) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
   const personId = params.id;
+
+  const _peopleOverrides = await getFieldOverrides(tenant.id, "people");
+  const lbl       = makeLbl(_peopleOverrides);
+  const isHidden  = makeIsHidden(_peopleOverrides);
 
   // Bind server action for this person
   async function savePerson(fd: FormData) {
@@ -258,15 +263,15 @@ export default async function PersonDetail({ params }: Params) {
           action={savePerson}
           title="Edit Person"
           fields={[
-            { name: "title", label: "Title (Mr./Mrs./Dr.)" },
-            { name: "first_name", label: "First Name" },
-            { name: "middle_name", label: "Middle Name" },
-            { name: "middle_initial", label: "Middle Initial" },
-            { name: "last_name", label: "Last Name" },
-            { name: "suffix", label: "Suffix (Jr./Sr./III)" },
-            { name: "email", label: "Email", type: "email" },
-            { name: "phone", label: "Phone", type: "tel" },
-            { name: "notes", label: "Notes", type: "textarea" },
+            { name: "title",          label: "Title (Mr./Mrs./Dr.)" },
+            { name: "first_name",     label: lbl("first_name", "First Name") },
+            { name: "middle_name",    label: lbl("middle_name", "Middle Name") },
+            { name: "middle_initial", label: lbl("middle_initial", "Middle Initial") },
+            { name: "last_name",      label: lbl("last_name", "Last Name") },
+            { name: "suffix",         label: "Suffix (Jr./Sr./III)" },
+            { name: "email",          label: lbl("email", "Email"), type: "email" },
+            { name: "phone",          label: lbl("phone", "Phone"), type: "tel" },
+            { name: "notes",          label: lbl("notes", "Notes"), type: "textarea" },
           ]}
           initial={person as Record<string, any>}
         />
@@ -277,17 +282,21 @@ export default async function PersonDetail({ params }: Params) {
         <div style={cardStyle}>
           <p style={labelStyle}>Contact Info</p>
           <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
-            <div>
-              <p style={{ ...labelStyle, marginBottom: 2 }}>Email</p>
-              <p style={person.email ? valueStyle : dimStyle}>{person.email || "—"}</p>
-            </div>
-            <div>
-              <p style={{ ...labelStyle, marginBottom: 2 }}>Phone</p>
-              <p style={person.phone ? valueStyle : dimStyle}>{person.phone || "—"}</p>
-            </div>
-            {(person as any).phone_cell && (
+            {!isHidden("email") && (
               <div>
-                <p style={{ ...labelStyle, marginBottom: 2 }}>Cell</p>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{lbl("email", "Email")}</p>
+                <p style={person.email ? valueStyle : dimStyle}>{person.email || "—"}</p>
+              </div>
+            )}
+            {!isHidden("phone") && (
+              <div>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{lbl("phone", "Phone")}</p>
+                <p style={person.phone ? valueStyle : dimStyle}>{person.phone || "—"}</p>
+              </div>
+            )}
+            {!isHidden("phone_cell") && (person as any).phone_cell && (
+              <div>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{lbl("phone_cell", "Cell")}</p>
                 <p style={valueStyle}>
                   {(person as any).phone_cell}
                   {(person as any).phone_cell_confidence && (
@@ -298,15 +307,15 @@ export default async function PersonDetail({ params }: Params) {
                 </p>
               </div>
             )}
-            {(person as any).phone_landline && (
+            {!isHidden("phone_landline") && (person as any).phone_landline && (
               <div>
-                <p style={{ ...labelStyle, marginBottom: 2 }}>Landline</p>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{lbl("phone_landline", "Landline")}</p>
                 <p style={valueStyle}>{(person as any).phone_landline}</p>
               </div>
             )}
-            {(person as any).do_not_call === true && (
+            {!isHidden("do_not_call") && (person as any).do_not_call === true && (
               <div>
-                <p style={{ ...labelStyle, marginBottom: 2 }}>Do Not Call</p>
+                <p style={{ ...labelStyle, marginBottom: 2 }}>{lbl("do_not_call", "Do Not Call")}</p>
                 <p style={{ fontSize: 14, color: "#dc2626", fontWeight: 600 }}>Yes</p>
               </div>
             )}
@@ -359,7 +368,7 @@ export default async function PersonDetail({ params }: Params) {
 
       {/* Notes */}
       <div style={cardStyle}>
-        <p style={labelStyle}>Notes</p>
+        <p style={labelStyle}>{lbl("notes", "Notes")}</p>
         {person.notes ? (
           <p style={{ ...valueStyle, marginTop: 8, whiteSpace: "pre-wrap" }}>{person.notes}</p>
         ) : (
@@ -406,16 +415,16 @@ export default async function PersonDetail({ params }: Params) {
             {hasVoterBase && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px", marginBottom: hasHistory ? 16 : 0 }}>
                 {[
-                  { label: "Voter ID", val: p.lalvoteid },
-                  { label: "State Voter ID", val: p.state_voter_id },
-                  { label: "County Voter ID", val: p.county_voter_id },
-                  { label: "Voter Status", val: p.voter_status },
-                  { label: "Registration Date", val: p.registration_date },
-                  { label: "Voting Frequency", val: p.voting_frequency },
-                  { label: "Early Voter", val: p.early_voter === true ? "Yes" : p.early_voter === false ? "No" : null },
-                  { label: "Absentee Type", val: p.absentee_type },
-                  { label: "Permanent Absentee", val: p.permanent_absentee === true ? "Yes" : p.permanent_absentee === false ? "No" : null },
-                ].filter(f => f.val != null).map(({ label, val }) => (
+                  { key: "lalvoteid",         label: lbl("lalvoteid", "Voter ID"),                  val: p.lalvoteid },
+                  { key: "state_voter_id",    label: lbl("state_voter_id", "State Voter ID"),        val: p.state_voter_id },
+                  { key: "county_voter_id",   label: lbl("county_voter_id", "County Voter ID"),      val: p.county_voter_id },
+                  { key: "voter_status",      label: lbl("voter_status", "Voter Status"),            val: p.voter_status },
+                  { key: "registration_date", label: lbl("registration_date", "Registration Date"),  val: p.registration_date },
+                  { key: "voting_frequency",  label: lbl("voting_frequency", "Voting Frequency"),    val: p.voting_frequency },
+                  { key: "early_voter",       label: lbl("early_voter", "Early Voter"),              val: p.early_voter === true ? "Yes" : p.early_voter === false ? "No" : null },
+                  { key: "absentee_type",     label: lbl("absentee_type", "Absentee Type"),          val: p.absentee_type },
+                  { key: "permanent_absentee",label: lbl("permanent_absentee", "Permanent Absentee"),val: p.permanent_absentee === true ? "Yes" : p.permanent_absentee === false ? "No" : null },
+                ].filter(f => f.val != null && !isHidden(f.key)).map(({ label, val }) => (
                   <div key={label}>
                     <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
                     <p style={valueStyle}>{val}</p>
@@ -471,17 +480,17 @@ export default async function PersonDetail({ params }: Params) {
             {hasScores && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px", marginBottom: votesHistory || topIssues ? 16 : 0 }}>
                 {[
-                  { label: "Party", val: p.party },
-                  { label: "Party Switcher", val: p.party_switcher === true ? "Yes" : p.party_switcher === false ? "No" : null },
-                  { label: "Party Switch Type", val: p.party_switch_type },
-                  { label: "Likelihood to Vote", val: p.likelihood_to_vote != null ? `${p.likelihood_to_vote}/100` : null },
-                  { label: "Primary Likelihood", val: p.primary_likelihood != null ? `${p.primary_likelihood}/100` : null },
-                  { label: "G+P Likelihood", val: p.general_primary_likelihood != null ? `${p.general_primary_likelihood}/100` : null },
-                  { label: "Progressive Dem", val: p.score_prog_dem != null ? `${p.score_prog_dem}/100` : null },
-                  { label: "Moderate Dem", val: p.score_mod_dem != null ? `${p.score_mod_dem}/100` : null },
-                  { label: "Conservative Rep", val: p.score_cons_rep != null ? `${p.score_cons_rep}/100` : null },
-                  { label: "Moderate Rep", val: p.score_mod_rep != null ? `${p.score_mod_rep}/100` : null },
-                ].filter(f => f.val != null).map(({ label, val }) => (
+                  { key: "party",                      label: lbl("party", "Party"),                                          val: p.party },
+                  { key: "party",                      label: "Party Switcher",                                               val: p.party_switcher === true ? "Yes" : p.party_switcher === false ? "No" : null },
+                  { key: "party",                      label: "Party Switch Type",                                            val: p.party_switch_type },
+                  { key: "likelihood_to_vote",         label: lbl("likelihood_to_vote", "Likelihood to Vote"),                val: p.likelihood_to_vote != null ? `${p.likelihood_to_vote}/100` : null },
+                  { key: "primary_likelihood",         label: lbl("primary_likelihood", "Primary Likelihood"),                val: p.primary_likelihood != null ? `${p.primary_likelihood}/100` : null },
+                  { key: "general_primary_likelihood", label: lbl("general_primary_likelihood", "G+P Likelihood"),            val: p.general_primary_likelihood != null ? `${p.general_primary_likelihood}/100` : null },
+                  { key: "score_prog_dem",             label: lbl("score_prog_dem", "Progressive Dem"),                      val: p.score_prog_dem != null ? `${p.score_prog_dem}/100` : null },
+                  { key: "score_mod_dem",              label: lbl("score_mod_dem", "Moderate Dem"),                          val: p.score_mod_dem != null ? `${p.score_mod_dem}/100` : null },
+                  { key: "score_cons_rep",             label: lbl("score_cons_rep", "Conservative Rep"),                     val: p.score_cons_rep != null ? `${p.score_cons_rep}/100` : null },
+                  { key: "score_mod_rep",              label: lbl("score_mod_rep", "Moderate Rep"),                          val: p.score_mod_rep != null ? `${p.score_mod_rep}/100` : null },
+                ].filter(f => f.val != null && !isHidden(f.key)).map(({ label, val }) => (
                   <div key={label}>
                     <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
                     <p style={valueStyle}>{val}</p>
@@ -543,19 +552,19 @@ export default async function PersonDetail({ params }: Params) {
           <p style={{ ...labelStyle, marginBottom: 12 }}>Demographics</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
             {[
-              { label: "Gender", val: (person as any).gender },
-              { label: "Birth Date", val: (person as any).birth_date },
-              { label: "Age", val: (person as any).age != null ? String((person as any).age) : null },
-              { label: "Ethnicity", val: (person as any).ethnicity },
-              { label: "Hispanic Origin", val: (person as any).hispanic_origin },
-              { label: "Ethnicity Source", val: (person as any).ethnicity_source },
-              { label: "Language", val: (person as any).language },
-              { label: "English Proficiency", val: (person as any).english_proficiency },
-              { label: "Education", val: (person as any).education_level },
-              { label: "Marital Status", val: (person as any).marital_status },
-              { label: "Religion", val: (person as any).religion },
-              { label: "Veteran", val: (person as any).veteran === true ? "Yes" : (person as any).veteran === false ? "No" : null },
-            ].filter(f => f.val != null).map(({ label, val }) => (
+              { key: "gender",            label: lbl("gender", "Gender"),                       val: (person as any).gender },
+              { key: "birth_date",        label: lbl("birth_date", "Birth Date"),                val: (person as any).birth_date },
+              { key: "age",               label: lbl("age", "Age"),                              val: (person as any).age != null ? String((person as any).age) : null },
+              { key: "ethnicity",         label: lbl("ethnicity", "Ethnicity"),                  val: (person as any).ethnicity },
+              { key: "hispanic_origin",   label: lbl("hispanic_origin", "Hispanic Origin"),      val: (person as any).hispanic_origin },
+              { key: "ethnicity",         label: "Ethnicity Source",                             val: (person as any).ethnicity_source },
+              { key: "language",          label: lbl("language", "Language"),                    val: (person as any).language },
+              { key: "english_proficiency",label: lbl("english_proficiency", "English Proficiency"), val: (person as any).english_proficiency },
+              { key: "education_level",   label: lbl("education_level", "Education"),            val: (person as any).education_level },
+              { key: "marital_status",    label: lbl("marital_status", "Marital Status"),        val: (person as any).marital_status },
+              { key: "religion",          label: lbl("religion", "Religion"),                    val: (person as any).religion },
+              { key: "veteran",           label: lbl("veteran", "Veteran"),                      val: (person as any).veteran === true ? "Yes" : (person as any).veteran === false ? "No" : null },
+            ].filter(f => f.val != null && !isHidden(f.key)).map(({ label, val }) => (
               <div key={label}>
                 <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
                 <p style={valueStyle}>{val}</p>
@@ -581,16 +590,16 @@ export default async function PersonDetail({ params }: Params) {
             <p style={{ ...labelStyle, marginBottom: 12 }}>Professional &amp; Financial</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
               {[
-                { label: "Occupation", val: p.occupation },
-                { label: "Occupation Title", val: p.occupation_title },
-                { label: "Company", val: p.company_name },
-                { label: "Income Range", val: p.income_range },
-                { label: "Net Worth Range", val: p.net_worth_range },
-                { label: "Length of Residence", val: p.length_of_residence },
-                { label: "Moved From State", val: p.moved_from_state },
-                { label: "Place of Birth", val: p.place_of_birth },
-                { label: "Mailing Address", val: mailingLine || null },
-              ].filter(f => f.val != null).map(({ label, val }) => (
+                { key: "occupation",          label: lbl("occupation", "Occupation"),              val: p.occupation },
+                { key: "occupation_title",    label: lbl("occupation_title", "Occupation Title"),  val: p.occupation_title },
+                { key: "company_name",        label: lbl("company_name", "Company"),               val: p.company_name },
+                { key: "income_range",        label: lbl("income_range", "Income Range"),          val: p.income_range },
+                { key: "net_worth_range",     label: lbl("net_worth_range", "Net Worth Range"),    val: p.net_worth_range },
+                { key: "length_of_residence", label: lbl("length_of_residence", "Length of Residence"), val: p.length_of_residence },
+                { key: "moved_from_state",    label: lbl("moved_from_state", "Moved From State"),  val: p.moved_from_state },
+                { key: "place_of_birth",      label: lbl("place_of_birth", "Place of Birth"),      val: p.place_of_birth },
+                { key: "mailing_address",     label: lbl("mailing_address", "Mailing Address"),    val: mailingLine || null },
+              ].filter(f => f.val != null && !isHidden(f.key)).map(({ label, val }) => (
                 <div key={label}>
                   <p style={{ ...labelStyle, marginBottom: 2 }}>{label}</p>
                   <p style={valueStyle}>{val}</p>

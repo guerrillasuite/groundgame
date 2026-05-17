@@ -642,38 +642,7 @@ function TriggerConfigFields({
 const SITREP_TARGET_FIELDS = [
   { key: "title",       label: "Title" },
   { key: "description", label: "Description" },
-];
-
-const SOURCE_VAR_GROUPS = [
-  { group: "Opportunity", items: [
-    { key: "title",    label: "Title" },
-    { key: "stage",    label: "Stage" },
-    { key: "pipeline", label: "Pipeline" },
-    { key: "due_at",   label: "Date & Time" },
-    { key: "due_date", label: "Date (date only)" },
-    { key: "notes",    label: "Notes" },
-  ]},
-  { group: "Person (primary contact)", items: [
-    { key: "person_name",       label: "Full Name" },
-    { key: "person_first_name", label: "First Name" },
-    { key: "person_last_name",  label: "Last Name" },
-    { key: "person_phone",      label: "Phone" },
-    { key: "person_email",      label: "Email" },
-  ]},
-  { group: "Pickup Location", items: [
-    { key: "pickup_full",     label: "Name + Address" },
-    { key: "pickup_location", label: "Name only" },
-    { key: "pickup_address",  label: "Address only" },
-  ]},
-  { group: "Dropoff Location", items: [
-    { key: "dropoff_full",     label: "Name + Address" },
-    { key: "dropoff_location", label: "Name only" },
-    { key: "dropoff_address",  label: "Address only" },
-  ]},
-  { group: "SitRep Item", items: [
-    { key: "assignee_names", label: "Assignee Names" },
-    { key: "squad_name",     label: "Squad Name" },
-  ]},
+  { key: "location_id", label: "Location" },
 ];
 
 type FieldMapping = { target: string; mode: "var" | "template"; value: string };
@@ -693,23 +662,30 @@ function FieldMappingsEditor({
   sitrepCustomFields: { field_key: string; label: string }[];
 }) {
   const [customDefs, setCustomDefs] = useState<{ field_key: string; label: string; record_type: string }[]>([]);
+  const [varGroups, setVarGroups] = useState<{ group: string; items: { key: string; label: string }[] }[]>([]);
 
   useEffect(() => {
     const types: string[] = OPP_TRIGGERS.has(triggerType)
       ? ["opportunities", "people"]
       : ["sitrep_items"];
-    Promise.all(
-      types.map((rt) =>
-        fetch(`/api/crm/custom-fields?record_type=${rt}`)
-          .then((r) => r.json())
-          .then((d) => (d.definitions ?? []).filter((x: any) => !x.is_archived).map((x: any) => ({ ...x, record_type: rt })))
-          .catch(() => [])
-      )
-    ).then((results) => setCustomDefs(results.flat()));
+    Promise.all([
+      fetch(`/api/crm/automations/trigger-vars?trigger_type=${encodeURIComponent(triggerType)}`)
+        .then((r) => r.json())
+        .then((d) => setVarGroups(d.groups ?? []))
+        .catch(() => {}),
+      Promise.all(
+        types.map((rt) =>
+          fetch(`/api/crm/custom-fields?record_type=${rt}`)
+            .then((r) => r.json())
+            .then((d) => (d.definitions ?? []).filter((x: any) => !x.is_archived).map((x: any) => ({ ...x, record_type: rt })))
+            .catch(() => [])
+        )
+      ).then((results) => setCustomDefs(results.flat())),
+    ]);
   }, [triggerType]);
 
   function add() {
-    onChange([...mappings, { target: "description", mode: "var", value: "title" }]);
+    onChange([...mappings, { target: "title", mode: "var", value: "title" }]);
   }
   function remove(i: number) {
     onChange(mappings.filter((_, j) => j !== i));
@@ -718,7 +694,7 @@ function FieldMappingsEditor({
     onChange(mappings.map((m, j) => j === i ? { ...m, ...patch } : m));
   }
 
-  const allVarKeys = SOURCE_VAR_GROUPS.flatMap((g) => g.items.map((it) => it.key));
+  const allVarKeys = varGroups.flatMap((g) => g.items.map((it) => it.key));
   // Custom field var keys: custom_fields.{key} for opp/sitrep, custom_data.{key} for people
   const cfVarKey = (def: { field_key: string; record_type: string }) =>
     (def.record_type === "opportunities" || def.record_type === "sitrep_items")
@@ -803,7 +779,7 @@ function FieldMappingsEditor({
               }}
               style={inputStyle}
             >
-              {SOURCE_VAR_GROUPS.map((g) => (
+              {varGroups.map((g) => (
                 <optgroup key={g.group} label={g.group}>
                   {g.items.map((it) => (
                     <option key={it.key} value={it.key}>{it.label}</option>
@@ -848,7 +824,7 @@ function FieldMappingsEditor({
                 style={{ ...inputStyle, fontSize: 12 }}
               />
               <div style={{ fontSize: 10, color: S.dim, marginTop: 3 }}>
-                Supports: {SOURCE_VAR_GROUPS.flatMap((g) => g.items.map((it) => `{{${it.key}}}`)).join(" ")}
+                Supports: {varGroups.flatMap((g) => g.items.map((it) => `{{${it.key}}}`)).join(" ")}
               </div>
             </div>
           )}
@@ -876,10 +852,9 @@ function ActionConfigFields({
 
   const TEMPLATE_HINT = (
     <div style={{ fontSize: 11, color: "rgb(100 116 139)", marginTop: 4 }}>
-      <div style={{ marginBottom: 2 }}>Item vars: <code style={{ fontSize: 10 }}>{"{{title}} {{status}} {{due_date}} {{squad_name}} {{assignee_names}}"}</code></div>
-      <div style={{ marginBottom: 2 }}>Opp vars: <code style={{ fontSize: 10 }}>{"{{title}} {{due_at}} {{due_date}} {{pipeline}} {{stage}}"}</code></div>
+      <div style={{ marginBottom: 2 }}>Opp vars: <code style={{ fontSize: 10 }}>{"{{title}} {{due_at}} {{due_date}} {{pipeline}} {{stage}} {{notes}}"}</code></div>
       <div style={{ marginBottom: 2 }}>Person vars: <code style={{ fontSize: 10 }}>{"{{person_name}} {{person_phone}} {{person_email}}"}</code></div>
-      <div>Location vars: <code style={{ fontSize: 10 }}>{"{{pickup_full}} {{pickup_location}} {{pickup_address}} {{dropoff_full}} {{dropoff_location}} {{dropoff_address}}"}</code></div>
+      <div>Location vars: <code style={{ fontSize: 10 }}>{"{{pickup_full}} {{dropoff_full}}"}</code></div>
     </div>
   );
 

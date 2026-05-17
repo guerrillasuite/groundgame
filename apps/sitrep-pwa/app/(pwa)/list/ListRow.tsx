@@ -33,6 +33,7 @@ interface ListRowProps {
   onComplete: () => void;
   onReschedule: () => void;
   completing?: boolean;
+  isHidden?: (key: string) => boolean;
 }
 
 export function isItemOverdue(item: SitRepItem): boolean {
@@ -89,6 +90,7 @@ export default function ListRow({
   onComplete,
   onReschedule,
   completing = false,
+  isHidden,
 }: ListRowProps) {
   const [hovered, setHovered] = useState(false);
 
@@ -201,6 +203,7 @@ export default function ListRow({
             }}
           >
             {/* Type badge */}
+            {(!isHidden || !isHidden("calendar_badge")) && (
             <span
               style={{
                 fontSize: 9,
@@ -216,6 +219,7 @@ export default function ListRow({
             >
               {badgeLabel}
             </span>
+            )}
 
             {/* Confirmed badge */}
             {isConfirmed && !isDone && (

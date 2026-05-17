@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 
   const client = sb();
 
-  const [typesRes, membersRes] = await Promise.all([
+  const [typesRes, membersRes, overridesRes] = await Promise.all([
     client
       .from("sitrep_item_types")
       .select("id, name, slug, color, sort_order")
@@ -55,6 +55,12 @@ export async function GET(req: NextRequest) {
     squadId
       ? client.from("squad_members").select("user_id").eq("squad_id", squadId)
       : client.from("user_tenants").select("user_id").eq("tenant_id", tenantId).in("status", ["active", "invited"]),
+
+    client
+      .from("standard_field_overrides")
+      .select("field_key, custom_label, hidden, display_scope, sort_order")
+      .eq("tenant_id", tenantId)
+      .eq("record_type", "sitrep_items"),
   ]);
 
   const types     = typesRes.data ?? [];
@@ -68,5 +74,16 @@ export async function GET(req: NextRequest) {
     email:   nameMap[uid]?.email ?? "",
   }));
 
-  return NextResponse.json({ types, members });
+  // Build fieldOverrides map: { [field_key]: { label?, hidden, display_scope } }
+  const fieldOverrides: Record<string, { label?: string; hidden: boolean; display_scope: string; sort_order?: number }> = {};
+  for (const row of (overridesRes.data ?? []) as any[]) {
+    fieldOverrides[row.field_key] = {
+      label:         row.custom_label ?? undefined,
+      hidden:        row.hidden === true,
+      display_scope: row.display_scope ?? "snapshot",
+      sort_order:    row.sort_order ?? undefined,
+    };
+  }
+
+  return NextResponse.json({ types, members, fieldOverrides });
 }

@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 import CompanyLocationPicker from "./CompanyLocationPicker";
+import { getFieldOverrides, makeLbl, makeIsHidden } from "@/lib/crm/standard-field-overrides";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -21,6 +22,10 @@ export default async function CompanyDetail({ params }: Params) {
   const { id: companyId } = await params;
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
+
+  const overrides = await getFieldOverrides(tenant.id, "companies");
+  const lbl = makeLbl(overrides);
+  const isHidden = makeIsHidden(overrides);
 
   // Fetch company — only visible if this tenant has it linked
   const { data: company, error: cErr } = await sb
@@ -107,13 +112,13 @@ export default async function CompanyDetail({ params }: Params) {
   }
 
   const coreFields = [
-    { label: "Industry",   val: company.industry },
-    { label: "Domain",     val: company.domain },
-    { label: "Phone",      val: company.phone },
-    { label: "Email",      val: company.email },
-    { label: "Status",     val: company.status },
-    { label: "Presence",   val: company.presence },
-  ].filter((f) => f.val);
+    { key: "industry", label: lbl("industry", "Industry"),  val: company.industry },
+    { key: "website",  label: lbl("website",  "Domain"),    val: company.domain },
+    { key: "phone",    label: lbl("phone",    "Phone"),     val: company.phone },
+    { key: "email",    label: lbl("email",    "Email"),     val: company.email },
+    { key: "status",   label: "Status",                     val: company.status },
+    { key: "presence", label: "Presence",                   val: company.presence },
+  ].filter((f) => f.val && !isHidden(f.key));
 
   return (
     <section className="stack" style={{ maxWidth: 720 }}>
@@ -134,7 +139,7 @@ export default async function CompanyDetail({ params }: Params) {
         <div style={cardStyle}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
             {coreFields.map((f) => (
-              <Field key={f.label} label={f.label} val={f.val} href={(f as any).href} />
+              <Field key={f.key} label={f.label} val={f.val} href={(f as any).href} />
             ))}
           </div>
         </div>

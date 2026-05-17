@@ -5,8 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ColorFamilyPicker } from "@/app/components/ColorFamilyPicker";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
-import CustomFieldsSection from "@/app/components/crm/CustomFieldsSection";
-import StandardFieldLabels from "@/app/components/crm/StandardFieldLabels";
+import SitRepUnifiedFields from "@/app/components/crm/SitRepUnifiedFields";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -543,20 +542,10 @@ function TypeEditorPanel({
             >+ Add Stage</button>
           </div>
 
-          {/* Custom Fields */}
+          {/* Unified Fields & Order */}
           <div style={{ borderBottom: `1px solid ${S.border}` }}>
-            <CustomFieldsSection
-              recordType="sitrep_items"
+            <SitRepUnifiedFields
               sitrepTypeId={t.id}
-              borderColor={S.border}
-              dimColor={S.dim}
-            />
-          </div>
-
-          {/* Standard Field Labels */}
-          <div style={{ borderBottom: `1px solid ${S.border}`, paddingBottom: 14 }}>
-            <StandardFieldLabels
-              recordType="sitrep_items"
               scopeKey={t.id}
               borderColor={S.border}
               dimColor={S.dim}

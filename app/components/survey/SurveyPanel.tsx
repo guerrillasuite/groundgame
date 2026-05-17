@@ -1,7 +1,96 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
 import MarkdownText from "@/app/components/MarkdownText";
+import type { LocationValue } from "@/app/components/crm/LocationPicker";
+
+const LocationPicker = dynamic(() => import("@/app/components/crm/LocationPicker"), { ssr: false });
+
+// options[0] = role, options[1..n] = "uuid::Display Name"
+function parseLocOpts(options: string[] | null) {
+  const [, ...rest] = options ?? [];
+  return rest
+    .map(s => { const i = s.indexOf("::"); return i >= 0 ? { id: s.slice(0, i), display: s.slice(i + 2) } : null; })
+    .filter((x): x is { id: string; display: string } => x !== null);
+}
+
+// answer_value stored as JSON: { locationId, display } | ""
+function parseLocAnswer(raw: string): { locationId: string; display: string } | null {
+  try { const o = JSON.parse(raw); if (o?.locationId) return o; } catch {}
+  return null;
+}
+
+function LocationFieldInline({
+  questionOptions, value, onChange, primaryColor, borderColor, textColor,
+}: {
+  questionOptions: string[] | null;
+  value: string;
+  onChange: (v: string) => void;
+  primaryColor: string;
+  borderColor: string;
+  textColor: string;
+}) {
+  const suggestions = parseLocOpts(questionOptions);
+  const parsed = parseLocAnswer(value);
+  const selectedId = parsed?.locationId ?? "";
+  const isSuggestionSelected = suggestions.some(s => s.id === selectedId);
+  const [showPicker, setShowPicker] = useState(suggestions.length === 0 || (!isSuggestionSelected && !!selectedId));
+
+  const pickerValue: LocationValue = showPicker && selectedId && !isSuggestionSelected
+    ? { type: "location", locationId: selectedId, displayText: parsed?.display ?? "" }
+    : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {suggestions.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 6 }}>
+          {suggestions.map(s => {
+            const active = selectedId === s.id;
+            return (
+              <button key={s.id} type="button"
+                onClick={() => { onChange(JSON.stringify({ locationId: s.id, display: s.display })); setShowPicker(false); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 4,
+                  padding: "5px 10px", borderRadius: 20, fontSize: 12, fontWeight: 500,
+                  cursor: "pointer", transition: "all .12s", textAlign: "left",
+                  border: `1.5px solid ${active ? primaryColor : borderColor}`,
+                  background: active ? `${primaryColor}22` : "transparent",
+                  color: textColor,
+                }}
+              >
+                <span style={{ fontSize: 11, flexShrink: 0 }}>📍</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.display}</span>
+              </button>
+            );
+          })}
+          <button type="button"
+            onClick={() => { setShowPicker(v => !v); if (isSuggestionSelected) onChange(""); }}
+            style={{
+              padding: "5px 10px", borderRadius: 20, fontSize: 12, fontWeight: 500,
+              cursor: "pointer", transition: "all .12s",
+              border: `1.5px dashed ${showPicker ? primaryColor : borderColor}`,
+              background: showPicker ? `${primaryColor}15` : "transparent",
+              color: showPicker ? textColor : "#9ca3af",
+            }}
+          >
+            Other…
+          </button>
+        </div>
+      )}
+      {showPicker && (
+        <LocationPicker
+          value={pickerValue}
+          onChange={v => {
+            if (v?.type === "location") onChange(JSON.stringify({ locationId: v.locationId, display: v.displayText }));
+            else if (!v) onChange("");
+          }}
+          placeholder="Search for a location or enter manually…"
+        />
+      )}
+    </div>
+  );
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -57,6 +146,7 @@ interface SurveyPanelProps {
   passwordProtected?: boolean;
   showResultsAfterSub?: boolean;
   resultsDisplayMode?: string;
+  buttonLabel?: string | null;
 }
 
 // ── WSPQ scoring ───────────────────────────────────────────────────────────────
@@ -249,7 +339,9 @@ export default function SurveyPanel({
   passwordProtected = false,
   showResultsAfterSub = false,
   resultsDisplayMode = "none",
+  buttonLabel,
 }: SurveyPanelProps) {
+  const submitLabel = buttonLabel?.trim() || "Submit";
   const isWspq = surveyId.startsWith("wspq-");
 
   // Password gate
@@ -605,7 +697,7 @@ export default function SurveyPanel({
         } catch { return false; }
       }
       if (q.question_type === "location") {
-        try { const loc = JSON.parse(answers[q.id] || "{}"); return Boolean(loc?.address_line1?.trim()); } catch { return false; }
+        try { const loc = JSON.parse(answers[q.id] || "{}"); return Boolean(loc?.locationId || loc?.address_line1?.trim()); } catch { return false; }
       }
       return Boolean(answers[q.id]);
     });
@@ -692,21 +784,16 @@ export default function SurveyPanel({
                             ? <textarea rows={3} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder="Your answer…" style={{ ...input, resize: "vertical" }} />
                             : <input type={qType === "number" ? "number" : qType === "email" ? "email" : qType === "phone" ? "tel" : qType === "date" ? "date" : qType === "datetime_local" ? "datetime-local" : "text"} value={val} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} placeholder={qType === "email" ? "email@example.com" : qType === "phone" ? "(555) 555-5555" : "Your answer…"} style={input} />
                         )}
-                        {qType === "location" && (() => {
-                          const loc: Record<string, string> = (() => { try { return val ? JSON.parse(val) : {}; } catch { return {}; } })();
-                          const upd = (k: string, v: string) => setAnswers({ ...answers, [q.id]: JSON.stringify({ ...loc, [k]: v }) });
-                          return (
-                            <div style={{ display: "grid", gap: 8 }}>
-                              <input type="text" placeholder="Name (optional)" value={loc.name ?? ""} onChange={e => upd("name", e.target.value)} style={input} />
-                              <input type="text" placeholder="Street Address *" value={loc.address_line1 ?? ""} onChange={e => upd("address_line1", e.target.value)} style={input} />
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <input type="text" placeholder="City" value={loc.city ?? ""} onChange={e => upd("city", e.target.value)} style={{ ...input, flex: 2 }} />
-                                <input type="text" placeholder="State" value={loc.state ?? ""} onChange={e => upd("state", e.target.value)} style={{ ...input, flex: 1, minWidth: 0 }} />
-                                <input type="text" placeholder="Zip" value={loc.postal_code ?? ""} onChange={e => upd("postal_code", e.target.value)} style={{ ...input, flex: 1, minWidth: 0 }} />
-                              </div>
-                            </div>
-                          );
-                        })()}
+                        {qType === "location" && (
+                          <LocationFieldInline
+                            questionOptions={q.options}
+                            value={val}
+                            onChange={v => setAnswers({ ...answers, [q.id]: v })}
+                            primaryColor={primaryColor}
+                            borderColor={borderColor}
+                            textColor={textColor}
+                          />
+                        )}
                         {(qType === "approval_voting" || qType === "star_voting") && (() => {
                           const candidates = (shuffledOptionsMap[q.id] ?? q.options ?? []).filter((c: string) => c.trim());
                           const ballot: Record<string, any> = (() => { try { return val ? JSON.parse(val) : {}; } catch { return {}; } })();
@@ -805,7 +892,7 @@ export default function SurveyPanel({
             )}
 
             <button type="submit" disabled={submitting || !allAnswered || !deliveryValid} style={btn(primaryColor)}>
-              {submitting ? "Submitting…" : "Submit →"}
+              {submitting ? "Submitting…" : `${submitLabel} →`}
             </button>
           </form>
         </div>
@@ -1076,7 +1163,7 @@ export default function SurveyPanel({
                   style={btn(primaryColor)}
                   disabled={currentQuestion?.required && !allRated}
                 >
-                  {current === totalQuestions - 1 ? "Submit →" : "Next →"}
+                  {current === totalQuestions - 1 ? `${submitLabel} →` : "Next →"}
                 </button>
               </div>
             );
@@ -1084,26 +1171,24 @@ export default function SurveyPanel({
 
           {/* Location */}
           {qType === "location" && (() => {
-            const loc: Record<string, string> = (() => { try { return JSON.parse(answers[currentQuestion.id] ?? "{}"); } catch { return {}; } })();
-            const upd = (k: string, v: string) => setAnswers({ ...answers, [currentQuestion.id]: JSON.stringify({ ...loc, [k]: v }) });
-            const hasAddr = Boolean(loc.address_line1?.trim());
+            const locVal = answers[currentQuestion.id] ?? "";
+            const hasLocation = Boolean(parseLocAnswer(locVal)?.locationId);
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "grid", gap: 10 }}>
-                  <input type="text" placeholder="Name (optional)" value={loc.name ?? ""} onChange={e => upd("name", e.target.value)} style={input} />
-                  <input type="text" placeholder="Street Address *" value={loc.address_line1 ?? ""} onChange={e => upd("address_line1", e.target.value)} style={input} />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input type="text" placeholder="City" value={loc.city ?? ""} onChange={e => upd("city", e.target.value)} style={{ ...input, flex: 2 }} />
-                    <input type="text" placeholder="State" value={loc.state ?? ""} onChange={e => upd("state", e.target.value)} style={{ ...input, flex: 1, minWidth: 0 }} />
-                    <input type="text" placeholder="Zip" value={loc.postal_code ?? ""} onChange={e => upd("postal_code", e.target.value)} style={{ ...input, flex: 1, minWidth: 0 }} />
-                  </div>
-                </div>
+                <LocationFieldInline
+                  questionOptions={currentQuestion.options}
+                  value={locVal}
+                  onChange={v => setAnswers({ ...answers, [currentQuestion.id]: v })}
+                  primaryColor={primaryColor}
+                  borderColor={borderColor}
+                  textColor={textColor}
+                />
                 <button
-                  onClick={() => selectAnswer(answers[currentQuestion.id] ?? "{}")}
+                  onClick={() => selectAnswer(locVal)}
                   style={btn(primaryColor)}
-                  disabled={currentQuestion?.required && !hasAddr}
+                  disabled={currentQuestion?.required && !hasLocation}
                 >
-                  {current === totalQuestions - 1 ? "Submit →" : "Next →"}
+                  {current === totalQuestions - 1 ? `${submitLabel} →` : "Next →"}
                 </button>
               </div>
             );
@@ -1124,7 +1209,7 @@ export default function SurveyPanel({
                 />
               )}
               <button onClick={advanceOpenAnswer} style={btn(primaryColor)} disabled={!openAnswer.trim() && currentQuestion?.required}>
-                {current === totalQuestions - 1 ? "Submit →" : "Next →"}
+                {current === totalQuestions - 1 ? `${submitLabel} →` : "Next →"}
               </button>
             </div>
           )}

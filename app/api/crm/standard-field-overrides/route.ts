@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(data ?? []);
 }
 
-// POST /api/crm/standard-field-overrides — upsert { record_type, field_key, custom_label, scope_key? }
+// POST /api/crm/standard-field-overrides — upsert { record_type, field_key, scope_key?, custom_label?, hidden? }
 export async function POST(req: NextRequest) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-  const { record_type, field_key, custom_label, scope_key = "" } = body as Record<string, string>;
+  const { record_type, field_key, custom_label, scope_key = "", hidden, sort_order } = body as Record<string, any>;
 
   if (!VALID_RECORD_TYPES.has(record_type)) {
     return NextResponse.json({ error: "Invalid record_type" }, { status: 400 });
@@ -54,16 +54,21 @@ export async function POST(req: NextRequest) {
   if (!isValidFieldKey(record_type as RecordType, field_key)) {
     return NextResponse.json({ error: "Invalid field_key for this record_type" }, { status: 400 });
   }
-  if (!custom_label?.trim()) {
-    return NextResponse.json({ error: "custom_label required" }, { status: 400 });
+  if (custom_label !== undefined && typeof custom_label !== "string") {
+    return NextResponse.json({ error: "Invalid custom_label" }, { status: 400 });
   }
+  if (hidden === undefined && sort_order === undefined && !custom_label?.trim()) {
+    return NextResponse.json({ error: "custom_label, hidden, or sort_order required" }, { status: 400 });
+  }
+
+  const upsertRow: Record<string, any> = { tenant_id: tenant.id, record_type, field_key, scope_key };
+  if (custom_label !== undefined) upsertRow.custom_label = custom_label.trim() || null;
+  if (hidden !== undefined) upsertRow.hidden = !!hidden;
+  if (sort_order !== undefined && typeof sort_order === "number") upsertRow.sort_order = sort_order;
 
   const { data, error } = await sb
     .from("standard_field_overrides")
-    .upsert(
-      { tenant_id: tenant.id, record_type, field_key, scope_key, custom_label: custom_label.trim() },
-      { onConflict: "tenant_id,record_type,field_key,scope_key" }
-    )
+    .upsert(upsertRow, { onConflict: "tenant_id,record_type,field_key,scope_key" })
     .select("*")
     .single();
 

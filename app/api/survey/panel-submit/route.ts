@@ -581,18 +581,24 @@ export async function POST(req: NextRequest) {
     let locId: string | null = null;
     try {
       const loc = JSON.parse(answers[q.id]);
-      if (!loc?.address_line1?.trim()) continue;
-      const result = await findOrCreateLocation(sb, tenant.id, {
-        address_line1: loc.address_line1,
-        city: loc.city || undefined,
-        state: loc.state || undefined,
-        postal_code: loc.postal_code || undefined,
-      });
-      locId = result.id;
-      // Store human-readable location name in `notes` column (requires migration 20260518000000)
-      if (loc.name?.trim()) {
-        await sb.from("locations").update({ notes: loc.name.trim() }).eq("id", locId).eq("tenant_id", tenant.id)
-          .then(() => {}, () => {}); // best-effort — column may not exist yet
+      if (loc?.locationId) {
+        // New format: location was picked via the dynamic picker — ID already exists
+        locId = loc.locationId;
+      } else if (loc?.address_line1?.trim()) {
+        // Legacy format: raw address fields (old static form or manual entry)
+        const result = await findOrCreateLocation(sb, tenant.id, {
+          address_line1: loc.address_line1,
+          city: loc.city || undefined,
+          state: loc.state || undefined,
+          postal_code: loc.postal_code || undefined,
+        });
+        locId = result.id;
+        if (loc.name?.trim()) {
+          await sb.from("locations").update({ notes: loc.name.trim() }).eq("id", locId).eq("tenant_id", tenant.id)
+            .then(() => {}, () => {});
+        }
+      } else {
+        continue;
       }
       const role = q.options?.[0] || "location";
       if (opportunityId && locId) {

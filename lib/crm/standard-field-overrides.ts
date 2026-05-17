@@ -92,8 +92,29 @@ export const STANDARD_FIELDS: Record<RecordType, StandardField[]> = {
   ],
 
   households: [
-    { key: "name",  defaultLabel: "Household Name" },
-    { key: "notes", defaultLabel: "Notes" },
+    { key: "name",                    defaultLabel: "Household Name" },
+    { key: "notes",                   defaultLabel: "Notes" },
+    // Composition
+    { key: "total_persons",           defaultLabel: "Total Persons",      advanced: true },
+    { key: "adults_count",            defaultLabel: "Adults",             advanced: true },
+    { key: "children_count",          defaultLabel: "Children",           advanced: true },
+    { key: "generations_count",       defaultLabel: "Generations",        advanced: true },
+    { key: "household_voter_count",   defaultLabel: "Voter Count",        advanced: true },
+    { key: "household_parties",       defaultLabel: "Parties",            advanced: true },
+    { key: "household_gender",        defaultLabel: "Gender Comp.",       advanced: true },
+    { key: "head_of_household",       defaultLabel: "Head of Household",  advanced: true },
+    { key: "has_senior",              defaultLabel: "Has Senior",         advanced: true },
+    { key: "has_young_adult",         defaultLabel: "Has Young Adult",    advanced: true },
+    { key: "has_children",            defaultLabel: "Has Children",       advanced: true },
+    { key: "is_single_parent",        defaultLabel: "Single Parent",      advanced: true },
+    { key: "has_disabled",            defaultLabel: "Has Disabled",       advanced: true },
+    // Property
+    { key: "home_owner",              defaultLabel: "Home Owner",         advanced: true },
+    { key: "home_estimated_value",    defaultLabel: "Est. Value",         advanced: true },
+    { key: "home_purchase_year",      defaultLabel: "Purchase Year",      advanced: true },
+    { key: "home_dwelling_type",      defaultLabel: "Dwelling Type",      advanced: true },
+    { key: "home_sqft",               defaultLabel: "Sq Ft",              advanced: true },
+    { key: "home_bedrooms",           defaultLabel: "Bedrooms",           advanced: true },
   ],
 
   locations: [
@@ -163,7 +184,8 @@ export const STANDARD_FIELDS: Record<RecordType, StandardField[]> = {
     { key: "due_date",     defaultLabel: "Due Date" },
     { key: "visibility",   defaultLabel: "Visibility" },
     { key: "location_id",  defaultLabel: "Location" },
-    { key: "meeting_url",  defaultLabel: "Meeting URL" },
+    { key: "meeting_url",    defaultLabel: "Meeting URL" },
+    { key: "calendar_badge", defaultLabel: "Calendar / Squad Badge" },
     // Advanced
     { key: "start_at",     defaultLabel: "Start Time",    advanced: true },
     { key: "end_at",       defaultLabel: "End Time",      advanced: true },
@@ -179,7 +201,8 @@ export type FieldOverride = {
   tenant_id: string;
   record_type: RecordType;
   field_key: string;
-  custom_label: string;
+  custom_label: string | null;
+  hidden?: boolean;
 };
 
 function makeAdminSb() {
@@ -192,18 +215,39 @@ function makeAdminSb() {
 export async function getFieldOverrides(
   tenantId: string,
   recordType?: RecordType,
+  scopeKey: string = "",
 ): Promise<FieldOverride[]> {
   const sb = makeAdminSb();
   let q = sb
     .from("standard_field_overrides")
     .select("*")
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .eq("scope_key", scopeKey);
   if (recordType) q = q.eq("record_type", recordType);
   const { data } = await q;
   return (data ?? []) as FieldOverride[];
 }
 
-/** Returns a map of field_key → custom_label for quick lookup. */
+/** Build a lbl() helper from an override array. */
+export function makeLbl(overrides: FieldOverride[]) {
+  const om = overrideMap(overrides);
+  return (key: string, def: string) => om.get(key) ?? def;
+}
+
+/** Build an isHidden() helper from an override array. */
+export function makeIsHidden(overrides: FieldOverride[]) {
+  const hidden = new Set(overrides.filter(o => o.hidden).map(o => o.field_key));
+  return (key: string) => hidden.has(key);
+}
+
+/** Returns a map of field_key → custom_label for quick lookup (skips null labels). */
 export function overrideMap(overrides: FieldOverride[]): Map<string, string> {
-  return new Map(overrides.map(o => [o.field_key, o.custom_label]));
+  return new Map(
+    overrides.filter(o => o.custom_label).map(o => [o.field_key, o.custom_label!])
+  );
+}
+
+/** Returns a record of field_key → hidden for passing to client components. */
+export function hiddenMap(overrides: FieldOverride[]): Record<string, boolean> {
+  return Object.fromEntries(overrides.filter(o => o.hidden).map(o => [o.field_key, true]));
 }

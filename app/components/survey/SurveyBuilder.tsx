@@ -11,6 +11,20 @@ import {
 } from "lucide-react";
 
 const RichTextEditor = dynamic(() => import("@/app/components/RichTextEditor"), { ssr: false });
+const LocationPicker  = dynamic(() => import("@/app/components/crm/LocationPicker"), { ssr: false });
+
+// ── Location option helpers ───────────────────────────────────────────────────
+// options[0] = role (e.g. "pickup"), options[1..n] = "uuid::Display Name"
+function parseLocOpts(options: string[]): { role: string; suggestions: { id: string; display: string }[] } {
+  const [role = "location", ...rest] = options;
+  const suggestions = rest
+    .map(s => { const i = s.indexOf("::"); return i >= 0 ? { id: s.slice(0, i), display: s.slice(i + 2) } : null; })
+    .filter((x): x is { id: string; display: string } => x !== null);
+  return { role, suggestions };
+}
+function buildLocOpts(role: string, suggestions: { id: string; display: string }[]): string[] {
+  return [role, ...suggestions.map(s => `${s.id}::${s.display}`)];
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -184,6 +198,9 @@ export default function SurveyBuilder({
   // Staff notification emails (tag-style list)
   const [staffEmails, setStaffEmails] = useState<string[]>([]);
   const [staffEmailDraft, setStaffEmailDraft] = useState("");
+
+  // Key used to force-remount the suggestion LocationPicker after each addition
+  const [suggestionPickerKey, setSuggestionPickerKey] = useState(0);
 
   // Identity & Appearance
   const [logoDisplayEnabled, setLogoDisplayEnabled] = useState(true);
@@ -1812,27 +1829,82 @@ export default function SurveyBuilder({
                     </div>
                   )}
 
-                  {q.question_type === "location" && (
-                    <div style={{ display: "grid", gap: 8 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: "var(--gg-text, inherit)", opacity: 0.6, whiteSpace: "nowrap" }}>Location role</label>
-                        <select
-                          value={q.options[0] ?? "location"}
-                          onChange={(e) => updateQuestion(q.id, { options: [e.target.value] })}
-                          style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", color: "var(--gg-text, inherit)" }}
-                        >
-                          {["location", "pickup", "dropoff", "origin", "destination", "waypoint"].map((r) => (
-                            <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
-                          ))}
-                        </select>
+                  {q.question_type === "location" && (() => {
+                    const { role, suggestions } = parseLocOpts(q.options.length ? q.options : ["location"]);
+                    return (
+                      <div style={{ display: "grid", gap: 12 }}>
+
+                        {/* Role selector */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: "var(--gg-text, inherit)", opacity: 0.6, whiteSpace: "nowrap" }}>Location role</label>
+                          <select
+                            value={role}
+                            onChange={(e) => updateQuestion(q.id, { options: buildLocOpts(e.target.value, suggestions) })}
+                            style={{ fontSize: 12, padding: "3px 6px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", background: "transparent", color: "var(--gg-text, inherit)" }}
+                          >
+                            {["location", "pickup", "dropoff", "origin", "destination", "waypoint"].map((r) => (
+                              <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Suggested locations */}
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--gg-text, inherit)", opacity: 0.7, marginBottom: 8 }}>
+                            Suggested locations
+                            <span style={{ fontWeight: 400, marginLeft: 6, opacity: 0.5 }}>— respondents can pick one or choose "Other" for a custom search</span>
+                          </div>
+
+                          {/* Current suggestions */}
+                          {suggestions.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                              {suggestions.map((s) => (
+                                <span
+                                  key={s.id}
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: 5,
+                                    padding: "5px 10px", borderRadius: 8, fontSize: 13,
+                                    border: "1px solid var(--gg-border, #e5e7eb)",
+                                    background: "rgba(99,102,241,.08)", color: "var(--gg-text, inherit)",
+                                  }}
+                                >
+                                  📍 {s.display}
+                                  <button
+                                    onClick={() => updateQuestion(q.id, { options: buildLocOpts(role, suggestions.filter(x => x.id !== s.id)) })}
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: "inherit", opacity: 0.5, fontSize: 15, lineHeight: 1, padding: "0 2px" }}
+                                    title="Remove"
+                                  >×</button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Picker to add a new suggestion */}
+                          <LocationPicker
+                            key={suggestionPickerKey}
+                            value={null}
+                            onChange={(v) => {
+                              if (v?.type === "location") {
+                                const already = suggestions.some(s => s.id === v.locationId);
+                                if (!already) {
+                                  updateQuestion(q.id, { options: buildLocOpts(role, [...suggestions, { id: v.locationId, display: v.displayText }]) });
+                                }
+                                setSuggestionPickerKey(k => k + 1);
+                              }
+                            }}
+                            placeholder="Search to add a suggested location…"
+                          />
+                        </div>
+
+                        {/* Preview hint */}
+                        <div style={{ fontSize: 12, opacity: 0.45, color: "var(--gg-text, inherit)" }}>
+                          {suggestions.length > 0
+                            ? `Renders as ${suggestions.length} suggestion pill${suggestions.length > 1 ? "s" : ""} + "Other" → full location search`
+                            : "Renders as a location search picker with manual entry fallback"}
+                        </div>
                       </div>
-                      {["Name (optional)", "Street Address", "City / State / Zip"].map((p) => (
-                        <span key={p} style={{ display: "block", padding: "5px 10px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, opacity: 0.5, color: "var(--gg-text, inherit)" }}>
-                          {p}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Rating preview */}
                   {q.question_type === "rating" && (

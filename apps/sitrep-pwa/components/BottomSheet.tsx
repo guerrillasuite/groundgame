@@ -102,8 +102,9 @@ export default function BottomSheet({
           right: 0,
           height: height ?? maxHeight,
           background: "rgb(20 25 38)",
-          borderRadius: "16px 16px 0 0",
-          borderTop: "1px solid rgba(255,255,255,.07)",
+          borderRadius: "20px 20px 0 0",
+          borderTop: "1px solid rgba(255,255,255,.10)",
+          boxShadow: "0 -16px 80px rgba(0,0,0,.85), 0 -1px 0 rgba(255,255,255,.08)",
           zIndex: 201,
           display: "flex",
           flexDirection: "column",
@@ -131,7 +132,7 @@ export default function BottomSheet({
             width: 36,
             height: 4,
             borderRadius: 2,
-            background: "rgba(255,255,255,.15)",
+            background: "rgba(255,255,255,.22)",
           }} />
         </div>
 

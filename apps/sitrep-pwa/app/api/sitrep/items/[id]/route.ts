@@ -15,9 +15,10 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 const SELECT = `
-  id, item_type, title, description, location, status, priority,
+  id, item_type, title, description, status, priority,
   due_date, start_at, end_at, is_all_day,
   mission_id, parent_item_id, depth,
+  location_id, meeting_url,
   visibility, created_by, created_at, updated_at,
   sitrep_assignments(user_id, role)
 `;
@@ -25,7 +26,7 @@ const SELECT = `
 const PATCHABLE = [
   "title", "description", "status", "priority",
   "due_date", "start_at", "end_at", "is_all_day",
-  "location", "visibility", "parent_item_id",
+  "location_id", "meeting_url", "visibility", "parent_item_id",
   "custom_fields",
 ] as const;
 

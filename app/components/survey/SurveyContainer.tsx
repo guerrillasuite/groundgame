@@ -5,6 +5,89 @@ import { useState, useEffect } from 'react';
 import { MultipleChoiceQuestion } from './MultipleChoiceQuestion';
 import { MultipleSelectQuestion } from './MultipleSelectQuestion';
 import { ContactVerification } from './ContactVerification';
+import LocationPicker from '@/app/components/crm/LocationPicker';
+import type { LocationValue } from '@/app/components/crm/LocationPicker';
+
+// Parse "role" and optional suggested locations from the options array.
+// options[0] = role (e.g. "pickup"), options[1..n] = "uuid::Display Name"
+function parseLocationOpts(options: string[] | null) {
+  const [role = 'location', ...rest] = options ?? ['location'];
+  const suggestions = rest
+    .map(s => { const i = s.indexOf('::'); return i >= 0 ? { id: s.slice(0, i), display: s.slice(i + 2) } : null; })
+    .filter((x): x is { id: string; display: string } => x !== null);
+  return { role, suggestions };
+}
+
+function LocationQuestion({
+  question,
+  currentAnswer,
+  onAnswer,
+}: {
+  question: { options: string[] | null };
+  currentAnswer: { value: string; text?: string } | undefined;
+  onAnswer: (value: string, text?: string) => void;
+}) {
+  const { suggestions } = parseLocationOpts(question.options);
+  const hasSuggestions = suggestions.length > 0;
+  const selectedId = currentAnswer?.value ?? '';
+  const isSuggestionSelected = hasSuggestions && suggestions.some(s => s.id === selectedId);
+  const [showPicker, setShowPicker] = useState(!hasSuggestions || (!isSuggestionSelected && !!selectedId));
+
+  const pickerValue: LocationValue = showPicker && selectedId && !isSuggestionSelected
+    ? { type: 'location', locationId: selectedId, displayText: currentAnswer?.text ?? '' }
+    : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {hasSuggestions && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {suggestions.map(s => {
+            const active = selectedId === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => { onAnswer(s.id, s.display); setShowPicker(false); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '10px 16px', borderRadius: 10, fontSize: 14, fontWeight: 500,
+                  cursor: 'pointer', transition: 'all .12s',
+                  border: active ? '2px solid rgb(var(--primary-600))' : '1px solid rgb(var(--border-600))',
+                  background: active ? 'rgba(var(--primary-600), 0.15)' : 'transparent',
+                  color: 'rgb(var(--text-100))',
+                }}
+              >
+                <span style={{ fontSize: 16 }}>📍</span>
+                {s.display}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => { setShowPicker(true); if (isSuggestionSelected) onAnswer('', ''); }}
+            style={{
+              padding: '10px 16px', borderRadius: 10, fontSize: 14, fontWeight: 500,
+              cursor: 'pointer', transition: 'all .12s',
+              border: showPicker ? '2px solid rgb(var(--primary-600))' : '1px dashed rgb(var(--border-600))',
+              background: showPicker ? 'rgba(var(--primary-600), 0.10)' : 'transparent',
+              color: 'rgb(var(--text-300))',
+            }}
+          >
+            Other…
+          </button>
+        </div>
+      )}
+      {showPicker && (
+        <LocationPicker
+          value={pickerValue}
+          onChange={(v) => {
+            if (v?.type === 'location') onAnswer(v.locationId, v.displayText);
+            else if (!v) onAnswer('', '');
+          }}
+          placeholder="Search for a location or enter manually…"
+        />
+      )}
+    </div>
+  );
+}
 
 interface Question {
   id: string;
@@ -588,6 +671,15 @@ export function SurveyContainer({
               value={currentAnswer?.value || ''}
               onChange={(e) => handleAnswer(e.target.value)}
               style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1px solid rgb(var(--border-600))', background: 'rgb(var(--card-700))', color: 'rgb(var(--text-100))', fontSize: 16, boxSizing: 'border-box' }}
+            />
+          )}
+
+          {/* Location picker */}
+          {currentQuestion.question_type === 'location' && (
+            <LocationQuestion
+              question={currentQuestion}
+              currentAnswer={currentAnswer}
+              onAnswer={handleAnswer}
             />
           )}
 

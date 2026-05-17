@@ -6,6 +6,7 @@ import { getTenant } from "@/lib/tenant";
 import RemindersSection from "@/app/components/crm/RemindersSection";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 import HouseholdLocationPicker from "./HouseholdLocationPicker";
+import { getFieldOverrides, makeLbl, makeIsHidden } from "@/lib/crm/standard-field-overrides";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -37,6 +38,10 @@ export default async function HouseholdDetail({ params }: Params) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
   const hhId = params.id;
+
+  const overrides = await getFieldOverrides(tenant.id, "households");
+  const lbl = makeLbl(overrides);
+  const isHidden = makeIsHidden(overrides);
 
   // 1) Household
   const { data: household, error: hhErr } = await sb
@@ -223,21 +228,21 @@ export default async function HouseholdDetail({ params }: Params) {
           <p style={{ ...labelStyle, marginBottom: 12 }}>Household Composition</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px 20px" }}>
             {[
-              { label: "Total Persons", val: (household as any).total_persons != null ? String((household as any).total_persons) : null },
-              { label: "Adults", val: (household as any).adults_count != null ? String((household as any).adults_count) : null },
-              { label: "Children", val: (household as any).children_count != null ? String((household as any).children_count) : null },
-              { label: "Generations", val: (household as any).generations_count != null ? String((household as any).generations_count) : null },
-              { label: "Voter Count", val: (household as any).household_voter_count != null ? String((household as any).household_voter_count) : null },
-              { label: "Parties", val: (household as any).household_parties },
-              { label: "Gender Comp.", val: (household as any).household_gender },
-              { label: "Head of HH", val: (household as any).head_of_household },
-              { label: "Has Senior", val: (household as any).has_senior === true ? "Yes" : (household as any).has_senior === false ? "No" : null },
-              { label: "Has Young Adult", val: (household as any).has_young_adult === true ? "Yes" : (household as any).has_young_adult === false ? "No" : null },
-              { label: "Has Children", val: (household as any).has_children === true ? "Yes" : (household as any).has_children === false ? "No" : null },
-              { label: "Single Parent", val: (household as any).is_single_parent === true ? "Yes" : (household as any).is_single_parent === false ? "No" : null },
-              { label: "Has Disabled", val: (household as any).has_disabled === true ? "Yes" : (household as any).has_disabled === false ? "No" : null },
-            ].filter(f => f.val != null).map(({ label, val }) => (
-              <div key={label}>
+              { key: "total_persons",      label: lbl("total_persons",      "Total Persons"),  val: (household as any).total_persons != null ? String((household as any).total_persons) : null },
+              { key: "adults_count",       label: lbl("adults_count",       "Adults"),         val: (household as any).adults_count != null ? String((household as any).adults_count) : null },
+              { key: "children_count",     label: lbl("children_count",     "Children"),       val: (household as any).children_count != null ? String((household as any).children_count) : null },
+              { key: "generations_count",  label: lbl("generations_count",  "Generations"),    val: (household as any).generations_count != null ? String((household as any).generations_count) : null },
+              { key: "household_voter_count", label: lbl("household_voter_count", "Voter Count"), val: (household as any).household_voter_count != null ? String((household as any).household_voter_count) : null },
+              { key: "household_parties",  label: lbl("household_parties",  "Parties"),        val: (household as any).household_parties },
+              { key: "household_gender",   label: lbl("household_gender",   "Gender Comp."),   val: (household as any).household_gender },
+              { key: "head_of_household",  label: lbl("head_of_household",  "Head of HH"),     val: (household as any).head_of_household },
+              { key: "has_senior",         label: lbl("has_senior",         "Has Senior"),     val: (household as any).has_senior === true ? "Yes" : (household as any).has_senior === false ? "No" : null },
+              { key: "has_young_adult",    label: lbl("has_young_adult",    "Has Young Adult"),val: (household as any).has_young_adult === true ? "Yes" : (household as any).has_young_adult === false ? "No" : null },
+              { key: "has_children",       label: lbl("has_children",       "Has Children"),   val: (household as any).has_children === true ? "Yes" : (household as any).has_children === false ? "No" : null },
+              { key: "is_single_parent",   label: lbl("is_single_parent",   "Single Parent"),  val: (household as any).is_single_parent === true ? "Yes" : (household as any).is_single_parent === false ? "No" : null },
+              { key: "has_disabled",       label: lbl("has_disabled",       "Has Disabled"),   val: (household as any).has_disabled === true ? "Yes" : (household as any).has_disabled === false ? "No" : null },
+            ].filter(f => f.val != null && !isHidden(f.key)).map(({ key, label, val }) => (
+              <div key={key}>
                 <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gg-text-dim, #6b7280)", marginBottom: 2 }}>{label}</p>
                 <p style={{ fontSize: 14, color: "var(--gg-text, #111827)", margin: 0 }}>{val}</p>
               </div>
@@ -252,14 +257,14 @@ export default async function HouseholdDetail({ params }: Params) {
           <p style={{ ...labelStyle, marginBottom: 12 }}>Property</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px 20px" }}>
             {[
-              { label: "Home Owner", val: (household as any).home_owner === true ? "Yes" : (household as any).home_owner === false ? "No" : null },
-              { label: "Est. Value", val: (household as any).home_estimated_value != null ? `$${Number((household as any).home_estimated_value).toLocaleString()}` : null },
-              { label: "Purchase Year", val: (household as any).home_purchase_year != null ? String((household as any).home_purchase_year) : null },
-              { label: "Dwelling Type", val: (household as any).home_dwelling_type },
-              { label: "Sq Ft", val: (household as any).home_sqft != null ? Number((household as any).home_sqft).toLocaleString() : null },
-              { label: "Bedrooms", val: (household as any).home_bedrooms != null ? String((household as any).home_bedrooms) : null },
-            ].filter(f => f.val != null).map(({ label, val }) => (
-              <div key={label}>
+              { key: "home_owner",        label: lbl("home_owner",        "Home Owner"),    val: (household as any).home_owner === true ? "Yes" : (household as any).home_owner === false ? "No" : null },
+              { key: "home_estimated_value", label: lbl("home_estimated_value", "Est. Value"), val: (household as any).home_estimated_value != null ? `$${Number((household as any).home_estimated_value).toLocaleString()}` : null },
+              { key: "home_purchase_year",label: lbl("home_purchase_year","Purchase Year"), val: (household as any).home_purchase_year != null ? String((household as any).home_purchase_year) : null },
+              { key: "home_dwelling_type",label: lbl("home_dwelling_type","Dwelling Type"), val: (household as any).home_dwelling_type },
+              { key: "home_sqft",         label: lbl("home_sqft",         "Sq Ft"),         val: (household as any).home_sqft != null ? Number((household as any).home_sqft).toLocaleString() : null },
+              { key: "home_bedrooms",     label: lbl("home_bedrooms",     "Bedrooms"),      val: (household as any).home_bedrooms != null ? String((household as any).home_bedrooms) : null },
+            ].filter(f => f.val != null && !isHidden(f.key)).map(({ key, label, val }) => (
+              <div key={key}>
                 <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--gg-text-dim, #6b7280)", marginBottom: 2 }}>{label}</p>
                 <p style={{ fontSize: 14, color: "var(--gg-text, #111827)", margin: 0 }}>{val}</p>
               </div>

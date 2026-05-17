@@ -97,7 +97,7 @@ export async function buildNormalizedPayload(
       const [locsRes, oppRes, personRes] = await Promise.all([
         adminSb
           .from("opportunity_locations")
-          .select("role, locations(address_line1, city, state, postal_code, notes)")
+          .select("role, location_id, locations(address_line1, city, state, postal_code, notes)")
           .eq("opportunity_id", opp.id),
         opp.custom_fields === undefined || opp.notes === undefined
           ? adminSb.from("opportunities").select("custom_fields, notes").eq("id", opp.id).maybeSingle()
@@ -119,13 +119,15 @@ export async function buildNormalizedPayload(
         const addr = parts.join(", ");
         const name = loc.locations?.notes ?? addr;
         if (loc.role === "pickup") {
-          vars.pickup_location = name;
-          vars.pickup_address  = addr;
-          vars.pickup_full     = name && name !== addr ? `${name} — ${addr}` : addr;
+          vars.pickup_location    = name;
+          vars.pickup_address     = addr;
+          vars.pickup_full        = name && name !== addr ? `${name} — ${addr}` : addr;
+          if (loc.location_id) vars.pickup_location_id = loc.location_id;
         } else if (loc.role === "dropoff") {
-          vars.dropoff_location = name;
-          vars.dropoff_address  = addr;
-          vars.dropoff_full     = name && name !== addr ? `${name} — ${addr}` : addr;
+          vars.dropoff_location    = name;
+          vars.dropoff_address     = addr;
+          vars.dropoff_full        = name && name !== addr ? `${name} — ${addr}` : addr;
+          if (loc.location_id) vars.dropoff_location_id = loc.location_id;
         }
       }
       const fetchedNotes = (oppRes.data as any)?.notes;

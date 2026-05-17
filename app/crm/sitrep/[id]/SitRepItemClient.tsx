@@ -77,6 +77,8 @@ type Props = {
   users: User[];
   currentUserId: string;
   sitrepTypeId?: string | null;
+  fieldLabels?: Record<string, string>;
+  hiddenFields?: Record<string, boolean>;
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -200,7 +202,9 @@ function th(colorKey: string) { return TYPE_HERO[colorKey]    ?? { bg: "rgba(59,
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function SitRepItemClient({ item, typeDefs, parentItem, users, currentUserId, sitrepTypeId }: Props) {
+export default function SitRepItemClient({ item, typeDefs, parentItem, users, currentUserId, sitrepTypeId, fieldLabels, hiddenFields }: Props) {
+  const lbl    = (key: string, def: string) => fieldLabels?.[key] ?? def;
+  const hidden = (key: string) => !!hiddenFields?.[key];
   const router  = useRouter();
   const typeDef = typeDefs[item.item_type] ?? null;
   const stages  = ((typeDef?.stages ?? []) as Stage[]).length > 0
@@ -653,36 +657,36 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
       {/* ── Meta card ── */}
       <div style={sectionCard}>
         {([
-          isTask && {
-            label: "Due Date",
+          isTask && !hidden("due_date") && {
+            label: lbl("due_date", "Due Date"),
             content: <input type="date" value={dueDate} onChange={(e) => { setDueDate(e.target.value); patchNow({ due_date: e.target.value || null }); }} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField} />,
           },
-          !isTask && {
-            label: "Start",
+          !isTask && !hidden("start_at") && {
+            label: lbl("start_at", "Start"),
             content: <input type={isAllDay ? "date" : "datetime-local"} value={isAllDay ? startAt.split("T")[0] : startAt} onChange={(e) => {
               setStartAt(e.target.value);
               const utc = e.target.value ? (isAllDay ? e.target.value : localToUtcIso(e.target.value)) : null;
               patchNow({ start_at: utc });
             }} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField} />,
           },
-          !isTask && {
-            label: "End",
+          !isTask && !hidden("end_at") && {
+            label: lbl("end_at", "End"),
             content: <input type={isAllDay ? "date" : "datetime-local"} value={isAllDay ? endAt.split("T")[0] : endAt} onChange={(e) => {
               setEndAt(e.target.value);
               const utc = e.target.value ? (isAllDay ? e.target.value : localToUtcIso(e.target.value)) : null;
               patchNow({ end_at: utc });
             }} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField} />,
           },
-          !isTask && {
-            label: "All Day",
+          !isTask && !hidden("is_all_day") && {
+            label: lbl("is_all_day", "All Day"),
             content: (
               <div onClick={() => { setIsAllDay(v => !v); patchNow({ is_all_day: !isAllDay }); }} style={{ width: 38, height: 21, borderRadius: 11, cursor: "pointer", position: "relative", flexShrink: 0, background: isAllDay ? "var(--gg-primary, #2563eb)" : "rgba(255,255,255,.12)", boxShadow: isAllDay ? "0 0 8px color-mix(in srgb, var(--gg-primary, #2563eb) 45%, transparent)" : "inset 0 1px 3px rgba(0,0,0,.4)", transition: "background .2s, box-shadow .2s" }}>
                 <div style={{ position: "absolute", top: 2, left: isAllDay ? 19 : 2, width: 17, height: 17, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.35)", transition: "left .2s" }} />
               </div>
             ),
           },
-          !isTask && {
-            label: "Location / Link",
+          !isTask && !hidden("location_id") && {
+            label: lbl("location_id", "Location / Link"),
             content: (
               <LocationPicker
                 value={locationValue}
@@ -732,8 +736,8 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
               </div>
             ),
           },
-          {
-            label: "Visibility",
+          !hidden("visibility") && {
+            label: lbl("visibility", "Visibility"),
             content: <select value={visibility} onChange={(e) => { setVisibility(e.target.value); patchNow({ visibility: e.target.value }); }} style={{ ...fieldStyle, width: "fit-content" }} onFocus={focusField} onBlur={blurField}>{VISIBILITIES.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}</select>,
           },
           { label: "Created", content: <span style={{ fontSize: 12, color: S.dim }}>{fmtDate(item.created_at)}</span> },
@@ -749,19 +753,19 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
       </div>
 
       {/* ── Description ── */}
-      <div>
-        <div style={SECTION_HEADER}>Description{!isTask && <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, opacity: 0.6 }}> — shown on public calendars</span>}</div>
+      {!hidden("description") && <div>
+        <div style={SECTION_HEADER}>{lbl("description", "Description")}{!isTask && <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, opacity: 0.6 }}> — shown on public calendars</span>}</div>
         <textarea value={desc} onChange={(e) => { setDesc(e.target.value); patchDebounced({ description: e.target.value || null }); }} placeholder="Add a description…" rows={3}
           style={{ width: "100%", background: S.card, border: `1px solid ${S.border}`, borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", transition: "border-color .15s, box-shadow .15s" }}
           onFocus={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)"; }}
           onBlur={(e) => { e.currentTarget.style.borderColor = S.border; e.currentTarget.style.boxShadow = "none"; }}
         />
-      </div>
+      </div>}
 
       {/* ── Event notes ── */}
-      {item.item_type === "event" && (
+      {item.item_type === "event" && !hidden("meeting_notes") && (
         <div>
-          <div style={SECTION_HEADER}>Notes <span style={{ fontWeight: 400, textTransform: "none", opacity: 0.6 }}>— internal only</span></div>
+          <div style={SECTION_HEADER}>{lbl("meeting_notes", "Notes")} <span style={{ fontWeight: 400, textTransform: "none", opacity: 0.6 }}>— internal only</span></div>
           <textarea value={meetingNotes} onChange={(e) => { setMeetingNotes(e.target.value); patchDebounced({ meeting_notes: e.target.value || null }); }} placeholder="Internal notes…" rows={4}
             style={{ width: "100%", background: "rgba(255,255,255,.04)", border: `1px solid ${S.border}`, borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", transition: "border-color .15s, box-shadow .15s" }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)"; }}
@@ -772,22 +776,22 @@ export default function SitRepItemClient({ item, typeDefs, parentItem, users, cu
 
       {/* ── Meeting agenda + notes ── */}
       {item.item_type === "meeting" && (<>
-        <div>
-          <div style={SECTION_HEADER}>Agenda</div>
+        {!hidden("agenda") && <div>
+          <div style={SECTION_HEADER}>{lbl("agenda", "Agenda")}</div>
           <textarea value={agenda} onChange={(e) => { setAgenda(e.target.value); patchDebounced({ agenda: e.target.value || null }); }} placeholder="Meeting agenda…" rows={4}
             style={{ width: "100%", background: "rgba(255,255,255,.04)", border: `1px solid ${S.border}`, borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", transition: "border-color .15s, box-shadow .15s" }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = S.border; e.currentTarget.style.boxShadow = "none"; }}
           />
-        </div>
-        <div>
-          <div style={SECTION_HEADER}>Notes</div>
+        </div>}
+        {!hidden("meeting_notes") && <div>
+          <div style={SECTION_HEADER}>{lbl("meeting_notes", "Notes")}</div>
           <textarea value={meetingNotes} onChange={(e) => { setMeetingNotes(e.target.value); patchDebounced({ meeting_notes: e.target.value || null }); }} placeholder="Notes from the meeting…" rows={4}
             style={{ width: "100%", background: "rgba(255,255,255,.04)", border: `1px solid ${S.border}`, borderRadius: 10, padding: "12px 14px", color: S.text, fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", transition: "border-color .15s, box-shadow .15s" }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gg-primary, #2563eb) 55%, transparent)"; e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gg-primary, #2563eb) 14%, transparent)"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = S.border; e.currentTarget.style.boxShadow = "none"; }}
           />
-        </div>
+        </div>}
       </>)}
 
       {/* ── Assignees ── */}

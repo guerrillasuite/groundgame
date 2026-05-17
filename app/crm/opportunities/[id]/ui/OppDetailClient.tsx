@@ -129,9 +129,12 @@ export type TenantUser = {
 
 // ── Field editor ──────────────────────────────────────────────────────────────
 
-export function OppFieldEditor({ opp, stages, contactTypes }: { opp: OppData; stages: { key: string; label: string }[]; contactTypes: ContactTypeOption[] }) {
+export function OppFieldEditor({ opp, stages, contactTypes, fieldLabels, hiddenFields }: { opp: OppData; stages: { key: string; label: string }[]; contactTypes: ContactTypeOption[]; fieldLabels?: Record<string, string>; hiddenFields?: Record<string, boolean> }) {
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
+
+  const lbl    = (key: string, def: string) => fieldLabels?.[key] ?? def;
+  const hidden = (key: string) => !!hiddenFields?.[key];
 
   function save(patch: Record<string, any>) {
     start(async () => {
@@ -149,18 +152,20 @@ export function OppFieldEditor({ opp, stages, contactTypes }: { opp: OppData; st
       </div>
 
       <div style={{ display: "grid", gap: 12 }}>
-        <div>
-          <label style={LABEL}>Title</label>
-          <input
-            style={INPUT}
-            defaultValue={opp.title ?? ""}
-            onBlur={(e) => save({ title: e.target.value })}
-          />
-        </div>
-
-        {contactTypes.length > 0 && (
+        {!hidden("title") && (
           <div>
-            <label style={LABEL}>Pipeline</label>
+            <label style={LABEL}>{lbl("title", "Title")}</label>
+            <input
+              style={INPUT}
+              defaultValue={opp.title ?? ""}
+              onBlur={(e) => save({ title: e.target.value })}
+            />
+          </div>
+        )}
+
+        {!hidden("pipeline") && contactTypes.length > 0 && (
+          <div>
+            <label style={LABEL}>{lbl("pipeline", "Pipeline")}</label>
             <select
               style={{ ...INPUT }}
               defaultValue={opp.pipeline ?? ""}
@@ -174,90 +179,106 @@ export function OppFieldEditor({ opp, stages, contactTypes }: { opp: OppData; st
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={LABEL}>Stage</label>
-            <select
-              style={{ ...INPUT }}
-              defaultValue={opp.stage ?? ""}
-              onChange={(e) => save({ stage: e.target.value })}
-            >
-              {stages.map((s) => (
-                <option key={s.key} value={s.key}>{s.label}</option>
-              ))}
-            </select>
+        {(!hidden("stage") || !hidden("priority")) && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {!hidden("stage") && (
+              <div>
+                <label style={LABEL}>{lbl("stage", "Stage")}</label>
+                <select
+                  style={{ ...INPUT }}
+                  defaultValue={opp.stage ?? ""}
+                  onChange={(e) => save({ stage: e.target.value })}
+                >
+                  {stages.map((s) => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {!hidden("priority") && (
+              <div>
+                <label style={LABEL}>{lbl("priority", "Priority")}</label>
+                <select
+                  style={{ ...INPUT }}
+                  defaultValue={opp.priority ?? ""}
+                  onChange={(e) => save({ priority: e.target.value || null })}
+                >
+                  <option value="">None</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+            )}
           </div>
+        )}
 
-          <div>
-            <label style={LABEL}>Priority</label>
-            <select
-              style={{ ...INPUT }}
-              defaultValue={opp.priority ?? ""}
-              onChange={(e) => save({ priority: e.target.value || null })}
-            >
-              <option value="">None</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
+        {(!hidden("amount_cents") || !hidden("due_at")) && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {!hidden("amount_cents") && (
+              <div>
+                <label style={LABEL}>{lbl("amount_cents", "Amount ($)")}</label>
+                <input
+                  style={INPUT}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={opp.amount_cents != null ? (opp.amount_cents / 100).toFixed(2) : ""}
+                  placeholder="0.00"
+                  onBlur={(e) => {
+                    const v = parseFloat(e.target.value);
+                    save({ amount_cents: isNaN(v) ? null : Math.round(v * 100) });
+                  }}
+                />
+              </div>
+            )}
+            {!hidden("due_at") && (
+              <div>
+                <label style={LABEL}>{lbl("due_at", "Due Date")}</label>
+                <input
+                  style={INPUT}
+                  type="date"
+                  defaultValue={opp.due_at ? opp.due_at.slice(0, 10) : ""}
+                  onChange={(e) => save({ due_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                />
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {!hidden("description") && (
           <div>
-            <label style={LABEL}>Amount ($)</label>
-            <input
-              style={INPUT}
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={opp.amount_cents != null ? (opp.amount_cents / 100).toFixed(2) : ""}
-              placeholder="0.00"
-              onBlur={(e) => {
-                const v = parseFloat(e.target.value);
-                save({ amount_cents: isNaN(v) ? null : Math.round(v * 100) });
-              }}
+            <label style={LABEL}>{lbl("description", "Description")}</label>
+            <textarea
+              style={{ ...INPUT, minHeight: 72, resize: "vertical" }}
+              defaultValue={opp.description ?? ""}
+              onBlur={(e) => save({ description: e.target.value })}
             />
           </div>
+        )}
 
+        {!hidden("notes") && (
           <div>
-            <label style={LABEL}>Due Date</label>
-            <input
-              style={INPUT}
-              type="date"
-              defaultValue={opp.due_at ? opp.due_at.slice(0, 10) : ""}
-              onChange={(e) => save({ due_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+            <label style={LABEL}>{lbl("notes", "Notes")}</label>
+            <textarea
+              style={{ ...INPUT, minHeight: 56, resize: "vertical" }}
+              defaultValue={opp.notes ?? ""}
+              onBlur={(e) => save({ notes: e.target.value })}
             />
           </div>
-        </div>
+        )}
 
-        <div>
-          <label style={LABEL}>Description</label>
-          <textarea
-            style={{ ...INPUT, minHeight: 72, resize: "vertical" }}
-            defaultValue={opp.description ?? ""}
-            onBlur={(e) => save({ description: e.target.value })}
-          />
-        </div>
-
-        <div>
-          <label style={LABEL}>Notes</label>
-          <textarea
-            style={{ ...INPUT, minHeight: 56, resize: "vertical" }}
-            defaultValue={opp.notes ?? ""}
-            onBlur={(e) => save({ notes: e.target.value })}
-          />
-        </div>
-
-        <div>
-          <label style={LABEL}>Source</label>
-          <input
-            style={INPUT}
-            defaultValue={opp.source ?? ""}
-            placeholder="doors, calls, referral…"
-            onBlur={(e) => save({ source: e.target.value || null })}
-          />
-        </div>
+        {!hidden("source") && (
+          <div>
+            <label style={LABEL}>{lbl("source", "Source")}</label>
+            <input
+              style={INPUT}
+              defaultValue={opp.source ?? ""}
+              placeholder="doors, calls, referral…"
+              onBlur={(e) => save({ source: e.target.value || null })}
+            />
+          </div>
+        )}
 
       </div>
     </div>

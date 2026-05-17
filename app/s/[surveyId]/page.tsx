@@ -1,6 +1,7 @@
 import SurveyPanel from "@/app/components/survey/SurveyPanel";
 import { createClient } from "@supabase/supabase-js";
 import { BASE_BRANDING } from "@/lib/tenant";
+import { headers } from "next/headers";
 
 function makeSb() {
   return createClient(
@@ -11,7 +12,7 @@ function makeSb() {
 
 async function fetchSurveyByIdOrSlug(surveyId: string) {
   const sb = makeSb();
-  const cols = "id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, show_share, show_take_again, status, require_contact_id_url, expiration_at, password_hash, show_results_after_submission, results_display_mode";
+  const cols = "id, tenant_id, title, display_title, display_description, website_url, footer_text, active_channels, post_submit_survey_id, post_submit_required, post_submit_header, thankyou_message, learn_more_label, prefill_contact, show_share, show_take_again, status, require_contact_id_url, expiration_at, password_hash, show_results_after_submission, results_display_mode, button_label";
   // Look up by public_slug only — the canonical public URL is always /s/{public_slug}.
   const { data: survey } = await sb
     .from("surveys")
@@ -170,6 +171,7 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
       passwordProtected={Boolean((survey as any).password_hash)}
       showResultsAfterSub={Boolean((survey as any).show_results_after_submission)}
       resultsDisplayMode={((survey as any).results_display_mode as string) ?? "none"}
+      buttonLabel={(survey as any).button_label ?? null}
     />
   );
 }
@@ -177,6 +179,39 @@ export default async function PublicSurveyPage({ params, searchParams }: Props) 
 export async function generateMetadata({ params }: { params: Promise<{ surveyId: string }> }) {
   const { surveyId } = await params;
   const survey = await fetchSurveyByIdOrSlug(surveyId);
-  return { title: survey?.title ?? "Survey | GroundGame" };
+  if (!survey) return { title: "Survey | GroundGame" };
+
+  // Determine base URL from request host so OG image resolves correctly on any subdomain
+  const h = await headers();
+  const host = h.get("host") ?? "app.groundgame.digital";
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const baseUrl = `${proto}://${host}`;
+
+  // Fetch tenant logo for the OG image
+  const sb = makeSb();
+  const { data: tenant } = await sb.from("tenants").select("branding").eq("id", survey.tenant_id).maybeSingle();
+  const logoUrl: string | null = (tenant?.branding as any)?.logoUrl ?? null;
+  const ogImage = logoUrl || `${baseUrl}/logo.png`;
+
+  const ogTitle       = survey.display_title ?? survey.title;
+  const ogDescription = (survey as any).display_description as string | null ?? null;
+
+  return {
+    metadataBase: new URL(baseUrl),
+    title: ogTitle,
+    description: ogDescription ?? undefined,
+    openGraph: {
+      title: ogTitle,
+      description: ogDescription ?? undefined,
+      images: [{ url: ogImage, width: 512, height: 512 }],
+      type: "website",
+    },
+    twitter: {
+      card: "summary",
+      title: ogTitle,
+      description: ogDescription ?? undefined,
+      images: [ogImage],
+    },
+  };
 }
 

@@ -30,6 +30,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (allowed.required !== undefined)          patch.required          = allowed.required === true;
   if (allowed.sort_order !== undefined)        patch.sort_order        = allowed.sort_order;
   if (allowed.is_archived !== undefined)       patch.is_archived       = allowed.is_archived === true;
+  if (allowed.display_scope !== undefined && ["snapshot","detail"].includes(allowed.display_scope))
+                                               patch.display_scope     = allowed.display_scope;
   patch.updated_at = new Date().toISOString();
 
   const { data, error } = await sb

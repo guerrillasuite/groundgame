@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
 import LocationNameEditor from "./LocationNameEditor";
+import { getFieldOverrides, makeLbl, makeIsHidden } from "@/lib/crm/standard-field-overrides";
 
 function makeSb(tenantId: string) {
   return createClient(
@@ -22,6 +23,10 @@ export default async function LocationDetail({ params }: Params) {
   const { id: locId } = await params;
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
+
+  const overrides = await getFieldOverrides(tenant.id, "locations");
+  const lbl = makeLbl(overrides);
+  const isHidden = makeIsHidden(overrides);
 
   // 1) Location
   const { data: loc, error: locErr } = await sb
@@ -106,13 +111,13 @@ export default async function LocationDetail({ params }: Params) {
     margin: 0,
   };
 
-  function FieldGrid({ fields }: { fields: Array<{ label: string; val: string | null | undefined }> }) {
+  function FieldGrid({ fields }: { fields: Array<{ key: string; label: string; val: string | null | undefined }> }) {
     const present = fields.filter(f => f.val != null && f.val !== "");
     if (present.length === 0) return null;
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px 20px" }}>
-        {present.map(({ label, val }) => (
-          <div key={label}>
+        {present.map(({ key, label, val }) => (
+          <div key={key}>
             <p style={labelStyle}>{label}</p>
             <p style={valueStyle}>{val}</p>
           </div>
@@ -122,31 +127,31 @@ export default async function LocationDetail({ params }: Params) {
   }
 
   const districtFields = [
-    { label: "Congressional District", val: loc.congressional_district },
-    { label: "State Senate District", val: loc.state_senate_district },
-    { label: "State House District", val: loc.state_house_district },
-    { label: "State Legislative District", val: loc.state_legislative_district },
-    { label: "Precinct", val: loc.precinct },
-    { label: "County", val: loc.county_name },
-    { label: "Municipality", val: loc.municipality },
-    { label: "Municipal Subdistrict", val: loc.municipal_subdistrict },
-    { label: "County Commission District", val: loc.county_commission_district },
-    { label: "County Supervisor District", val: loc.county_supervisor_district },
-    { label: "School District", val: loc.school_district },
-    { label: "College District", val: loc.college_district },
-    { label: "Judicial District", val: loc.judicial_district },
-    { label: "FIPS Code", val: loc.fips_code },
-  ];
+    { key: "congressional_district",     label: lbl("congressional_district",     "Congressional District"),     val: loc.congressional_district },
+    { key: "state_senate_district",      label: lbl("state_senate_district",      "State Senate District"),      val: loc.state_senate_district },
+    { key: "state_house_district",       label: lbl("state_house_district",       "State House District"),       val: loc.state_house_district },
+    { key: "state_legislative_district", label: lbl("state_legislative_district", "State Legislative District"), val: loc.state_legislative_district },
+    { key: "precinct",                   label: lbl("precinct",                   "Precinct"),                   val: loc.precinct },
+    { key: "county_name",                label: lbl("county_name",                "County"),                     val: loc.county_name },
+    { key: "municipality",               label: lbl("municipality",               "Municipality"),               val: loc.municipality },
+    { key: "municipal_subdistrict",      label: lbl("municipal_subdistrict",      "Municipal Subdistrict"),      val: loc.municipal_subdistrict },
+    { key: "county_commission_district", label: lbl("county_commission_district", "County Commission District"), val: loc.county_commission_district },
+    { key: "county_supervisor_district", label: lbl("county_supervisor_district", "County Supervisor District"), val: loc.county_supervisor_district },
+    { key: "school_district",            label: lbl("school_district",            "School District"),            val: loc.school_district },
+    { key: "college_district",           label: lbl("college_district",           "College District"),           val: loc.college_district },
+    { key: "judicial_district",          label: lbl("judicial_district",          "Judicial District"),          val: loc.judicial_district },
+    { key: "fips_code",                  label: lbl("fips_code",                  "FIPS Code"),                  val: loc.fips_code },
+  ].filter(f => !isHidden(f.key));
 
   const geoFields = [
-    { label: "Census Tract", val: loc.census_tract },
-    { label: "Block Group", val: loc.census_block_group },
-    { label: "Census Block", val: loc.census_block },
-    { label: "DMA", val: loc.dma },
-    { label: "Urbanicity", val: loc.urbanicity },
-    { label: "Population Density", val: loc.population_density != null ? `${Number(loc.population_density).toLocaleString()}/sq mi` : null },
-    { label: "Time Zone", val: loc.time_zone },
-  ];
+    { key: "census_tract",       label: lbl("census_tract",       "Census Tract"),        val: loc.census_tract },
+    { key: "census_block_group", label: lbl("census_block_group", "Block Group"),          val: loc.census_block_group },
+    { key: "census_block",       label: lbl("census_block",       "Census Block"),         val: loc.census_block },
+    { key: "dma",                label: lbl("dma",                "DMA"),                  val: loc.dma },
+    { key: "urbanicity",         label: lbl("urbanicity",         "Urbanicity"),           val: loc.urbanicity },
+    { key: "population_density", label: lbl("population_density", "Population Density"),   val: loc.population_density != null ? `${Number(loc.population_density).toLocaleString()}/sq mi` : null },
+    { key: "time_zone",          label: lbl("time_zone",          "Time Zone"),            val: loc.time_zone },
+  ].filter(f => !isHidden(f.key));
 
   const hasDistricts = districtFields.some(f => f.val != null && f.val !== "");
   const hasGeo = geoFields.some(f => f.val != null && f.val !== "");
@@ -194,23 +199,23 @@ export default async function LocationDetail({ params }: Params) {
       {/* Address Details */}
       {(() => {
         const addrFields = [
-          { label: "House Number",   val: loc.house_number },
-          { label: "Pre-Direction",  val: loc.pre_dir },
-          { label: "Street Name",    val: loc.street_name },
-          { label: "Street Suffix",  val: loc.street_suffix },
-          { label: "Post-Direction", val: loc.post_dir },
-          { label: "Unit / Apt",     val: loc.unit },
-          { label: "Zip+4",          val: (loc as any).zip4 },
-          { label: "Street Parity",  val: (loc as any).street_parity },
-          { label: "Parcel ID",      val: (loc as any).parcel_id },
-          { label: "Land Use",       val: (loc as any).land_use },
-          { label: "Residential",    val: (loc as any).is_residential === true ? "Yes" : (loc as any).is_residential === false ? "No" : null },
-          { label: "Type",           val: (loc as any).type },
-          { label: "Common Name",    val: (loc as any).common_place_name },
-          { label: "Place Name",     val: (loc as any).place_name },
-          { label: "Subdivision",    val: (loc as any).subdivision },
-          { label: "Council District", val: (loc as any).council_district },
-        ];
+          { key: "house_number",    label: lbl("house_number",    "House Number"),   val: loc.house_number },
+          { key: "pre_dir",         label: lbl("pre_dir",         "Pre-Direction"),  val: loc.pre_dir },
+          { key: "street_name",     label: lbl("street_name",     "Street Name"),    val: loc.street_name },
+          { key: "street_suffix",   label: lbl("street_suffix",   "Street Suffix"),  val: loc.street_suffix },
+          { key: "post_dir",        label: lbl("post_dir",        "Post-Direction"), val: loc.post_dir },
+          { key: "unit",            label: lbl("unit",            "Unit / Apt"),     val: loc.unit },
+          { key: "zip4",            label: lbl("zip4",            "Zip+4"),          val: (loc as any).zip4 },
+          { key: "street_parity",   label: "Street Parity",                         val: (loc as any).street_parity },
+          { key: "parcel_id",       label: lbl("parcel_id",       "Parcel ID"),      val: (loc as any).parcel_id },
+          { key: "land_use",        label: lbl("land_use",        "Land Use"),       val: (loc as any).land_use },
+          { key: "is_residential",  label: "Residential",                           val: (loc as any).is_residential === true ? "Yes" : (loc as any).is_residential === false ? "No" : null },
+          { key: "type",            label: lbl("type",            "Type"),           val: (loc as any).type },
+          { key: "common_place_name", label: lbl("common_place_name", "Common Name"), val: (loc as any).common_place_name },
+          { key: "place_name",      label: lbl("place_name",      "Place Name"),     val: (loc as any).place_name },
+          { key: "subdivision",     label: lbl("subdivision",     "Subdivision"),    val: (loc as any).subdivision },
+          { key: "council_district",label: lbl("council_district","Council District"),val: (loc as any).council_district },
+        ].filter(f => !isHidden(f.key));
         const present = addrFields.filter(f => f.val != null && f.val !== "");
         const hasCoords = (loc as any).lat != null && (loc as any).lon != null;
         if (present.length === 0 && !hasCoords) return null;

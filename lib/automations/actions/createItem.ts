@@ -114,6 +114,7 @@ export async function actionCreateItem(
     visibility,
     depth:         0,
     created_by:    createdBy,
+    location_id:   mappedFields.location_id ?? null,
     custom_fields: Object.keys(mappedCustomFields).length > 0 ? mappedCustomFields : {},
   });
 

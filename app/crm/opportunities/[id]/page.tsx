@@ -13,6 +13,7 @@ import {
 } from "./ui/OppDetailClient";
 import RemindersSection from "@/app/components/crm/RemindersSection";
 import CustomFieldsWidget from "@/app/components/crm/CustomFieldsWidget";
+import { getFieldOverrides, overrideMap, hiddenMap } from "@/lib/crm/standard-field-overrides";
 import type {
   OppData,
   PersonEntry,
@@ -90,7 +91,12 @@ export default async function OpportunityDetail({ params }: Params) {
     custom_fields: (oppRaw as any).custom_fields ?? null,
   };
 
-  // ── 2. Stages + contact types (for dropdowns) ───────────────────────────────
+  // ── 2. Field label overrides ────────────────────────────────────────────────
+  const fieldOverrides  = await getFieldOverrides(tenantId, "opportunities", contactType ?? "");
+  const fieldLabels     = Object.fromEntries(overrideMap(fieldOverrides));
+  const hiddenFields    = hiddenMap(fieldOverrides);
+
+  // ── 3. Stages + contact types (for dropdowns) ───────────────────────────────
   const [ctStagesResult, allStagesResult, ctTypesResult] = await Promise.all([
     contactType
       ? sb.from("opportunity_stages").select("key,label").eq("tenant_id", tenantId).eq("contact_type_key", contactType).order("order_index", { ascending: true })
@@ -369,7 +375,7 @@ export default async function OpportunityDetail({ params }: Params) {
 
       <div style={{ display: "grid", gap: 16 }}>
         {/* Editable details */}
-        <OppFieldEditor opp={opp} stages={stages} contactTypes={filteredContactTypeOptions} />
+        <OppFieldEditor opp={opp} stages={stages} contactTypes={filteredContactTypeOptions} fieldLabels={fieldLabels} hiddenFields={hiddenFields} />
 
         {/* Custom fields */}
         <CustomFieldsWidget

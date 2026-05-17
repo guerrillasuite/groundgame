@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import BottomSheet from "./BottomSheet";
 import TypePillSelector, { ItemType } from "./TypePillSelector";
-import MapPicker, { isUrl, locationHref } from "./MapPicker";
+import SitRepLocationPicker from "./SitRepLocationPicker";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 import { utcToDatetimeLocal, localToUtcIso } from "@/lib/date-utils";
 import type { SitRepItem } from "@/app/(pwa)/list/ListRow";
@@ -121,11 +121,18 @@ export default function ItemBottomSheet({
 }: ItemBottomSheetProps) {
   const firstOrgId = orgs[0]?.id ?? tenantId ?? "";
 
+  type FieldOverride = { label?: string; hidden: boolean; display_scope: string };
+  type SnapshotField = { field_key: string; label: string; field_type: string; options: {value: string; label: string}[]; sort_order: number };
+
   // Context-loaded state
   const [contextTypes,   setContextTypes]   = useState<ItemType[]>(types.length ? types : SYSTEM_TYPES);
   const [contextMembers, setContextMembers] = useState<Member[]>([]);
   const [assigneeIds,    setAssigneeIds]    = useState<string[]>([userId]);
   const [visibility,     setVisibility]     = useState<VisibilityVal>("team");
+  const [fieldOverrides, setFieldOverrides] = useState<Record<string, FieldOverride>>({});
+  const [snapshotFields, setSnapshotFields] = useState<SnapshotField[]>([]);
+  const [cfValues,       setCfValues]       = useState<Record<string, any>>({});
+  const [cfLocationDisplays, setCfLocationDisplays] = useState<Record<string, string>>({});
 
   // Form state
   const [title, setTitle]               = useState("");
@@ -133,12 +140,12 @@ export default function ItemBottomSheet({
   const [selectedCalId, setSelectedCalId] = useState(() => defaultCalTypeId(calendarTypes));
   const [calChoice, setCalChoice]       = useState<CalChoice>(() => firstOrgId || "personal");
   const [dueDateLocal, setDueDateLocal] = useState("");
-  const [location, setLocation]         = useState("");
+  const [locationId,      setLocationId]      = useState<string | null>(null);
+  const [locationDisplay, setLocationDisplay] = useState("");
   const [saving, setSaving]             = useState(false);
   const [deleting, setDeleting]         = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [errorMsg, setErrorMsg]         = useState<string | null>(null);
-  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const titleRef    = useRef<HTMLInputElement>(null);
   const [titleShake, setTitleShake] = useState(false);
 
@@ -151,7 +158,8 @@ export default function ItemBottomSheet({
       setSelectedCalId(defaultCalTypeId(calendarTypes));
       setCalChoice(firstOrgId || "personal");
       setDueDateLocal("");
-      setLocation("");
+      setLocationId(null);
+      setLocationDisplay("");
       setAssigneeIds([userId]);
       setVisibility("team");
     } else if (item) {
@@ -179,8 +187,18 @@ export default function ItemBottomSheet({
         // Date-only — just show the date, no forced midnight time
         setDueDateLocal(stored);
       }
-      setLocation((item as any).location ?? "");
+      const lid = (item as any).location_id ?? null;
+      setLocationId(lid);
+      setLocationDisplay("");
+      if (lid && tenantId) {
+        fetch(`/api/sitrep/locations?tenantId=${encodeURIComponent(tenantId)}&id=${encodeURIComponent(lid)}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((d) => { if (d?.display) setLocationDisplay(d.display); })
+          .catch(() => {});
+      }
     }
+    // Reset snapshot custom field values from existing item
+    setCfValues((item as any)?.custom_fields ?? {});
     setConfirmDelete(false);
     setSaving(false);
     setErrorMsg(null);
@@ -208,6 +226,7 @@ export default function ItemBottomSheet({
         if (!data) return;
         setContextTypes(data.types?.length ? data.types : (types.length ? types : SYSTEM_TYPES));
         setContextMembers(data.members ?? []);
+        setFieldOverrides(data.fieldOverrides ?? {});
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -221,9 +240,43 @@ export default function ItemBottomSheet({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextTypes]);
 
+  // Fetch display names for location-type snapshot fields once fields are known
+  useEffect(() => {
+    const locFields = snapshotFields.filter(sf => sf.field_type === "location");
+    for (const sf of locFields) {
+      const id = cfValues[sf.field_key];
+      if (!id || !tenantId) continue;
+      fetch(`/api/sitrep/locations?tenantId=${encodeURIComponent(tenantId)}&id=${encodeURIComponent(id)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.display) setCfLocationDisplays(prev => ({ ...prev, [sf.field_key]: d.display })); })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotFields]);
+
+  // Fetch snapshot custom fields when type or context changes
+  useEffect(() => {
+    const isOrg = orgs.some((o) => o.id === calChoice);
+    const tid = calChoice === "personal" ? null
+      : isOrg ? calChoice
+      : (squads.find((s) => s.id === calChoice)?.tenantId ?? null);
+    const currentTypeObj = contextTypes.find((t) => t.slug === typeSlug);
+    if (!tid || !currentTypeObj) { setSnapshotFields([]); return; }
+    const params = new URLSearchParams({ tenantId: tid, itemTypeId: currentTypeObj.id });
+    fetch(`/api/sitrep/custom-fields?${params}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setSnapshotFields(Array.isArray(data) ? data : []))
+      .catch(() => setSnapshotFields([]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeSlug, contextTypes, calChoice]);
+
   const currentType = contextTypes.find((t) => t.slug === typeSlug) ?? contextTypes[0];
   const family = getFamilyByKey(currentType?.color ?? "blue");
   const accent = family?.shades[2] ?? "#3b82f6";
+
+  function isHidden(key: string): boolean {
+    return fieldOverrides[key]?.hidden === true;
+  }
 
   function toggleAssignee(uid: string) {
     setAssigneeIds((prev) =>
@@ -273,7 +326,8 @@ export default function ItemBottomSheet({
       item_type:  typeSlug,
       due_date:   isTask ? dueDateOnly : null,
       start_at:   isTask ? dueDateUtc : (dueDateLocal ? localToUtcIso(dueDateLocal) : null),
-      location:   location.trim() || null,
+      location_id:   locationId,
+      ...(Object.keys(cfValues).length > 0 ? { custom_fields: cfValues } : {}),
       tenantId:   cal?.tenantId ?? choicePayload?.tenantId ?? tenantId ?? null,
       created_by: userId,
       visibility: effectiveVisibility,
@@ -368,7 +422,7 @@ export default function ItemBottomSheet({
       <div style={{ padding: "4px 16px 16px", display: "flex", flexDirection: "column", gap: 14 }}>
 
         {/* ── Context / calendar picker — TOP ── */}
-        {(!calendarTypes || calendarTypes.length === 0) && (
+        {(!calendarTypes || calendarTypes.length === 0) && !isHidden("calendar_badge") && (
           <div style={{ overflowX: "auto", display: "flex", gap: 6, paddingBottom: 2, scrollbarWidth: "none" }}>
             {[
               { key: "personal", label: "Personal", color: "#94a3b8" },
@@ -403,7 +457,7 @@ export default function ItemBottomSheet({
         )}
 
         {/* Legacy calendarTypes picker */}
-        {calendarTypes && calendarTypes.length > 0 && (
+        {calendarTypes && calendarTypes.length > 0 && !isHidden("calendar_badge") && (
           <div style={{ overflowX: "auto", display: "flex", gap: 6, paddingBottom: 2, scrollbarWidth: "none" }}>
             {calendarTypes.map((ct) => {
               const dot    = getFamilyByKey(ct.color)?.shades[3] ?? "#818cf8";
@@ -523,76 +577,66 @@ export default function ItemBottomSheet({
         </div>
 
         {/* ── Location ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {isUrl(location) ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-              <circle cx="12" cy="10" r="3"/>
-            </svg>
-          )}
-          <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Add location"
-              style={{ ...inputStyle, paddingRight: location ? 38 : 12 }}
-              onFocus={focusIn}
-              onBlur={focusOut}
-            />
-            {location && (
-              isUrl(location) ? (
-                <a
-                  href={locationHref(location) ?? "#"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 22, height: 22, borderRadius: 6,
-                    background: "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 35%, transparent)",
-                    color: "var(--gg-primary,#2563eb)", textDecoration: "none",
-                  }}
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                    <polyline points="15 3 21 3 21 9"/>
-                    <line x1="10" y1="14" x2="21" y2="3"/>
-                  </svg>
-                </a>
-              ) : (
+        <SitRepLocationPicker
+          tenantId={tenantId}
+          locationId={locationId}
+          locationDisplay={locationDisplay}
+          onSelect={(id, display) => { setLocationId(id); setLocationDisplay(display); }}
+        />
+
+        {/* ── Snapshot custom fields ── */}
+        {snapshotFields.map((sf) => {
+          const val = cfValues[sf.field_key] ?? "";
+          const setVal = (v: any) => setCfValues((prev) => ({ ...prev, [sf.field_key]: v === "" ? null : v }));
+          return (
+            <div key={sf.field_key}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: S.dim, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                {sf.label}
+              </div>
+              {sf.field_type === "boolean" ? (
                 <button
-                  onClick={(e) => { e.stopPropagation(); setMapPickerOpen(true); }}
+                  onClick={() => setVal(!val)}
                   style={{
-                    position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 22, height: 22, borderRadius: 6,
-                    background: "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)",
-                    border: "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 35%, transparent)",
-                    color: "var(--gg-primary,#2563eb)", cursor: "pointer",
+                    padding: "8px 14px", borderRadius: 9, fontSize: 13, cursor: "pointer",
+                    background: val ? "rgba(99,102,241,.2)" : "rgba(255,255,255,.05)",
+                    border: val ? "1px solid rgba(99,102,241,.4)" : "1px solid rgba(255,255,255,.1)",
+                    color: S.text,
                   }}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                    <circle cx="12" cy="10" r="3"/>
-                  </svg>
+                  {val ? "Yes" : "No"}
                 </button>
-              )
-            )}
-          </div>
-        </div>
-        {mapPickerOpen && location && !isUrl(location) && (
-          <div style={{ position: "relative" }}>
-            <MapPicker location={location} onClose={() => setMapPickerOpen(false)} />
-          </div>
-        )}
+              ) : sf.field_type === "location" ? (
+                <SitRepLocationPicker
+                  tenantId={tenantId}
+                  locationId={val ?? null}
+                  locationDisplay={cfLocationDisplays[sf.field_key] ?? ""}
+                  onSelect={(id, display) => {
+                    setVal(id);
+                    setCfLocationDisplays(prev => ({ ...prev, [sf.field_key]: display }));
+                  }}
+                />
+              ) : sf.field_type === "select" && sf.options?.length ? (
+                <select
+                  value={val}
+                  onChange={(e) => setVal(e.target.value)}
+                  style={{ ...inputStyle, colorScheme: "dark" }}
+                >
+                  <option value="">—</option>
+                  {sf.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ) : (
+                <input
+                  type={sf.field_type === "number" ? "number" : sf.field_type === "date" ? "date" : "text"}
+                  value={val ?? ""}
+                  onChange={(e) => setVal(e.target.value)}
+                  style={{ ...inputStyle, colorScheme: "dark" }}
+                  onFocus={focusIn as any}
+                  onBlur={focusOut as any}
+                />
+              )}
+            </div>
+          );
+        })}
 
         {/* ── Assignee picker — hidden for personal ── */}
         {showMembers && (

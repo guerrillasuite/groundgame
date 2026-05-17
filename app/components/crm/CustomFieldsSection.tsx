@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import FieldDefinitionModal from "@/app/crm/settings/custom-fields/FieldDefinitionModal";
 import type { FieldDefinition, ContactType } from "@/app/crm/settings/custom-fields/CustomFieldsPanel";
 
+type Def = FieldDefinition & { display_scope?: string };
+
 const FIELD_TYPE_ICON: Record<string, string> = {
   text: "T", textarea: "¶", number: "#", date: "📅",
   boolean: "◑", select: "▾", multiselect: "☑", email: "✉", phone: "✆", url: "🔗",
@@ -15,10 +17,6 @@ const FIELD_TYPE_LABELS: Record<string, string> = {
   email: "Email", phone: "Phone", url: "URL",
 };
 
-/**
- * Reusable custom fields section for type editors (pipeline + SitRep).
- * Fetches definitions for the given scope and allows inline create/edit/archive.
- */
 export default function CustomFieldsSection({
   recordType,
   pipelineTypeKey,
@@ -32,8 +30,8 @@ export default function CustomFieldsSection({
   borderColor?: string;
   dimColor?: string;
 }) {
-  const [defs, setDefs] = useState<FieldDefinition[]>([]);
-  const [modal, setModal] = useState<{ open: boolean; editing?: FieldDefinition }>({ open: false });
+  const [defs, setDefs] = useState<Def[]>([]);
+  const [modal, setModal] = useState<{ open: boolean; editing?: Def }>({ open: false });
   const [loading, setLoading] = useState(true);
 
   const params = new URLSearchParams({ record_type: recordType });
@@ -48,21 +46,138 @@ export default function CustomFieldsSection({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordType, pipelineTypeKey, sitrepTypeId]);
 
-  function handleSaved(saved: FieldDefinition) {
+  function handleSaved(saved: Def) {
     setDefs(prev => {
       const idx = prev.findIndex(d => d.id === saved.id);
-      if (idx >= 0) { const n = [...prev]; n[idx] = saved; return n; }
-      return [...prev, saved];
+      if (idx >= 0) { const n = [...prev]; n[idx] = saved as Def; return n; }
+      return [...prev, saved as Def];
     });
     setModal({ open: false });
   }
 
-  async function archive(def: FieldDefinition) {
+  async function archive(def: Def) {
     await fetch(`/api/crm/custom-fields/${def.id}`, { method: "DELETE" });
     setDefs(prev => prev.filter(d => d.id !== def.id));
   }
 
+  async function patchScope(def: Def, newScope: string) {
+    setDefs(prev => prev.map(d => d.id === def.id ? { ...d, display_scope: newScope } : d));
+    await fetch(`/api/crm/custom-fields/${def.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ display_scope: newScope }),
+    });
+  }
+
+  async function reorder(zone: Def[], fromIdx: number, toIdx: number, allDefs: Def[]) {
+    const reordered = [...zone];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    // Rebuild the full list preserving the other zone
+    const otherZone = allDefs.filter(d => d.display_scope !== zone[0]?.display_scope);
+    setDefs([...otherZone, ...reordered]);
+    await fetch(`/api/crm/custom-fields/${moved.id}/reorder`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order: reordered.map(d => d.id) }),
+    });
+  }
+
   const visible = defs.filter(d => !d.is_archived);
+  const snapshotDefs = visible.filter(d => d.display_scope === "snapshot");
+  const detailDefs   = visible.filter(d => d.display_scope !== "snapshot"); // default 'detail'
+
+  const btnStyle: React.CSSProperties = {
+    padding: "2px 5px", fontSize: 11, borderRadius: 5,
+    border: "none", background: "rgba(255,255,255,.07)", color: "inherit",
+    cursor: "pointer", lineHeight: 1.3,
+  };
+
+  function renderField(def: Def, zone: Def[], idx: number) {
+    const isSnapshot = def.display_scope === "snapshot";
+    return (
+      <div key={def.id} style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 0", borderTop: `1px solid ${borderColor}`,
+      }}>
+        {/* Reorder arrows */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <button
+            title="Move up"
+            onClick={() => {
+              if (idx > 0) {
+                reorder(zone, idx, idx - 1, visible);
+              } else if (isSnapshot) {
+                // Already at top of snapshot — nowhere to go
+              } else {
+                // Top of detail zone → promote to snapshot
+                patchScope(def, "snapshot");
+              }
+            }}
+            style={{ ...btnStyle, opacity: (idx === 0 && !isSnapshot) || idx > 0 ? 1 : 0.3 }}
+          >↑</button>
+          <button
+            title="Move down"
+            onClick={() => {
+              if (idx < zone.length - 1) {
+                reorder(zone, idx, idx + 1, visible);
+              } else if (!isSnapshot) {
+                // Already at bottom of detail — nowhere to go
+              } else {
+                // Bottom of snapshot zone → demote to detail
+                patchScope(def, "detail");
+              }
+            }}
+            style={{ ...btnStyle, opacity: (idx === zone.length - 1 && isSnapshot) || idx < zone.length - 1 ? 1 : 0.3 }}
+          >↓</button>
+        </div>
+
+        {/* Type icon */}
+        <span style={{ fontSize: 12, minWidth: 16, textAlign: "center", opacity: 0.5 }}>
+          {FIELD_TYPE_ICON[def.field_type] ?? "·"}
+        </span>
+
+        {/* Label + type */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{def.label}</span>
+          <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.4 }}>
+            {FIELD_TYPE_LABELS[def.field_type] ?? def.field_type}
+          </span>
+          {def.required && (
+            <span style={{ marginLeft: 6, fontSize: 10, color: "#f87171" }}>required</span>
+          )}
+        </div>
+
+        {/* Scope toggle pill */}
+        <button
+          title={isSnapshot ? "Shown in summary card — click to move to detail only" : "Detail only — click to show in summary card"}
+          onClick={() => patchScope(def, isSnapshot ? "detail" : "snapshot")}
+          style={{
+            padding: "3px 8px", fontSize: 10, fontWeight: 600, borderRadius: 20,
+            border: isSnapshot ? "1px solid rgba(99,102,241,.5)" : `1px solid ${borderColor}`,
+            background: isSnapshot ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.04)",
+            color: isSnapshot ? "#a5b4fc" : dimColor,
+            cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+          }}
+        >
+          {isSnapshot ? "Summary" : "Detail only"}
+        </button>
+
+        <button
+          onClick={() => setModal({ open: true, editing: def })}
+          style={{ ...btnStyle, padding: "3px 10px" }}
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => archive(def)}
+          style={{ ...btnStyle, padding: "3px 10px", opacity: 0.4 }}
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -93,39 +208,33 @@ export default function CustomFieldsSection({
           <p style={{ fontSize: 12, color: dimColor, margin: "4px 0 10px" }}>No custom fields yet.</p>
         )}
 
-        <div style={{ display: "grid", gap: 1 }}>
-          {visible.map(def => (
-            <div key={def.id} style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "8px 0", borderTop: `1px solid ${borderColor}`,
-            }}>
-              <span style={{ fontSize: 12, minWidth: 16, textAlign: "center", opacity: 0.5 }}>
-                {FIELD_TYPE_ICON[def.field_type] ?? "·"}
-              </span>
-              <div style={{ flex: 1 }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{def.label}</span>
-                <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.4 }}>
-                  {FIELD_TYPE_LABELS[def.field_type] ?? def.field_type}
-                </span>
-                {def.required && (
-                  <span style={{ marginLeft: 6, fontSize: 10, color: "#f87171" }}>required</span>
-                )}
-              </div>
-              <button
-                onClick={() => setModal({ open: true, editing: def })}
-                style={{ padding: "3px 10px", fontSize: 11, borderRadius: 6, border: "none", background: "rgba(255,255,255,.08)", color: "inherit", cursor: "pointer" }}
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => archive(def)}
-                style={{ padding: "3px 10px", fontSize: 11, borderRadius: 6, border: "none", background: "rgba(255,255,255,.04)", color: "inherit", cursor: "pointer", opacity: 0.5 }}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
+        {/* Snapshot zone */}
+        {snapshotDefs.length > 0 && (
+          <div style={{ display: "grid", gap: 1 }}>
+            {snapshotDefs.map((def, idx) => renderField(def, snapshotDefs, idx))}
+          </div>
+        )}
+
+        {/* Separator */}
+        {visible.length > 0 && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            margin: "10px 0",
+          }}>
+            <div style={{ flex: 1, height: 1, borderTop: `1px dashed ${borderColor}` }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: dimColor, whiteSpace: "nowrap", letterSpacing: "0.05em" }}>
+              ↑ Summary card &nbsp;·&nbsp; Detail view only below ↓
+            </span>
+            <div style={{ flex: 1, height: 1, borderTop: `1px dashed ${borderColor}` }} />
+          </div>
+        )}
+
+        {/* Detail zone */}
+        {detailDefs.length > 0 && (
+          <div style={{ display: "grid", gap: 1 }}>
+            {detailDefs.map((def, idx) => renderField(def, detailDefs, idx))}
+          </div>
+        )}
 
         <button
           onClick={() => setModal({ open: true })}

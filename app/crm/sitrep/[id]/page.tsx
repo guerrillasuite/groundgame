@@ -6,6 +6,7 @@ import { getTenant } from "@/lib/tenant";
 import { getCrmUser } from "@/lib/crm-auth";
 import { redirect } from "next/navigation";
 import SitRepItemClient from "./SitRepItemClient";
+import { getFieldOverrides, overrideMap, hiddenMap } from "@/lib/crm/standard-field-overrides";
 
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -126,6 +127,11 @@ export default async function SitRepItemPage({ params }: Ctx) {
     if (parentData) parentItem = parentData as any;
   }
 
+  // Fetch field label overrides for this sitrep type
+  const fieldOverrides  = await getFieldOverrides(effectiveTenantId, "sitrep_items", sitrepTypeId ?? "");
+  const fieldLabels     = Object.fromEntries(overrideMap(fieldOverrides));
+  const hiddenFields    = hiddenMap(fieldOverrides);
+
   // Fetch tenant users
   let users: { id: string; name: string; email: string }[] = [];
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -162,6 +168,8 @@ export default async function SitRepItemPage({ params }: Ctx) {
       users={users}
       currentUserId={crmUser.userId}
       sitrepTypeId={sitrepTypeId}
+      fieldLabels={fieldLabels}
+      hiddenFields={hiddenFields}
     />
   );
 }
