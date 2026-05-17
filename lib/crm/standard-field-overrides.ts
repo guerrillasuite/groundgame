@@ -162,6 +162,7 @@ export const STANDARD_FIELDS: Record<RecordType, StandardField[]> = {
     { key: "item_type",    defaultLabel: "Type" },
     { key: "due_date",     defaultLabel: "Due Date" },
     { key: "visibility",   defaultLabel: "Visibility" },
+    { key: "location_id",  defaultLabel: "Location" },
     { key: "meeting_url",  defaultLabel: "Meeting URL" },
     // Advanced
     { key: "start_at",     defaultLabel: "Start Time",    advanced: true },
