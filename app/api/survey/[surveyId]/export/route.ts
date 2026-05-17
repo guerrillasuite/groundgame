@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { getSurveyExportData, ALLOWED_EXTRA_PEOPLE_FIELDS } from "@/lib/db/supabase-surveys";
 import { getTenant } from "@/lib/tenant";
+
+function makeAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
 
 const FIELD_LABELS: Record<string, string> = {
   party: "Party", voter_status: "Voter Status", voting_frequency: "Voting Frequency",
@@ -35,13 +43,13 @@ export async function GET(
 
   try {
     const tenant = await getTenant();
-    const data = await getSurveyExportData(surveyId, tenant.id, extraFields);
+    const data = await getSurveyExportData(surveyId, tenant.id);
 
     if (!data || !data.survey) {
       return NextResponse.json({ error: "Survey not found" }, { status: 404 });
     }
 
-    const { survey, sessions, questions, responses, postSubmitQuestions, postSubmitResponses, contactMap, extraPeopleFields } = data;
+    const { survey, sessions, questions, responses, postSubmitQuestions, postSubmitResponses, contactMap } = data;
 
     // Build per-person answer map (covers both main + post-submit surveys)
     const answersByPerson = new Map<string, Record<string, string>>();
@@ -60,6 +68,19 @@ export async function GET(
       (sessions as any[]).map((s) => s.crm_contact_id).filter(Boolean)
     )];
 
+    // Fetch extra person record fields separately (same session-based IDs, explicit error handling)
+    const extraFieldMap = new Map<string, Record<string, any>>();
+    if (extraFields.length > 0 && allPersonIds.length > 0) {
+      const adminSb = makeAdminClient();
+      const selectCols = ["id", ...extraFields].join(", ");
+      const { data: extraPeople, error: extraErr } = await adminSb
+        .from("people")
+        .select(selectCols)
+        .in("id", allPersonIds);
+      if (extraErr) console.error("[survey export] extra fields query failed:", extraErr);
+      for (const p of (extraPeople ?? []) as any[]) extraFieldMap.set(p.id, p);
+    }
+
     const allQuestions = [...questions, ...postSubmitQuestions];
 
     const escape = (cell: any) => {
@@ -71,12 +92,13 @@ export async function GET(
     if (format === "csv") {
       const headers = [
         "First Name", "Last Name", "Email", "Phone", "Completed At",
-        ...extraPeopleFields.map(f => FIELD_LABELS[f] ?? f),
+        ...extraFields.map(f => FIELD_LABELS[f] ?? f),
         ...allQuestions.map((q: any) => q.question_text),
       ];
 
       const rows = allPersonIds.map((personId) => {
         const person = contactMap.get(personId);
+        const extra = extraFieldMap.get(personId);
         const sess = sessionMap.get(personId) as any;
         const qAnswers = answersByPerson.get(personId) ?? {};
         return [
@@ -85,8 +107,8 @@ export async function GET(
           person?.email ?? "",
           person?.phone ?? "",
           sess?.completed_at ? new Date(sess.completed_at).toLocaleString() : "",
-          ...extraPeopleFields.map(f => {
-            const val = person?.[f];
+          ...extraFields.map(f => {
+            const val = extra?.[f];
             return Array.isArray(val) ? val.join("; ") : (val ?? "");
           }),
           ...allQuestions.map((q: any) => qAnswers[q.id] ?? ""),
@@ -110,11 +132,12 @@ export async function GET(
     // JSON: return structured per-person data (used by Results dashboard "Responses" tab)
     const respondents = allPersonIds.map((personId) => {
       const person = contactMap.get(personId);
+      const extra = extraFieldMap.get(personId);
       const sess = sessionMap.get(personId) as any;
       const qAnswers = answersByPerson.get(personId) ?? {};
       const personFields: Record<string, any> = {};
-      for (const f of extraPeopleFields) {
-        const val = person?.[f];
+      for (const f of extraFields) {
+        const val = extra?.[f];
         personFields[f] = Array.isArray(val) ? val.join(", ") : (val ?? null);
       }
       return {
@@ -129,7 +152,7 @@ export async function GET(
       };
     });
 
-    const personFieldDefs = extraPeopleFields.map(f => ({ key: f, label: FIELD_LABELS[f] ?? f }));
+    const personFieldDefs = extraFields.map(f => ({ key: f, label: FIELD_LABELS[f] ?? f }));
 
     return NextResponse.json({
       survey_id: surveyId,

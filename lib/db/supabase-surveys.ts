@@ -778,7 +778,7 @@ export const ALLOWED_EXTRA_PEOPLE_FIELDS = new Set([
   "top_issues", "notes", "contact_type",
 ]);
 
-export async function getSurveyExportData(surveyId: string, tenantId: string, extraPeopleFields: string[] = []) {
+export async function getSurveyExportData(surveyId: string, tenantId: string) {
   const sb = getServiceClient(tenantId);
 
   // Fetch survey (including post_submit_survey_id)
@@ -809,20 +809,17 @@ export async function getSurveyExportData(surveyId: string, tenantId: string, ex
 
   // Collect all unique person IDs across both surveys (for people lookup)
   const allPersonIds = [...new Set([
+    ...(sessions as any[]).map((s: any) => s.crm_contact_id),
     ...(responses ?? []).map((r: any) => r.crm_contact_id),
     ...postSubmitResponses.map((r: any) => r.crm_contact_id),
   ].filter(Boolean))];
 
-  // Validate and apply extra fields — only allowlisted columns
-  const safeExtra = extraPeopleFields.filter(f => ALLOWED_EXTRA_PEOPLE_FIELDS.has(f));
-  const peopleSelect = ["id", "first_name", "last_name", "email", "phone", ...safeExtra].join(", ");
-
-  // Fetch contact info from people table
+  // Fetch contact info from people table (base fields only — extra fields fetched separately in route)
   const contactMap = new Map<string, Record<string, any>>();
   if (allPersonIds.length > 0) {
     const { data: people } = await sb
       .from("people")
-      .select(peopleSelect)
+      .select("id, first_name, last_name, email, phone")
       .in("id", allPersonIds);
     for (const p of people ?? []) contactMap.set(p.id, p);
   }
@@ -835,6 +832,5 @@ export async function getSurveyExportData(surveyId: string, tenantId: string, ex
     postSubmitQuestions,
     postSubmitResponses,
     contactMap,
-    extraPeopleFields: safeExtra,
   };
 }
