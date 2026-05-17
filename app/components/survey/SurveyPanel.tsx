@@ -44,39 +44,46 @@ function LocationFieldInline({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {suggestions.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {suggestions.map(s => {
-            const active = selectedId === s.id;
-            return (
-              <button key={s.id} type="button"
-                onClick={() => { onChange(JSON.stringify({ locationId: s.id, display: s.display })); setShowPicker(false); }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 4,
-                  padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500,
-                  cursor: "pointer", transition: "all .12s", textAlign: "left",
-                  border: `1.5px solid ${active ? primaryColor : borderColor}`,
-                  background: active ? `${primaryColor}22` : "transparent",
-                  color: textColor, flexShrink: 0,
-                }}
-              >
-                <span style={{ fontSize: 11 }}>📍</span>
-                <span>{s.display}</span>
-              </button>
-            );
-          })}
-          <button type="button"
-            onClick={() => { setShowPicker(v => !v); if (isSuggestionSelected) onChange(""); }}
-            style={{
-              padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500,
-              cursor: "pointer", transition: "all .12s", flexShrink: 0,
-              border: `1.5px dashed ${showPicker ? primaryColor : borderColor}`,
-              background: showPicker ? `${primaryColor}15` : "transparent",
-              color: showPicker ? textColor : "#9ca3af",
-            }}
-          >
-            Other…
-          </button>
-        </div>
+        <>
+          <style>{`
+            @media (max-width: 600px) {
+              .gg-loc-pill { max-width: calc(50% - 4px) !important; }
+            }
+          `}</style>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {suggestions.map(s => {
+              const active = selectedId === s.id;
+              return (
+                <button key={s.id} type="button" className="gg-loc-pill"
+                  onClick={() => { onChange(JSON.stringify({ locationId: s.id, display: s.display })); setShowPicker(false); }}
+                  style={{
+                    display: "flex", alignItems: "flex-start", gap: 4,
+                    padding: "6px 12px", borderRadius: 14, fontSize: 12, fontWeight: 500,
+                    cursor: "pointer", transition: "all .12s", textAlign: "left",
+                    border: `1.5px solid ${active ? primaryColor : borderColor}`,
+                    background: active ? `${primaryColor}22` : "transparent",
+                    color: textColor,
+                  }}
+                >
+                  <span style={{ fontSize: 11, marginTop: 1, flexShrink: 0 }}>📍</span>
+                  <span style={{ lineHeight: 1.3 }}>{s.display}</span>
+                </button>
+              );
+            })}
+            <button type="button"
+              onClick={() => { setShowPicker(v => !v); if (isSuggestionSelected) onChange(""); }}
+              style={{
+                padding: "6px 12px", borderRadius: 14, fontSize: 12, fontWeight: 500,
+                cursor: "pointer", transition: "all .12s",
+                border: `1.5px dashed ${showPicker ? primaryColor : borderColor}`,
+                background: showPicker ? `${primaryColor}15` : "transparent",
+                color: showPicker ? textColor : "#9ca3af",
+              }}
+            >
+              Other…
+            </button>
+          </div>
+        </>
       )}
       {showPicker && (
         <LocationPicker
