@@ -129,7 +129,7 @@ export default function ItemBottomSheet({
   const [contextMembers, setContextMembers] = useState<Member[]>([]);
   const [assigneeIds,    setAssigneeIds]    = useState<string[]>([userId]);
   const [visibility,     setVisibility]     = useState<VisibilityVal>("team");
-  const [fieldOverrides, setFieldOverrides] = useState<Record<string, FieldOverride>>({});
+  const [fieldOverrides, setFieldOverrides] = useState<Record<string, Record<string, FieldOverride>>>({});
   const [snapshotFields, setSnapshotFields] = useState<SnapshotField[]>([]);
   const [cfValues,       setCfValues]       = useState<Record<string, any>>({});
   const [cfLocationDisplays, setCfLocationDisplays] = useState<Record<string, string>>({});
@@ -275,7 +275,10 @@ export default function ItemBottomSheet({
   const accent = family?.shades[2] ?? "#3b82f6";
 
   function isHidden(key: string): boolean {
-    return fieldOverrides[key]?.hidden === true;
+    // Type-specific override takes precedence over global ("") override
+    const typed = fieldOverrides[typeSlug]?.[key];
+    if (typed?.hidden !== undefined) return typed.hidden;
+    return fieldOverrides[""]?.[key]?.hidden === true;
   }
 
   function toggleAssignee(uid: string) {

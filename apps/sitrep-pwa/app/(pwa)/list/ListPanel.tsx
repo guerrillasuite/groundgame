@@ -242,8 +242,8 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
   const [sheetCreate, setSheetCreate] = useState(false);
   const [rescheduleItem, setRescheduleItem] = useState<SitRepItem | null>(null);
 
-  // Field overrides (hidden/renamed standard fields)
-  const [fieldOverrides, setFieldOverrides] = useState<Record<string, { hidden: boolean }>>({});
+  // Field overrides grouped by scope_key — "" = global, "ride" etc = per-type
+  const [fieldOverrides, setFieldOverrides] = useState<Record<string, Record<string, { hidden: boolean }>>>({});
   useEffect(() => {
     if (!tenantId) return;
     fetch(`/api/sitrep/org-context?tenantId=${encodeURIComponent(tenantId)}`)
@@ -251,7 +251,14 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
       .then((data) => { if (data.fieldOverrides) setFieldOverrides(data.fieldOverrides); })
       .catch(() => {});
   }, [tenantId]);
-  const isHidden = (key: string) => fieldOverrides[key]?.hidden === true;
+  // Look up hidden status by item type slug first, fallback to global ("")
+  const isHiddenFor = (key: string, typeSlug?: string) => {
+    if (typeSlug) {
+      const typed = fieldOverrides[typeSlug]?.[key];
+      if (typed?.hidden !== undefined) return typed.hidden;
+    }
+    return fieldOverrides[""]?.[key]?.hidden === true;
+  };
 
   const typeMap = Object.fromEntries(initialTypes.map((t) => [t.slug, t]));
 
@@ -863,7 +870,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                           onComplete={() => handleComplete(item)}
                           onReschedule={() => setRescheduleItem(item)}
                           completing={completing.has(item.id)}
-                          isHidden={isHidden}
+                          isHidden={(key) => isHiddenFor(key, item.item_type)}
                         />
                       );
                     })}

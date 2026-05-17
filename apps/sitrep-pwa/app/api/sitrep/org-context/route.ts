@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 
     client
       .from("standard_field_overrides")
-      .select("field_key, custom_label, hidden, display_scope, sort_order")
+      .select("field_key, custom_label, hidden, display_scope, sort_order, scope_key")
       .eq("tenant_id", tenantId)
       .eq("record_type", "sitrep_items"),
   ]);
@@ -74,10 +74,15 @@ export async function GET(req: NextRequest) {
     email:   nameMap[uid]?.email ?? "",
   }));
 
-  // Build fieldOverrides map: { [field_key]: { label?, hidden, display_scope } }
-  const fieldOverrides: Record<string, { label?: string; hidden: boolean; display_scope: string; sort_order?: number }> = {};
+  // Build fieldOverrides grouped by scope_key so per-type settings don't bleed globally.
+  // Shape: { [scopeKey]: { [fieldKey]: { label?, hidden, display_scope, sort_order? } } }
+  // scope_key "" = global (applies to all item types unless overridden by a type-specific entry)
+  type FieldEntry = { label?: string; hidden: boolean; display_scope: string; sort_order?: number };
+  const fieldOverrides: Record<string, Record<string, FieldEntry>> = {};
   for (const row of (overridesRes.data ?? []) as any[]) {
-    fieldOverrides[row.field_key] = {
+    const sk: string = row.scope_key ?? "";
+    if (!fieldOverrides[sk]) fieldOverrides[sk] = {};
+    fieldOverrides[sk][row.field_key] = {
       label:         row.custom_label ?? undefined,
       hidden:        row.hidden === true,
       display_scope: row.display_scope ?? "snapshot",

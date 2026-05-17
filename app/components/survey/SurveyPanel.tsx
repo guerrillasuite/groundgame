@@ -44,7 +44,7 @@ function LocationFieldInline({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {suggestions.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 6 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {suggestions.map(s => {
             const active = selectedId === s.id;
             return (
@@ -52,23 +52,23 @@ function LocationFieldInline({
                 onClick={() => { onChange(JSON.stringify({ locationId: s.id, display: s.display })); setShowPicker(false); }}
                 style={{
                   display: "flex", alignItems: "center", gap: 4,
-                  padding: "5px 10px", borderRadius: 20, fontSize: 12, fontWeight: 500,
+                  padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500,
                   cursor: "pointer", transition: "all .12s", textAlign: "left",
                   border: `1.5px solid ${active ? primaryColor : borderColor}`,
                   background: active ? `${primaryColor}22` : "transparent",
-                  color: textColor,
+                  color: textColor, flexShrink: 0,
                 }}
               >
-                <span style={{ fontSize: 11, flexShrink: 0 }}>📍</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.display}</span>
+                <span style={{ fontSize: 11 }}>📍</span>
+                <span>{s.display}</span>
               </button>
             );
           })}
           <button type="button"
             onClick={() => { setShowPicker(v => !v); if (isSuggestionSelected) onChange(""); }}
             style={{
-              padding: "5px 10px", borderRadius: 20, fontSize: 12, fontWeight: 500,
-              cursor: "pointer", transition: "all .12s",
+              padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 500,
+              cursor: "pointer", transition: "all .12s", flexShrink: 0,
               border: `1.5px dashed ${showPicker ? primaryColor : borderColor}`,
               background: showPicker ? `${primaryColor}15` : "transparent",
               color: showPicker ? textColor : "#9ca3af",
