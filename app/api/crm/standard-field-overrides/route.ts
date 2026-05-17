@@ -17,19 +17,28 @@ function isValidFieldKey(recordType: RecordType, fieldKey: string): boolean {
   return STANDARD_FIELDS[recordType]?.some(f => f.key === fieldKey) ?? false;
 }
 
-// GET /api/crm/standard-field-overrides — all overrides for tenant
-export async function GET() {
+// GET /api/crm/standard-field-overrides?record_type=X&scope_key=Y
+export async function GET(req: NextRequest) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
-  const { data, error } = await sb
+  const url = new URL(req.url);
+  const recordType = url.searchParams.get("record_type");
+  const scopeKey   = url.searchParams.get("scope_key") ?? "";
+
+  let q = sb
     .from("standard_field_overrides")
     .select("*")
-    .eq("tenant_id", tenant.id);
+    .eq("tenant_id", tenant.id)
+    .eq("scope_key", scopeKey);
+
+  if (recordType) q = q.eq("record_type", recordType);
+
+  const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data ?? []);
 }
 
-// POST /api/crm/standard-field-overrides — upsert { record_type, field_key, custom_label }
+// POST /api/crm/standard-field-overrides — upsert { record_type, field_key, custom_label, scope_key? }
 export async function POST(req: NextRequest) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
@@ -37,7 +46,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
 
-  const { record_type, field_key, custom_label } = body as Record<string, string>;
+  const { record_type, field_key, custom_label, scope_key = "" } = body as Record<string, string>;
+
   if (!VALID_RECORD_TYPES.has(record_type)) {
     return NextResponse.json({ error: "Invalid record_type" }, { status: 400 });
   }
@@ -51,8 +61,8 @@ export async function POST(req: NextRequest) {
   const { data, error } = await sb
     .from("standard_field_overrides")
     .upsert(
-      { tenant_id: tenant.id, record_type, field_key, custom_label: custom_label.trim() },
-      { onConflict: "tenant_id,record_type,field_key" }
+      { tenant_id: tenant.id, record_type, field_key, scope_key, custom_label: custom_label.trim() },
+      { onConflict: "tenant_id,record_type,field_key,scope_key" }
     )
     .select("*")
     .single();
@@ -61,13 +71,14 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(data);
 }
 
-// DELETE /api/crm/standard-field-overrides — body: { record_type, field_key }
+// DELETE /api/crm/standard-field-overrides — body: { record_type, field_key, scope_key? }
 export async function DELETE(req: NextRequest) {
   const tenant = await getTenant();
   const sb = makeSb(tenant.id);
 
   const body = await req.json().catch(() => null);
-  const { record_type, field_key } = (body ?? {}) as Record<string, string>;
+  const { record_type, field_key, scope_key = "" } = (body ?? {}) as Record<string, string>;
+
   if (!record_type || !field_key) {
     return NextResponse.json({ error: "record_type and field_key required" }, { status: 400 });
   }
@@ -77,7 +88,8 @@ export async function DELETE(req: NextRequest) {
     .delete()
     .eq("tenant_id", tenant.id)
     .eq("record_type", record_type)
-    .eq("field_key", field_key);
+    .eq("field_key", field_key)
+    .eq("scope_key", scope_key);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

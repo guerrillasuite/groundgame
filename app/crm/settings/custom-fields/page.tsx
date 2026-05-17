@@ -2,7 +2,6 @@ import { requireDirectorPage } from "@/lib/crm-auth";
 import { createClient } from "@supabase/supabase-js";
 import { getTenant } from "@/lib/tenant";
 import CustomFieldsPanel from "./CustomFieldsPanel";
-import { getFieldOverrides } from "@/lib/crm/standard-field-overrides";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +33,10 @@ export default async function CustomFieldsPage() {
     .eq("tenant_id", tenantId)
     .order("order_index", { ascending: true });
 
-  const fieldOverrides = await getFieldOverrides(tenantId);
-
   return (
     <CustomFieldsPanel
       initialDefinitions={definitions ?? []}
       contactTypes={(contactTypes ?? []).map((ct: any) => ({ key: ct.key, label: ct.label || ct.key }))}
-      initialFieldOverrides={fieldOverrides}
     />
   );
 }

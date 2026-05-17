@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ColorFamilyPicker } from "@/app/components/ColorFamilyPicker";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 import CustomFieldsSection from "@/app/components/crm/CustomFieldsSection";
+import StandardFieldLabels from "@/app/components/crm/StandardFieldLabels";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -547,6 +548,16 @@ function TypeEditorPanel({
             <CustomFieldsSection
               recordType="sitrep_items"
               sitrepTypeId={t.id}
+              borderColor={S.border}
+              dimColor={S.dim}
+            />
+          </div>
+
+          {/* Standard Field Labels */}
+          <div style={{ borderBottom: `1px solid ${S.border}`, paddingBottom: 14 }}>
+            <StandardFieldLabels
+              recordType="sitrep_items"
+              scopeKey={t.id}
               borderColor={S.border}
               dimColor={S.dim}
             />

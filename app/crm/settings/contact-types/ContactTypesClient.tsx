@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { STAGE_PRESETS, StagePreset, StageDefinition } from "@/lib/opportunityPresets";
 import CustomFieldsSection from "@/app/components/crm/CustomFieldsSection";
+import StandardFieldLabels from "@/app/components/crm/StandardFieldLabels";
 
 type Stage = { key: string; label: string; order_index: number };
 type ContactType = { key: string; label: string; order_index: number; stages: Stage[] };
@@ -211,6 +212,12 @@ function ContactTypeRow({
             onChange={(stages) => onChange({ ...ct, stages })}
           />
           <CustomFieldsSection recordType="opportunities" pipelineTypeKey={ct.key} />
+          <StandardFieldLabels
+            recordType="opportunities"
+            scopeKey={ct.key}
+            borderColor="rgba(255,255,255,.08)"
+            dimColor="rgba(255,255,255,.45)"
+          />
         </>
       )}
     </div>
