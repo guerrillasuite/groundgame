@@ -54,6 +54,7 @@ interface Respondent {
   phone: string | null;
   completed_at: string | null;
   answers: Record<string, string>;
+  personFields?: Record<string, any>;
 }
 
 interface ResponsesData {
@@ -61,7 +62,53 @@ interface ResponsesData {
   survey_title: string;
   questions: { id: string; question_text: string; order_index: number }[];
   respondents: Respondent[];
+  personFieldDefs?: { key: string; label: string }[];
 }
+
+const PERSON_FIELD_GROUPS = [
+  { group: "Voter Data", fields: [
+    { key: "party", label: "Party" },
+    { key: "voter_status", label: "Voter Status" },
+    { key: "voting_frequency", label: "Voting Frequency" },
+    { key: "voted_general_2024", label: "Voted General 2024" },
+    { key: "voted_general_2022", label: "Voted General 2022" },
+    { key: "voted_general_2020", label: "Voted General 2020" },
+    { key: "voted_primary_2024", label: "Voted Primary 2024" },
+    { key: "voted_primary_2022", label: "Voted Primary 2022" },
+  ]},
+  { group: "Political Scores", fields: [
+    { key: "nolan_personal_score", label: "Nolan: Personal Freedom" },
+    { key: "nolan_economic_score", label: "Nolan: Economic Freedom" },
+    { key: "likelihood_to_vote", label: "Likelihood to Vote" },
+    { key: "primary_likelihood", label: "Primary Likelihood" },
+    { key: "score_prog_dem", label: "Score: Prog. Dem" },
+    { key: "score_mod_dem", label: "Score: Mod. Dem" },
+    { key: "score_cons_rep", label: "Score: Cons. Rep" },
+    { key: "score_mod_rep", label: "Score: Mod. Rep" },
+  ]},
+  { group: "Demographics", fields: [
+    { key: "gender", label: "Gender" },
+    { key: "age", label: "Age" },
+    { key: "birth_date", label: "Birth Date" },
+    { key: "ethnicity", label: "Ethnicity" },
+    { key: "education_level", label: "Education Level" },
+    { key: "marital_status", label: "Marital Status" },
+  ]},
+  { group: "Address", fields: [
+    { key: "mailing_address", label: "Mailing Address" },
+    { key: "mailing_city", label: "City" },
+    { key: "mailing_state", label: "State" },
+    { key: "mailing_zip", label: "Zip" },
+  ]},
+  { group: "Contact / Other", fields: [
+    { key: "phone_cell", label: "Cell Phone" },
+    { key: "phone2", label: "Phone 2" },
+    { key: "email2", label: "Email 2" },
+    { key: "occupation", label: "Occupation" },
+    { key: "contact_type", label: "Contact Type" },
+    { key: "top_issues", label: "Top Issues" },
+  ]},
+];
 
 const RESULT_COLORS: Record<string, string> = {
   libertarian: "#eab308",
@@ -157,6 +204,10 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
   const [responseSearch, setResponseSearch] = useState("");
   const [sortCol, setSortCol] = useState<string>("completed_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [extraCols, setExtraCols] = useState<string[]>([]);
+  const [showColPicker, setShowColPicker] = useState(false);
+  const [page, setPage] = useState(0);
+  const [perPage, setPerPage] = useState(50);
 
   const fetchResults = async () => {
     try {
@@ -178,14 +229,15 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
     }
   };
 
-  const fetchResponses = async () => {
-    if (responsesData) return; // already loaded
+  const fetchResponses = async (cols: string[] = []) => {
     setResponsesLoading(true);
     try {
-      const res = await fetch(`/api/survey/${surveyId}/export?format=json`);
+      const qs = cols.length ? `&extra_fields=${cols.join(",")}` : "";
+      const res = await fetch(`/api/survey/${surveyId}/export?format=json${qs}`);
       if (!res.ok) throw new Error("Failed to load responses");
       const data = await res.json();
       setResponsesData(data);
+      setPage(0);
     } catch (err) {
       console.error("Error fetching responses:", err);
     } finally {
@@ -195,15 +247,13 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
 
   useEffect(() => {
     fetchResults();
-
-    // Auto-refresh every 30 seconds
     const interval = setInterval(fetchResults, 30000);
     return () => clearInterval(interval);
   }, [surveyId]);
 
   useEffect(() => {
-    if (tab === "ind-response") fetchResponses();
-  }, [tab]);
+    if (tab === "ind-response") fetchResponses(extraCols);
+  }, [tab, extraCols]);
 
   const handleExport = async (format: 'csv' | 'json' = 'csv') => {
     try {
@@ -402,21 +452,75 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
       {/* ── Responses tab ── */}
       {tab === "ind-response" && (
         <div style={{ background: "var(--gg-card, white)", borderRadius: 12, border: "1px solid var(--gg-border, #e5e7eb)", overflow: "hidden" }}>
-          {/* Search + count bar */}
-          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--gg-border, #e5e7eb)", display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Search + count + Columns button */}
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--gg-border, #e5e7eb)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <input
               type="search"
               placeholder="Search by name, email, or phone…"
               value={responseSearch}
-              onChange={(e) => setResponseSearch(e.target.value)}
-              style={{ flex: 1, padding: "7px 12px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, background: "transparent", color: "inherit" }}
+              onChange={(e) => { setResponseSearch(e.target.value); setPage(0); }}
+              style={{ flex: 1, minWidth: 160, padding: "7px 12px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, background: "transparent", color: "inherit" }}
             />
             {responsesData && (
               <span style={{ fontSize: 13, opacity: 0.6, whiteSpace: "nowrap" }}>
                 {responsesData.respondents.length} respondent{responsesData.respondents.length !== 1 ? "s" : ""}
               </span>
             )}
+            <button
+              onClick={() => setShowColPicker(v => !v)}
+              style={{
+                padding: "7px 14px", borderRadius: 6, border: "1px solid var(--gg-border, #e5e7eb)",
+                background: showColPicker ? "var(--gg-primary, #2563eb)" : "transparent",
+                color: showColPicker ? "white" : "inherit",
+                fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              Columns{extraCols.length > 0 ? ` (${extraCols.length})` : ""}
+            </button>
           </div>
+
+          {/* Column picker panel */}
+          {showColPicker && (
+            <div style={{ padding: "16px", borderBottom: "1px solid var(--gg-border, #e5e7eb)", background: "rgba(0,0,0,0.02)" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.5, marginBottom: 12 }}>
+                Add Person Record Fields
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
+                {PERSON_FIELD_GROUPS.map(({ group, fields }) => (
+                  <div key={group} style={{ minWidth: 160 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", opacity: 0.45, marginBottom: 6 }}>{group}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {fields.map(({ key, label }) => (
+                        <label key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={extraCols.includes(key)}
+                            onChange={(e) => {
+                              setExtraCols(prev =>
+                                e.target.checked ? [...prev, key] : prev.filter(k => k !== key)
+                              );
+                            }}
+                            style={{ accentColor: "var(--gg-primary, #2563eb)" }}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {extraCols.length > 0 && (
+                <button
+                  onClick={() => setExtraCols([])}
+                  style={{ marginTop: 12, fontSize: 12, opacity: 0.5, background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+          )}
 
           {responsesLoading && (
             <div style={{ padding: 48, textAlign: "center", opacity: 0.6 }}>Loading responses…</div>
@@ -448,6 +552,9 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
               } else if (sortCol === "completed_at") {
                 av = a.completed_at ?? "";
                 bv = b.completed_at ?? "";
+              } else if (a.personFields && sortCol in (a.personFields ?? {})) {
+                av = String(a.personFields?.[sortCol] ?? "").toLowerCase();
+                bv = String(b.personFields?.[sortCol] ?? "").toLowerCase();
               } else {
                 av = (a.answers[sortCol] ?? "").toLowerCase();
                 bv = (b.answers[sortCol] ?? "").toLowerCase();
@@ -456,10 +563,18 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
               return sortDir === "asc" ? cmp : -cmp;
             });
 
+            // Pagination
+            const totalCount = sorted.length;
+            const totalPages = Math.ceil(totalCount / perPage);
+            const safePage = Math.min(page, Math.max(0, totalPages - 1));
+            const pageSlice = sorted.slice(safePage * perPage, (safePage + 1) * perPage);
+            const start = safePage * perPage + 1;
+            const end = Math.min((safePage + 1) * perPage, totalCount);
+
             const thStyle: React.CSSProperties = {
               padding: "10px 14px", textAlign: "left", fontWeight: 600,
               whiteSpace: "nowrap", borderBottom: "1px solid var(--gg-border, #e5e7eb)",
-              cursor: "pointer", userSelect: "none",
+              cursor: "pointer", userSelect: "none", fontSize: 13,
             };
             const sortBtn = (col: string) => {
               const active = sortCol === col;
@@ -472,57 +587,104 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
             const onSort = (col: string) => {
               if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
               else { setSortCol(col); setSortDir("asc"); }
+              setPage(0);
             };
 
+            const btnStyle = (disabled: boolean): React.CSSProperties => ({
+              padding: "5px 10px", border: "1px solid var(--gg-border, #e5e7eb)", borderRadius: 5,
+              background: disabled ? "rgba(0,0,0,0.04)" : "transparent",
+              color: disabled ? "rgba(0,0,0,0.3)" : "inherit",
+              cursor: disabled ? "default" : "pointer", fontSize: 13,
+            });
+
+            const personFieldDefs = responsesData.personFieldDefs ?? [];
+
             return (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "rgba(0,0,0,0.03)" }}>
-                      <th style={thStyle} onClick={() => onSort("name")}>Name{sortBtn("name")}</th>
-                      <th style={thStyle} onClick={() => onSort("email")}>Email{sortBtn("email")}</th>
-                      <th style={thStyle} onClick={() => onSort("phone")}>Phone{sortBtn("phone")}</th>
-                      <th style={thStyle} onClick={() => onSort("completed_at")}>Submitted{sortBtn("completed_at")}</th>
-                      {responsesData.questions.map((q) => (
-                        <th key={q.id} style={{ ...thStyle, maxWidth: 180 }} onClick={() => onSort(q.id)}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, overflow: "hidden", maxWidth: 170 }}>
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={q.question_text}>
-                              {q.question_text}
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "rgba(0,0,0,0.03)" }}>
+                        <th style={thStyle} onClick={() => onSort("name")}>Name{sortBtn("name")}</th>
+                        <th style={thStyle} onClick={() => onSort("email")}>Email{sortBtn("email")}</th>
+                        <th style={thStyle} onClick={() => onSort("phone")}>Phone{sortBtn("phone")}</th>
+                        <th style={thStyle} onClick={() => onSort("completed_at")}>Submitted{sortBtn("completed_at")}</th>
+                        {personFieldDefs.map((pf) => (
+                          <th key={pf.key} style={{ ...thStyle, maxWidth: 160 }} onClick={() => onSort(pf.key)}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, overflow: "hidden", maxWidth: 150 }}>
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={pf.label}>{pf.label}</span>
+                              {sortBtn(pf.key)}
                             </span>
-                            {sortBtn(q.id)}
-                          </span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((r, i) => {
-                      const name = [r.first_name, r.last_name].filter(Boolean).join(" ") || "—";
-                      return (
-                        <tr key={r.person_id} style={{ borderBottom: "1px solid var(--gg-border, #e5e7eb)", background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : undefined }}>
-                          <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
-                            <a href={`/crm/people/${r.person_id}`} style={{ fontWeight: 600, textDecoration: "none", color: "var(--gg-primary, #2563eb)" }}>
-                              {name}
-                            </a>
-                          </td>
-                          <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>{r.email ?? "—"}</td>
-                          <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>{r.phone ?? "—"}</td>
-                          <td style={{ padding: "10px 14px", whiteSpace: "nowrap", opacity: 0.7 }}>
-                            {r.completed_at ? new Date(r.completed_at).toLocaleDateString() : "—"}
-                          </td>
-                          {responsesData.questions.map((q) => (
-                            <td key={q.id} style={{ padding: "10px 14px", maxWidth: 200 }}>
-                              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.answers[q.id] ?? ""}>
-                                {r.answers[q.id] ?? ""}
+                          </th>
+                        ))}
+                        {responsesData.questions.map((q) => (
+                          <th key={q.id} style={{ ...thStyle, maxWidth: 180 }} onClick={() => onSort(q.id)}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, overflow: "hidden", maxWidth: 170 }}>
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={q.question_text}>
+                                {q.question_text}
                               </span>
+                              {sortBtn(q.id)}
+                            </span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageSlice.map((r, i) => {
+                        const name = [r.first_name, r.last_name].filter(Boolean).join(" ") || "—";
+                        return (
+                          <tr key={r.person_id} style={{ borderBottom: "1px solid var(--gg-border, #e5e7eb)", background: i % 2 === 1 ? "rgba(0,0,0,0.015)" : undefined }}>
+                            <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                              <a href={`/crm/people/${r.person_id}`} style={{ fontWeight: 600, textDecoration: "none", color: "var(--gg-primary, #2563eb)" }}>
+                                {name}
+                              </a>
                             </td>
-                          ))}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>{r.email ?? "—"}</td>
+                            <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>{r.phone ?? "—"}</td>
+                            <td style={{ padding: "10px 14px", whiteSpace: "nowrap", opacity: 0.7 }}>
+                              {r.completed_at ? new Date(r.completed_at).toLocaleDateString() : "—"}
+                            </td>
+                            {personFieldDefs.map((pf) => (
+                              <td key={pf.key} style={{ padding: "10px 14px", maxWidth: 160 }}>
+                                <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={String(r.personFields?.[pf.key] ?? "")}>
+                                  {r.personFields?.[pf.key] != null ? String(r.personFields[pf.key]) : "—"}
+                                </span>
+                              </td>
+                            ))}
+                            {responsesData.questions.map((q) => (
+                              <td key={q.id} style={{ padding: "10px 14px", maxWidth: 200 }}>
+                                <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.answers[q.id] ?? ""}>
+                                  {r.answers[q.id] ?? ""}
+                                </span>
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Pagination bar */}
+                <div style={{ padding: "12px 16px", borderTop: "1px solid var(--gg-border, #e5e7eb)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13, opacity: 0.6 }}>{start}–{end} of {totalCount.toLocaleString()}</span>
+                  {totalPages > 1 && <>
+                    <button style={btnStyle(safePage === 0)} disabled={safePage === 0} onClick={() => setPage(0)}>«</button>
+                    <button style={btnStyle(safePage === 0)} disabled={safePage === 0} onClick={() => setPage(p => p - 1)}>‹ Prev</button>
+                    <button style={btnStyle(safePage >= totalPages - 1)} disabled={safePage >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next ›</button>
+                    <button style={btnStyle(safePage >= totalPages - 1)} disabled={safePage >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</button>
+                  </>}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, opacity: 0.6, marginLeft: "auto" }}>
+                    Per page:
+                    <select
+                      value={perPage}
+                      onChange={(e) => { setPerPage(Number(e.target.value)); setPage(0); }}
+                      style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--gg-border, #e5e7eb)", fontSize: 13, background: "transparent", color: "inherit" }}
+                    >
+                      {[25, 50, 100, 250, 500].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
+                </div>
+              </>
             );
           })()}
         </div>

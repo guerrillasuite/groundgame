@@ -765,7 +765,20 @@ export async function getWalklistsBySurvey(
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
-export async function getSurveyExportData(surveyId: string, tenantId: string) {
+export const ALLOWED_EXTRA_PEOPLE_FIELDS = new Set([
+  "party", "voter_status", "voting_frequency", "early_voter", "absentee_type",
+  "likelihood_to_vote", "primary_likelihood", "general_primary_likelihood",
+  "voted_general_2024", "voted_general_2022", "voted_general_2020", "voted_general_2018",
+  "voted_primary_2024", "voted_primary_2022", "voted_primary_2020",
+  "score_prog_dem", "score_mod_dem", "score_cons_rep", "score_mod_rep",
+  "nolan_personal_score", "nolan_economic_score",
+  "gender", "age", "birth_date", "ethnicity", "education_level", "marital_status",
+  "mailing_address", "mailing_city", "mailing_state", "mailing_zip",
+  "phone_cell", "phone2", "email2", "occupation", "occupation_title",
+  "top_issues", "notes", "contact_type",
+]);
+
+export async function getSurveyExportData(surveyId: string, tenantId: string, extraPeopleFields: string[] = []) {
   const sb = getServiceClient(tenantId);
 
   // Fetch survey (including post_submit_survey_id)
@@ -794,18 +807,22 @@ export async function getSurveyExportData(surveyId: string, tenantId: string) {
     postSubmitResponses = psRs;
   }
 
-  // Collect all unique person IDs across both surveys
+  // Collect all unique person IDs across both surveys (for people lookup)
   const allPersonIds = [...new Set([
     ...(responses ?? []).map((r: any) => r.crm_contact_id),
     ...postSubmitResponses.map((r: any) => r.crm_contact_id),
   ].filter(Boolean))];
 
+  // Validate and apply extra fields — only allowlisted columns
+  const safeExtra = extraPeopleFields.filter(f => ALLOWED_EXTRA_PEOPLE_FIELDS.has(f));
+  const peopleSelect = ["id", "first_name", "last_name", "email", "phone", ...safeExtra].join(", ");
+
   // Fetch contact info from people table
-  const contactMap = new Map<string, { first_name: string | null; last_name: string | null; email: string | null; phone: string | null; id: string }>();
+  const contactMap = new Map<string, Record<string, any>>();
   if (allPersonIds.length > 0) {
     const { data: people } = await sb
       .from("people")
-      .select("id, first_name, last_name, email, phone")
+      .select(peopleSelect)
       .in("id", allPersonIds);
     for (const p of people ?? []) contactMap.set(p.id, p);
   }
@@ -818,5 +835,6 @@ export async function getSurveyExportData(surveyId: string, tenantId: string) {
     postSubmitQuestions,
     postSubmitResponses,
     contactMap,
+    extraPeopleFields: safeExtra,
   };
 }
