@@ -26,12 +26,14 @@ export type FieldDefinition = {
 
 export type ContactType = { key: string; label: string };
 
-type Tab = "people" | "companies" | "households" | "locations";
+type Tab = "people" | "companies" | "households" | "locations" | "opportunities" | "sitrep_items";
 const TABS: { key: Tab; label: string }[] = [
-  { key: "people",     label: "People"     },
-  { key: "companies",  label: "Companies"  },
-  { key: "households", label: "Households" },
-  { key: "locations",  label: "Locations"  },
+  { key: "people",        label: "People"       },
+  { key: "companies",     label: "Companies"    },
+  { key: "households",    label: "Households"   },
+  { key: "locations",     label: "Locations"    },
+  { key: "opportunities", label: "Opportunities"},
+  { key: "sitrep_items",  label: "SitRep"       },
 ];
 
 const FIELD_TYPE_LABELS: Record<string, string> = {
@@ -339,30 +341,43 @@ function StandardFieldLabels({
   onSave: (recordType: RecordType, fieldKey: string, customLabel: string) => Promise<void>;
   onReset: (recordType: RecordType, fieldKey: string) => Promise<void>;
 }) {
-  const fields = STANDARD_FIELDS[recordType] ?? [];
-  if (fields.length === 0) return null;
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const allFields = STANDARD_FIELDS[recordType] ?? [];
+  if (allFields.length === 0) return null;
 
-  const overrideMap = new Map(overrides.map(o => [o.field_key, o.custom_label]));
+  const coreFields     = allFields.filter(f => !f.advanced);
+  const advancedFields = allFields.filter(f => f.advanced);
+  const om = new Map(overrides.map(o => [o.field_key, o.custom_label]));
 
   return (
     <div style={{ ...S.section, marginTop: 8 }}>
       <div style={S.sectionHeader}>
         <span style={S.sectionLabel}>Standard Field Labels</span>
-        <span style={{ fontSize: 11, opacity: 0.4 }}>Click a label to rename it</span>
+        <span style={{ fontSize: 11, opacity: 0.4 }}>Click a label to rename</span>
       </div>
       <p style={{ fontSize: 12, opacity: 0.4, margin: "0 0 10px" }}>
         Rename built-in fields to match your org's terminology.
       </p>
-      {fields.map(f => (
-        <StandardFieldRow
-          key={f.key}
-          recordType={recordType}
-          field={f}
-          customLabel={overrideMap.get(f.key) ?? null}
-          onSave={onSave}
-          onReset={onReset}
-        />
+
+      {coreFields.map(f => (
+        <StandardFieldRow key={f.key} recordType={recordType} field={f}
+          customLabel={om.get(f.key) ?? null} onSave={onSave} onReset={onReset} />
       ))}
+
+      {advancedFields.length > 0 && (
+        <>
+          <button
+            style={{ ...S.btn("ghost"), fontSize: 11, opacity: 0.5, marginTop: 8 }}
+            onClick={() => setShowAdvanced(v => !v)}
+          >
+            {showAdvanced ? "▲ Hide" : "▼ Show"} {advancedFields.length} advanced fields
+          </button>
+          {showAdvanced && advancedFields.map(f => (
+            <StandardFieldRow key={f.key} recordType={recordType} field={f}
+              customLabel={om.get(f.key) ?? null} onSave={onSave} onReset={onReset} />
+          ))}
+        </>
+      )}
     </div>
   );
 }

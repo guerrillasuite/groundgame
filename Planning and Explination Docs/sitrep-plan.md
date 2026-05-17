@@ -1,780 +1,413 @@
 # SitRep — GuerrillaSuite Task, Event & Calendar Layer
 ## Planning & Architecture Document
-**Status:** v1 SHIPPED (2026-04-16) — v2 planning
+**Status:** v2 SHIPPED (2026-05-01) — PWA scaffolding next
 **Suite:** GuerrillaSuite
-**Lives in:** GroundGame (v1) → Standalone product (v3)
-**Stack:** Next.js · Supabase (PostgreSQL) · Railway · GitHub
+**Lives in:** GroundGame (`/crm/sitrep/`) → Standalone product (v3)
+**Stack:** Next.js 15.5 · Supabase (PostgreSQL) · Railway · GitHub
 
 ---
 
 ## Current Build Status
 
-### ✅ Shipped in v1 (2026-04-16)
+### ✅ v1 — Shipped 2026-04-16
 
-| Area | What shipped |
-|---|---|
-| **Database** | All 8 tables created via migration `create_sitrep_tables_v1`: `sitrep_missions`, `sitrep_items`, `sitrep_assignments`, `sitrep_links`, `sitrep_visibility_grants`, `sitrep_recurring_rules`, `sitrep_item_notifications`, `sitrep_notification_prefs` |
-| **Feature flags** | `sitrep_core`, `sitrep_calendar`, `sitrep_team`, `sitrep_missions` — all on all tiers (Scout Kit / Field Pack / War Chest) |
-| **API — Items** | `GET/POST /api/crm/sitrep/items` · `GET/PATCH/DELETE /api/crm/sitrep/items/[id]` — full CRUD, visibility filter, assignee add/remove via PATCH |
-| **API — Missions** | `GET/POST /api/crm/sitrep/missions` · `GET/PATCH/DELETE /api/crm/sitrep/missions/[id]` — full CRUD, progress calculation, visibility filter |
-| **Dashboard widget** | Both `AdminDashboard` and `FieldDashboard` in `app/crm/page.tsx` — replaced old Reminders widget with SitRep widget (icon, title, date, overdue highlighting) |
-| **Board page** | `/crm/sitrep/` — grouped sections (Overdue → Today → Tomorrow → This Week → Later → No Date → Done → Cancelled), quick-add task bar, Mine/All + type + status filters, status dot toggle for tasks, + New dropdown (Task/Event/Meeting/Mission), full create modal with type switcher, assignee picker, mission link, visibility |
-| **Item detail** | `/crm/sitrep/[id]/` — auto-save on all fields (700ms debounce), status pills, priority pills, date fields, all-day toggle, meeting agenda + notes, mission selector, visibility selector, assignee chips (add/remove), linked records display (read-only), delete with confirm |
-| **Missions list** | `/crm/sitrep/missions/` — status tabs (All/Planning/Active/Complete), mission cards with colored left-border, progress bars, item count badges, create modal |
-| **Mission detail** | `/crm/sitrep/missions/[id]/` — editable title/desc/status/due-date/visibility with auto-save, animated progress bar, quick-add item bar (task/event/meeting), grouped item list with task toggle, all items link to their detail page, delete with confirm |
-| **Nav** | CrmHeader: "SitRep" flat link when only `sitrep_core`; becomes "SitRep ▾" dropdown (Board / Missions) when `sitrep_missions` also on |
-| **RBAC** | `requireDirectorPage()` on all Director-only CRM pages; `requireDirectorApi()` on all destructive API routes including cleanup, dedupe merge, import, bulk-edit, settings |
-| **Brand colors** | All pages use `var(--gg-primary, #2563eb)` — inherits tenant brand color injected at layout level |
+Core task/event/meeting board, missions, calendar view, dashboard widget, item detail with auto-save, full RBAC.
 
-### 🔄 Intentional deviations from original v1 spec
+### ✅ v2 — Shipped 2026-05-01
 
-- **Reminders migration skipped** — the one live reminder record was manually deleted by the user, making a migration script unnecessary. The old `reminders` table, `app/crm/reminders/`, and `app/api/crm/reminders/` routes still exist as dead code. Clean up when confirmed safe.
-- **Board uses grouped sections, not a flat filtered list** — Overdue/Today/Tomorrow/This Week/Later grouping provides better at-a-glance scanning than a flat list with date filter. Better than spec.
-- **Shift items deferred** — Shifts require a GroundGame shift table that doesn't exist yet. Schema columns (`source_product`, `source_record_type`, `source_record_id`) are in place for when it ships.
+Full Jira + Google Calendar + Calendly expansion. All 10 phases complete.
 
 ---
 
-## What's Left for v2 (Next Build Cycle)
+## v2 Feature Map — What Shipped
 
-Priority order — roughly top to bottom.
+| # | Feature | Status | Where |
+|---|---------|--------|-------|
+| 1 | Custom stages per type (pipeline-style) | ✅ | Type settings slide-in |
+| 2 | Mission Type flag + Show in Kanban flag | ✅ | Type settings → OS pills |
+| 3 | Multi-role ownership per type | ✅ | Type settings → Advanced accordion |
+| 4 | Item hierarchy (parent/depth, max 3 levels) | ✅ | Item detail → sub-items section |
+| 5 | Item dependencies | ✅ | Item detail → dependencies section |
+| 6 | Comments on items | ✅ | Item detail → comments section |
+| 7 | Activity log per item | ✅ | Item detail → activity section |
+| 8 | Kanban view (rows by type, columns by stage) | ✅ | `/crm/sitrep/kanban/` |
+| 9 | Calendar enhancements (day view, drag-reschedule, overflow) | ✅ | `/crm/sitrep/calendar/` |
+| 10 | Booking pages (Calendly rival) | ✅ | `/book/[slug]` + settings |
+| 11 | Parent deletion modal (cascade vs. orphan) | ✅ | Item detail delete |
+| 12 | Multi-calendar (Work/Personal/Custom, sharing, invites) | ✅ | Calendar sidebar |
+| 13 | Settings UI redesign | ✅ | `/crm/settings/sitrep/` |
+| 14 | Automations (schema + preview UI) | ✅ | Settings → Automations card |
+| 15 | Standalone SitRep PWA | 🔲 Not started | `apps/sitrep-pwa/` |
+
+---
+
+## Architecture Overview
+
+### Routes
+
+```
+/crm/sitrep/                     List view — grouped sections (Overdue/Today/This Week/Later/Done)
+/crm/sitrep/kanban/              Kanban board — rows by item type, columns by type stage
+/crm/sitrep/timeline/            Gantt timeline — horizontal bars, 3 zoom levels
+/crm/sitrep/calendar/            Calendar — month/week/day views with multi-calendar sidebar
+/crm/sitrep/[id]/                Item detail — full edit, sub-items, deps, comments, activity
+/crm/settings/sitrep/            Settings — Item Types, Booking Pages, Public Calendars, Widget, Automations
+/book/[slug]                     Public booking page (no auth) — slot picker + form
+/calendar-invite/[token]         Public invite accept/decline page (no auth)
+```
+
+### Key Files
+
+```
+app/crm/sitrep/
+  page.tsx                       Server page — fetches items, types, users
+  SitRepPanel.tsx                Main list view client component
+  _components/SitRepViewToggle.tsx  Shared List/Kanban/Timeline/Calendar tab switcher
+  kanban/
+    page.tsx                     Server page for kanban
+    SitRepKanban.tsx             Kanban board client component
+  timeline/
+    page.tsx                     Server page for timeline
+    SitRepTimeline.tsx           Gantt chart client component
+  calendar/
+    page.tsx                     Server page — fetches items + seeds calendar types
+    CalendarLayout.tsx           Client wrapper: switcher sidebar + calendar
+    CalendarSwitcher.tsx         Left sidebar — eye-toggles per calendar type
+    SitRepCalendar.tsx           Calendar renderer (month/week/day)
+  [id]/
+    page.tsx                     Server page for item detail
+    SitRepItemClient.tsx         Item detail client component
+
+app/crm/settings/sitrep/
+  page.tsx                       Settings server page
+  SitRepSettingsPanel.tsx        Settings client component
+
+app/book/[slug]/
+  page.tsx                       Public booking server page
+  BookingClient.tsx              Slot picker + form client component
+
+app/calendar-invite/[token]/
+  page.tsx                       Invite accept server page
+  InviteAcceptClient.tsx         Accept/decline UI
+
+app/api/crm/sitrep/
+  items/route.ts                 GET/POST items
+  items/[id]/route.ts            GET/PATCH/DELETE item
+  items/[id]/children/route.ts   GET sub-items
+  items/[id]/dependencies/route.ts  GET/POST deps
+  items/[id]/dependencies/[dep_id]/route.ts  DELETE dep
+  items/[id]/comments/route.ts   GET/POST comments
+  items/[id]/comments/[comment_id]/route.ts  PATCH/DELETE comment
+  items/[id]/activity/route.ts   GET activity log
+  types/route.ts                 GET/POST item types (seeds system types)
+  types/[id]/route.ts            PATCH/DELETE item type
+  booking-types/route.ts         GET/POST user's booking pages
+  booking-types/[id]/route.ts    PATCH/DELETE booking page
+  public-calendars/route.ts      GET/POST embeddable iCal tokens
+  widget-settings/route.ts       GET/PATCH dashboard widget config
+
+app/api/booking/[slug]/
+  availability/route.ts          Public — computes open time slots
+  confirm/route.ts               Public — creates person+item+email
+
+app/api/user/
+  calendar-types/route.ts        GET/POST user's calendar type buckets
+  calendar-types/[id]/route.ts   PATCH/DELETE calendar type
+  calendar-types/[typeId]/views/route.ts  GET/POST views within a type
+  calendar-views/[id]/route.ts   PATCH/DELETE a view
+  calendar-views/[id]/shares/route.ts  GET/POST(invite)/DELETE shares
+
+app/api/calendar-invite/[token]/route.ts  POST accept/decline
+
+lib/email/
+  resend.ts                      Base sendEmail() wrapper
+  sitrep-booking-confirm.ts      Booking confirmation HTML email
+
+supabase/migrations/
+  20260501000000_sitrep_v2.sql   Full v2 schema migration
+```
+
+---
+
+## Database Schema — v2 Additions
+
+All v2 tables were applied via `supabase/migrations/20260501000000_sitrep_v2.sql`.
+
+### Columns added to existing tables
+
+**`sitrep_item_types`** — added:
+- `stages JSONB DEFAULT '[]'` — pipeline stages array: `[{slug, name, color, is_terminal, sort_order}]`
+- `is_mission_type BOOLEAN DEFAULT false` — allows sub-items
+- `show_in_kanban BOOLEAN DEFAULT true` — appears as a Kanban row
+- `booking_enabled BOOLEAN DEFAULT false` — Director-only toggle to allow public booking pages for this type
+- `custom_roles JSONB DEFAULT '[]'` — named assignee roles: `[{slug, name, max}]`
+
+**`sitrep_items`** — added:
+- `parent_item_id UUID REFERENCES sitrep_items(id) ON DELETE SET NULL` — hierarchy parent
+- `depth INTEGER DEFAULT 0` — 0=root, 1=child, 2=grandchild, 3=great-grandchild (max)
+- `reminder_sent_at TIMESTAMPTZ` — prevents duplicate reminder emails
+
+### New tables
+
+**`sitrep_dependencies`** — item blocking relationships
+```
+from_item_id, to_item_id, dep_type (blocks/precedes/follows/relates_to/duplicates), lag_days
+```
+
+**`sitrep_comments`** — per-item threaded comments
+```
+item_id, author_id, body, edited_at
+```
+
+**`sitrep_activity`** — immutable audit trail per item
+```
+item_id, actor_id, event_type, old_value, new_value
+```
+
+**`sitrep_booking_types`** — Calendly-rival booking page configs
+```
+owner_id, title, slug (globally unique), description, duration_minutes,
+buffer_before, buffer_after, available_days INTEGER[], available_start TIME,
+available_end TIME, timezone, sitrep_item_type, confirmation_msg, is_active
+```
+
+**`sitrep_automations`** — schema only, engine ships v2.5
+```
+name, trigger_type, trigger_config JSONB, action_type, action_config JSONB, is_active
+```
+
+**`user_calendar_types`** — user-scoped calendar buckets (max 5)
+```
+owner_user_id, name, color, cal_type (work/family/personal/custom),
+sources JSONB ([{type:"tenant",tenant_id}|{type:"personal"}]),
+delegate_for JSONB, sort_order
+```
+
+**`user_calendar_views`** — named filter lenses within a calendar type
+```
+calendar_type_id, owner_user_id, name, color, filter_config JSONB
+({assignee_filter, show_viewer_items, item_type_slugs, stage_slugs, show_terminal}),
+is_default, sort_order
+```
+
+**`calendar_view_shares`** — who can see a shared view
+```
+view_id, shared_with_user_id, role (viewer/editor)
+```
+
+**`calendar_view_invites`** — pending invite tokens
+```
+view_id, invited_by, email, role, token (unique hex), status (pending/accepted/declined)
+```
+
+---
+
+## How Each Feature Works
+
+### Item Types & Stages
+
+Item types live in `sitrep_item_types`. The system seeds three defaults (Task, Event, Meeting) on first API call if none exist. Each type defines its own `stages` array — these become Kanban columns and the stage selector in item detail.
+
+`sitrep_items.status` stores the current stage slug (string). This is type-agnostic — the same column stores "open", "confirmed", "published", or any custom stage slug. The item type's stages array gives it meaning.
+
+**In the settings panel:** Click any type → slide-in panel with Name, Color, OS pill toggles (Mission Type / Show in Kanban / Enable Booking), drag-reorderable stage rows, and an Advanced Settings accordion for custom roles.
+
+### Item Hierarchy
+
+Any item at `depth < 3` can have sub-items — there is no `is_mission_type` gate on the parent. Sub-items can be any type. The type selector in the "Add sub-item" row defaults to the parent's type but can be changed.
+
+Depth is computed server-side: `depth = parent.depth + 1`. The API enforces max depth 3 with a 400 response.
+
+**Delete behavior:** If an item has children and no `?cascade` or `?orphan` param, the API returns 409 with child count. The client shows a modal: "Delete all N sub-items" → `DELETE ?cascade=true` | "Keep as standalone" → `DELETE ?orphan=true` (sets `parent_item_id = NULL, depth = 0` on children).
+
+### Dependencies
+
+Stored in `sitrep_dependencies` with a `dep_type` enum (blocks, precedes, follows, relates_to, duplicates). Rendered in the item detail page. Padlock icon appears on board rows for blocked items.
+
+### Comments & Activity
+
+Comments are user-editable (own only) and Director-deletable (any). Activity is written server-side on every PATCH — tracks field changes (status, priority, title, assignee, etc.) with old/new values.
+
+### Kanban Board (`/crm/sitrep/kanban/`)
+
+Renders one horizontal section per item type where `show_in_kanban = true`. Each section has columns equal to that type's `stages` array. Items are placed in the column matching their `status` field.
+
+- Row collapse state persists in localStorage
+- Dragging a card between columns fires `PATCH /api/crm/sitrep/items/[id]` with `{ status: stageslug }`
+- "Show Completed" toggle reveals terminal-stage columns (Done, Cancelled, etc.)
+- Cross-type drag is disabled (items stay in their type's row)
+
+### Gantt Timeline (`/crm/sitrep/timeline/`)
+
+Renders items with `start_at` or `due_date` as horizontal bars on a date grid. Pure DOM positioning — no canvas or SVG for the bars themselves, though dependency arrows use SVG.
+
+Three zoom levels controlled by a toggle: Month (12px/day), 2Wk (28px/day), Week (60px/day). Weekend shading appears at ≥24px/day. The label column is `position: sticky; left: 0` within a single scroll container — avoids vertical scroll sync issues.
+
+"Today" button scrolls the container to center today in the viewport.
+
+### Calendar Enhancements
+
+The existing `SitRepCalendar.tsx` was enhanced in place (not rebuilt):
+- **Day view** — single-day hourly grid, alongside existing Week and Month views
+- **Today button** — jumps the current view to today's date
+- **Drag-to-reschedule** — `mousedown` on an event → drag → `mouseup` fires PATCH with new `start_at`/`end_at`. Optimistic update, revert on error.
+- **Month view overflow** — "+N more" pill expands inline via a `Set<string>` state tracking which day cells are expanded
+- **Past-due tint** — events past their end time render at 50% opacity
+- **Priority dots** — `!!` for urgent, `!` for high in the top-right of event pills
+
+### Booking Pages
+
+Any user can create booking pages at `/crm/settings/sitrep/` under "My Booking Pages." Directors can toggle `booking_enabled` on item types to make them available in booking page creation.
+
+**Public flow (`/book/[slug]`):**
+1. Server fetches booking type by slug + host name
+2. `BookingClient` calls `GET /api/booking/[slug]/availability?days=28` — returns available slots excluding the owner's existing confirmed/open items
+3. User picks a slot → fills name/email/notes → `POST /api/booking/[slug]/confirm`
+4. Confirm route: matches person by email or creates new `people` row + `tenant_people` link → creates `sitrep_items` row (type = booking type's `sitrep_item_type`) → creates `sitrep_assignments` row (role = attendee) → sends Resend confirmation email
+5. Success screen shown; confirmation email arrives
+
+Booking pages and their APIs (`/book/*`, `/api/booking/*`) are fully public — exempted from auth middleware.
+
+### Multi-Calendar System
+
+**Data model:** Two-level.
+- **Calendar Type** — defines data source and permission tier. Max 5 per user. Types: work (sources from a tenant), personal, family, custom.
+- **Calendar View** — named filter lens within a type. Controls `assignee_filter`, `item_type_slugs`, `stage_slugs`, `show_viewer_items`, `show_terminal`.
+
+**First-use seeding:** On first visit to `/crm/sitrep/calendar/`, the page server-component checks `user_calendar_types` count. If zero, it creates a "Work" type (sourced from current tenant) with a "My Work" default view, and a "Personal" type with a "Private" view.
+
+**CalendarSwitcher sidebar:**
+- Grouped by calendar type (collapsible)
+- Eye-toggle per type — hides those items from the calendar renderer
+- Each view shows a share button (↗) that opens a SharePanel slide-in
+- Share panel invites by email → creates `calendar_view_invites` row → sends Resend email with accept link
+- "Add Calendar" inline form at the bottom (enforces max 5)
+
+**Item filtering:** `CalendarLayout` passes only items whose source calendar type is currently visible. Work types show tenant `sitrep_items`; toggling all work calendars off clears the calendar.
+
+**Invite accept flow (`/calendar-invite/[token]`):**
+- Public page, no auth required
+- Shows view name + role + accept/decline buttons
+- `POST /api/calendar-invite/[token]` marks invite accepted/declined, creates `calendar_view_shares` row if accepted and user is logged in, shows "Open Calendar" link
+
+### Settings Panel (`/crm/settings/sitrep/`)
+
+Five sections in order:
+
+1. **Item Types** — card grid with color dot, name, mission/system badges. Click → TypeEditorPanel slide-in (name, color picker, OS pills, stage editor, advanced accordion for custom roles).
+
+2. **My Booking Pages** — table of user's booking pages with public URL, duration, item type, active status. "+ New Page" → BookingPagePanel slide-in (title, description, duration presets, day-of-week toggles, time range, timezone, buffer time, confirmation message, active toggle).
+
+3. **Public Calendars** — embeddable iCal tokens for external sharing. Create named calendars that filter by item type and status. Generates iframe embed code + auto-resize script.
+
+4. **Dashboard Widget** — controls what appears on the CRM dashboard SitRep widget (view mode, sort, filter, max items).
+
+5. **Automations** — preview card showing 4 example WHEN→THEN rules, labeled "SOON." Schema exists in `sitrep_automations` table.
+
+### View Switcher
+
+All four views (List, Kanban, Timeline, Calendar) share the same `<SitRepViewToggle />` component from `app/crm/sitrep/_components/SitRepViewToggle.tsx`. Each maps to its own dedicated route:
+
+```
+List     → /crm/sitrep
+Kanban   → /crm/sitrep/kanban
+Timeline → /crm/sitrep/timeline
+Calendar → /crm/sitrep/calendar
+```
+
+Active state is detected by pathname prefix matching — no search-param ambiguity.
+
+---
+
+## What's Still Left To Do
 
 ### High Priority
 
-**1. Notification system**
-The schema is fully built. Nothing sends yet.
-- Railway cron route that polls `sitrep_item_notifications WHERE notify_enabled = true AND sent_at IS NULL`
-- Uses Resend (`lib/email/resend.ts`) — already configured
-- Triggers: task due soon, task overdue, task assigned to you, meeting added, meeting starting soon, event starting soon, mission deadline
-- `/crm/settings/sitrep/` — user-level notification preferences page (reads/writes `sitrep_notification_prefs`)
+**Standalone SitRep PWA** — Separate Next.js app in `apps/sitrep-pwa/`, same Railway project. Mobile-first: bottom nav (Today / Calendar / All / + Create), 44px touch targets, bottom sheet modals, swipe gestures (right = done, left = reschedule), PWA manifest + service worker, offline queue. Shares Supabase backend and `lib/` utilities with GroundGame. Target domain: `groundgame.digital/app/sitrep`.
 
-**2. Calendar view — `/crm/sitrep/calendar/`**
-- Week/month toggle, default week
-- Events and Meetings as time blocks; Tasks as due-date pills; Mission deadlines as pills
-- Color-code by type (Tasks: slate, Events: blue, Meetings: purple)
-- Shifts as green `[GG]` blocks when GroundGame shift table exists
-- Past Due items: red border regardless of type
-- Clicking opens item detail (slide-over or navigate)
-- Gated on `sitrep_calendar` flag (already in features.ts)
+**Automations engine** — Schema exists (`sitrep_automations`). Need the trigger evaluator (cron or DB trigger → check conditions → fire action) and the settings UI to create/edit rules. Planned for v2.5.
 
-**3. Linked records UI in create modal and item detail**
-- `sitrep_links` table exists and detail page renders links (read-only)
-- Need: add/remove links from item detail — record type picker + search (Person/Household/Opportunity/Company/Location)
-- Resolve and cache `display_label` at link time
-
-**4. Recurring rules UI**
-- `sitrep_recurring_rules` table and `sitrep_items.recurring_rule_id` FK are in place
-- Need: "Repeat" toggle in create/edit modal → frequency/interval/end picker
-- Need: server logic to spawn next occurrence on item completion
+**Notification system** — Schema exists (`sitrep_item_notifications`, `sitrep_notification_prefs`). No cron route exists yet. Needs: Railway cron at `/api/cron/sitrep-notifications` that polls items whose notify time has passed and fires Resend emails. Also needs the user-facing notification preferences UI in settings.
 
 ### Medium Priority
 
-**5. Custom visibility grants UI**
-- `sitrep_visibility_grants` table exists; `visibility = 'custom'` option is already in the selector
-- Need: when user picks "Custom", show a user picker to define the grant list
-- Currently selecting "Custom" saves the visibility value but grants nothing — items become effectively invisible to everyone except creator
+**Booking: 1-hour reminder emails** — `reminder_sent_at` column exists on `sitrep_items`. Needs a cron route (`/api/cron/sitrep-booking-reminders`) that queries items with `start_at` in the 55–65 minute window and `reminder_sent_at IS NULL`, sends email, sets `reminder_sent_at`.
 
-**6. Filter enhancements on board page**
-- Date range picker
-- "Assigned to" user picker (Support + Directors only)
-- Paperclip indicator on list rows when `sitrep_links` exist
-- Bell indicator on list rows when a per-item notification is set
+**Personal items** — The migration added `owner_user_id` to `sitrep_items` for items with no tenant (personal/family calendar items). The DB RLS policy exists. The create flow, API handling, and UI for creating personal items are not wired up yet. Personal items should be creatable from the PWA or from the Personal calendar type on the web.
 
-**7. Per-item notify toggle in create modal**
-- "Notify me" section in create/edit modal: toggle + value + unit picker
-- Writes to `sitrep_item_notifications` on save
+**Linked records UI** — `sitrep_links` table exists and item detail shows existing links (read-only). The add/remove link flow (record type picker + search modal) is not built.
 
-**8. Mission ownership transfer**
-- Allow creator to reassign a mission to another user
-- Currently `created_by` is immutable after creation
+**Recurring rules UI** — `sitrep_recurring_rules` table and `sitrep_items.recurring_rule_id` FK exist. The "Repeat" toggle in the create/edit modal, frequency picker, and next-occurrence spawning logic on item completion are not built.
 
-**9. `reminders` table cleanup**
-- Delete `app/crm/reminders/page.tsx` and `app/crm/reminders/[id]/` if they exist
-- Delete `app/api/crm/reminders/route.ts` and `app/api/crm/reminders/[id]/route.ts`
-- Drop `reminders` table from Supabase (confirm no other code references it first)
-- Remove `RemindersSection` component from people/household/opportunity detail pages — replace with sitrep_links query filtered by record_type + record_id
+**Custom visibility grants UI** — `sitrep_visibility_grants` table exists. Selecting `visibility = 'custom'` saves the value but no user picker exists, making custom-visibility items invisible to everyone except the creator. Needs a user picker when "Custom" is selected.
 
-### Lower Priority / v2 Infrastructure
+**Multi-tenant aggregation** — A user who belongs to multiple tenants can create multiple Work calendar types (one per tenant). The CalendarLayout currently filters by whether any Work type is visible but doesn't separate items by source tenant. True cross-tenant merging requires fetching items from each sourced tenant separately and tagging them with their calendar type for color-coding.
 
-**10. Cross-product item ingestion (requires LedgerLine)**
-- DB trigger or API endpoint to push LedgerLine bill due dates, payroll runs → `sitrep_items` with `source_product = 'ledgerline'`
-- Read-only in SitRep; edits navigate back to LedgerLine
-- `source_product`, `source_record_type`, `source_record_id` columns already in schema
+**Delegate/secretary mode** — `delegate_for JSONB` column exists on `user_calendar_types`. Setting `assignee_filter` in a view to another user's ID should show that user's items. The API and CalendarLayout filtering for this are not wired.
 
-**11. External meeting invites**
-- Emailed invite link for non-GuerrillaSuite users
-- Accept/decline → `.ics` download on accept
-- `sitrep_assignments.accepted` column already in schema (currently always NULL)
+### Lower Priority / Future
 
-**12. iCal export**
-- Per-user iCal URL (`.ics` feed) subscribed to by Google/Apple/Outlook
-- Read-only; no two-way sync until v3
+**iCal per-user feed** — A personal `.ics` subscription URL (distinct from the existing tenant-wide public calendar tokens). Subscribable in Google/Apple/Outlook.
 
-**13. In-app notification center**
-- Notification bell in CrmHeader
-- All SitRep triggers surface here in addition to email
+**External meeting invites** — `sitrep_assignments.accepted` column exists (always NULL today). Emailed invite link for non-GuerrillaSuite attendees, accept/decline, `.ics` attachment on accept.
+
+**Missions page removal** — `/crm/sitrep/missions/` and `/crm/sitrep/missions/[id]/` still exist from v1. Missions are now items (those whose type has `is_mission_type = true`). The old missions pages/API should be removed once the team confirms nothing depends on them. The migration preserved mission IDs in `sitrep_items` so the data is safe.
+
+**Reminders table cleanup** — The old `reminders` table, `app/crm/reminders/`, and `app/api/crm/reminders/` routes are dead code. Safe to drop after confirming no external references.
+
+**Cross-product ingestion** — LedgerLine bill due dates, payroll runs → `sitrep_items` via DB trigger. `source_product`, `source_record_type`, `source_record_id` columns are already in the schema.
 
 ---
 
----
+## v3 Vision — Standalone Product
 
-## 1. Product Overview
+When SitRep has enough traction from the PWA and at least three GuerrillaSuite products are feeding into it, it spins out as `sitrep.guerrillasuite.com`:
 
-SitRep is GuerrillaSuite's task, event, and calendar engine. It is the connective tissue beneath every time-sensitive action in the suite — follow-up reminders on a contact, a scheduled staff meeting, a to-do list from a manager, a bill due date from LedgerLine, a payroll run from the employer's account, a canvass shift from GroundGame. Everything that has a time or a deadline lives here.
+- Full Google Calendar replacement
+- Circles (shared calendar groups, not tied to a GuerrillaSuite tenant)
+- Multiple calendars per user (Work / Personal / Family / Campaign)
+- Two-way sync with Google Calendar and Microsoft Outlook (OAuth)
+- Free standalone tier (personal/family) + team tier (booking + multi-tenant)
+- Missions become personal project management too ("Mission: Move Apartments")
 
-SitRep is not just a task manager and it is not just a calendar. It is the unified operational picture of your time — personal, team, and eventually cross-product.
-
-**v1:** Named Tool inside GroundGame. Widget on the CRM dashboard. Full SitRep page at `/crm/sitrep/`. All five item types ship from day one. GroundGame Shifts surface as read-only calendar items fed from GroundGame's data model. Schema designed for cross-product expansion in v2.
-
-**v2:** Cross-product. LedgerLine bill due dates, payroll schedules, and report delivery feed into SitRep automatically. External meeting invites with accept/decline via link. iCal export so users can subscribe to their SitRep calendar in Google/Apple/Outlook (read-only). In-app notification center. Expanded calendar views.
-
-**v3:** Standalone product at `sitrep.guerrillasuite.com`. Full Google Calendar replacement. Shared circles, multiple calendars, personal/work/family views. Two-way sync with external calendar apps. Free to all users including those outside GuerrillaSuite.
-
----
-
-## 2. Naming & Branding
-
-**Product name:** SitRep
-**Suite:** GuerrillaSuite
-**Tagline (working):** *"Know what's happening. Know what's next."*
-
-A sitrep — situation report — is a military briefing on the current state of operations: what happened, what's in progress, what's coming. That's exactly what this product does.
-
-**Voice and copy guidelines for v1 UI:**
-- The full page is called **"SitRep"** — never "Tasks," "Calendar," or "Reminders"
-- Individual items are called by their type: **Task**, **Event**, **Meeting**, **Mission**, **Shift**
-- When referring to a specific Mission, capitalize it: "Mission: Q2 Canvass Push"
-- The dashboard widget is the **"SitRep widget"**
-- Overdue items are labeled **"Past Due"**
-- Empty states: "All clear. Nothing on the board." — not "No tasks found"
-- Completion of a task should feel like an ops win — confident, not corporate
+**Transition signal:** 3+ active suite products feeding in + inbound demand from non-GroundGame users + users requesting features that don't belong in a CRM.
 
 ---
 
-## 3. Item Type System
+## Naming & Branding
 
-SitRep has five item types. Four are owned by SitRep (`task`, `event`, `meeting`, `mission`). One — `shift` — is owned by GroundGame and surfaces in SitRep as a read-only calendar item. All four SitRep-native types share the unified `sitrep_items` table (type-discriminated), except Missions which get their own `sitrep_missions` table. Shifts are read from GroundGame's own table and rendered in SitRep without a row in `sitrep_items`.
-
-### 3.1 Task
-A completable to-do item. Atomic — one action, one owner, one due date. No start time. Moves through a status flow. Think: "Call John back by Friday," "Submit expense report," "Review canvass list."
-
-- Has a `status`: `open` → `in_progress` → `done` | `cancelled`
-- Has a `due_date` (date only — no time required)
-- Has a `priority`: `low` | `normal` | `high` | `urgent`
-- Completion is a deliberate action — the user marks it done
-- Can be assigned to one user or left as personal (creator only)
-- Can belong to a Mission
-- Supports per-item notifications
-- Supports recurring rules
-
-### 3.2 Event
-A time-boxed occurrence on the calendar. Has a start and end datetime. No required attendees. No completion state — it either happened or it didn't. Think: "Phone bank Tuesday 6–8pm," "Voter registration drive Saturday."
-
-- Has `start_at` and `end_at` datetimes
-- Supports all-day flag
-- No completion state — event is done when its end time passes
-- Can have optional attendees (linked users — for awareness, not required participation)
-- Can belong to a Mission
-- Public or private via the visibility model
-- Supports recurring rules
-- Supports per-item notifications
-
-### 3.3 Meeting
-A structured synchronous gathering with internal participants, an agenda, and post-meeting notes. Requires at least one attendee beyond the creator.
-
-- Has `start_at` and `end_at` datetimes
-- Has a required participant list (internal GuerrillaSuite users only in v1)
-- Meeting invites in v1 are **internal and indeclinable** — adding a user to a meeting places it on their calendar. No accept/decline flow in v1.
-- Has optional `agenda` (pre-meeting text)
-- Has optional `meeting_notes` (post-meeting notes, editable after the meeting ends)
-- Generates SitRep notifications for all participants automatically
-- Can belong to a Mission
-- Supports recurring rules
-
-**v2 addition:** External invite links. Non-GuerrillaSuite users receive an email invite with a link to accept/decline and get reminders. No GuerrillaSuite account required for external attendees.
-
-### 3.4 Mission
-A named container that groups Tasks, Events, and Meetings under a shared goal. A Mission is not something you check off in one action — it is something you work through. Think: "Mission: Q2 Canvass Push," "Mission: Fundraiser Dinner May 15," "Mission: Volunteer Recruitment Drive."
-
-- Capitalize when referring to a specific one: "Mission: [Name]"
-- Has a `status` stage flow: `planning` → `active` → `complete` → `archived`
-- Has a `due_date` (the Mission deadline — date only, not a time)
-- Has an owner (the user who created it — transferable)
-- Any user can create a Mission; visibility rules govern who can see and interact with it
-- Items (Tasks, Events, Meetings) belong to a Mission via `mission_id` on `sitrep_items`
-- Mission detail page shows all linked items, status, progress bar, and deadline
-- Progress is auto-calculated: percentage of linked Tasks in `done` status
-- Has optional `description` field
-- Supports per-item notifications (fires on Mission `due_date`)
-- **Database table:** `sitrep_missions` (not stored in `sitrep_items`)
-
-### 3.5 Shift (GroundGame-owned, SitRep-displayed)
-A scheduled field work block created and owned in GroundGame. SitRep reads Shift records from GroundGame's data model and renders them on the calendar as read-only items.
-
-- **Not a row in `sitrep_items`** — lives in GroundGame's own table (to be specced in GroundGame v2)
-- Appears in SitRep calendar with distinct visual treatment (separate color and `[GG]` badge)
-- Fields displayed in SitRep: shift title, start/end time, location, assigned role, team lead
-- Clicking a Shift in SitRep navigates to the GroundGame shift detail page — no SitRep detail page
-- Cannot be created, edited, or completed from within SitRep
-- Uses `source_product = 'groundgame'` and `source_record_type = 'shift'` — same pattern as cross-product items in v2
-- Users only see Shifts they are personally assigned to (pulled by user_id from GroundGame's roster)
+- Full page: **"SitRep"** — never "Tasks," "Calendar," or "Reminders"
+- Individual items: **Task**, **Event**, **Meeting** (capitalize, by type name)
+- Item containers: **Mission** (capitalize when specific: "Mission: Q2 Canvass")
+- Dashboard widget: **"SitRep widget"**
+- Overdue items: **"Past Due"**
+- Empty state: "All clear. Nothing on the board." — not "No tasks found"
 
 ---
 
-## 4. Visibility & Assignment Model
+## Auth & Tenant Patterns
 
-Assigned To and Viewable By are two fully separate concepts. They must be modeled and surfaced separately throughout the UI.
+All CRM-facing SitRep routes use the standard `getTenant()` + `getCrmUser()` pattern:
 
-### 4.1 Assigned To
-Who is responsible for this item.
-
-- **Task:** one assigned user, or unassigned (personal — creator only)
-- **Event:** optional attendees (awareness, not responsibility)
-- **Meeting:** required participant list — all participants get it on their calendar
-- **Mission:** one owner (creator by default, transferable)
-
-Assigning a Task to someone does not automatically change its visibility. A boss can assign a Task to a rep that no one else on the team knows about.
-
-### 4.2 Viewable By
-Who can see this item exists. Four levels, set per item at creation, editable by the creator.
-
-| Level | Who Sees It |
-|-------|-------------|
-| `private` | Creator only. Not visible to anyone else — including the assignee unless they are also the creator. For personal items only the user should know about. |
-| `assignee_only` | Creator + assigned user(s) only. Nobody else on the team knows this item exists. |
-| `team` | All users in the tenant. Shared to-do lists, public calendar events, team meetings. |
-| `custom` | A specific defined list of user UUIDs. A sub-team, a committee, a Mission group. |
-
-**Practical examples:**
-- Boss creates a Task, assigns to a rep, visibility = `assignee_only` → only boss and rep see it
-- Rep creates a personal Task, visibility = `private` → only the rep sees it, even a Director cannot
-- Campaign manager creates a canvass Event, visibility = `team` → whole org sees it on the calendar
-- Manager creates a Task for two specific reps with sensitive context, visibility = `custom` → only those two reps and the manager see it
-- A user blocks time for a personal appointment, visibility = `private` → shows on their own calendar, invisible to teammates
-
-### 4.3 Who Can Create and Assign
-
-- **Operatives:** Can create private Tasks and Events for themselves. Can create team-visible Events. Cannot assign Tasks to others.
-- **Support:** Can create all item types. Can assign Tasks to Operatives in their team. Can create Meetings with attendees. Can create Missions.
-- **Directors:** Can create all item types. Can assign Tasks to any user in the tenant. Full visibility into team items.
-- **All roles:** Can create Missions with any visibility setting. Visibility rules govern who can interact with the Mission.
-
-Maps to the existing role system (Operative / Support / Director) — no new roles needed in v1.
-
-### 4.4 Mission Visibility and Item Independence
-A Mission's visibility controls who can see the Mission itself. Items within a Mission (Tasks, Events, Meetings) maintain their own independent visibility settings — a private Task inside a team-visible Mission stays private. The Mission's visibility does not cascade to its items.
-
----
-
-## 5. Per-Item Notifications
-
-Every SitRep item supports a per-item notification override, separate from the user's global notification preferences. A user can set a reminder directly on an item at creation time without touching global settings.
-
-### 5.1 How It Works
-
-On the create/edit form, a **"Notify Me"** section appears for all item types:
-
-- Toggle: Notify me for this item (on/off — defaults to on if email is enabled globally)
-- If on: time-before picker — value (integer) + unit selector
-  - **Tasks** (due date): e.g. 1 day, 2 days, 1 week before due date
-  - **Events and Meetings** (start time): e.g. 15 minutes, 30 minutes, 1 hour, 1 day before start
-  - **Missions** (deadline): e.g. 1 week, 2 weeks before due date
-
-When a user is added as an assignee or meeting participant, they receive a notification at their global default time unless they open the item and set a custom per-item override.
-
-### 5.2 Notification Priority Order
-
-1. Per-item override (`sitrep_item_notifications`) — always takes precedence for that specific item
-2. Global user preference (`sitrep_notification_prefs`) — used when no per-item override exists
-3. System default — 24h for tasks, 30 min for events/meetings, when no preference row exists
-
----
-
-## 6. Data Model
-
-### Migration Note
-The existing `reminders` table must be migrated into `sitrep_items` before the old table is dropped. All existing records migrate with `item_type = 'task'` and `visibility = 'assignee_only'` as safe defaults. The existing `reminders.type` values (`callback`, `return_visit`, `opportunity_follow_up`, `opportunity_stale`, `custom`) should be preserved in the `description` field or as a tag so context isn't lost. Note: `reminders.created_by_user_id` is nullable — migration must handle NULL values (use a sentinel or leave created_by NULL on migrated rows and enforce NOT NULL only on new rows). This is a destructive migration requiring a rollback plan. Execute in a single transaction. Coordinate timing and migration script before the table is dropped. **This migration should be the first thing done before any new SitRep development begins.**
-
-### Core Tables
-
-**`sitrep_missions`**
-Missions are top-level containers and get their own table to avoid null-heavy rows in `sitrep_items`.
-
-```sql
-CREATE TABLE sitrep_missions (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id     TEXT NOT NULL,
-  title         TEXT NOT NULL,
-  description   TEXT,
-  status        TEXT NOT NULL DEFAULT 'planning',
-                -- 'planning' | 'active' | 'complete' | 'archived'
-  due_date      DATE,
-  visibility    TEXT NOT NULL DEFAULT 'team',
-                -- 'private' | 'assignee_only' | 'team' | 'custom'
-  created_by    UUID NOT NULL REFERENCES auth.users(id),
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW(),
-  completed_at  TIMESTAMPTZ,
-  archived_at   TIMESTAMPTZ
-);
-
-CREATE INDEX idx_sitrep_missions_tenant     ON sitrep_missions(tenant_id, status);
-CREATE INDEX idx_sitrep_missions_created_by ON sitrep_missions(created_by);
+```ts
+const tenant  = await getTenant();   // from host subdomain or NEXT_PUBLIC_TEST_TENANT_ID
+const crmUser = await getCrmUser();  // from Supabase session cookie
+const sb = createClient(URL, SERVICE_KEY, { global: { headers: { "X-Tenant-Id": tenant.id } } });
 ```
 
-**`sitrep_items`**
-All SitRep-native items (Task, Event, Meeting) in one unified table, type-discriminated. Missions and Shifts are NOT stored here.
+Public routes (`/book/*`, `/api/booking/*`, `/calendar-invite/*`, `/api/calendar-invite/*`) are exempted in `middleware.ts` — no auth, no tenant check.
 
-```sql
-CREATE TABLE sitrep_items (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id           TEXT NOT NULL,
-  item_type           TEXT NOT NULL,
-                      -- 'task' | 'event' | 'meeting'
-                      -- 'mission' and 'shift' are NOT item_types here
-  title               TEXT NOT NULL,
-  description         TEXT,
-
-  -- Task fields
-  status              TEXT,
-                      -- 'open' | 'in_progress' | 'done' | 'cancelled'
-                      -- NULL for events and meetings
-  priority            TEXT,
-                      -- 'low' | 'normal' | 'high' | 'urgent'
-                      -- Tasks only; NULL for events and meetings
-  due_date            DATE,
-                      -- Tasks: due date (date only, no time). NULL for events/meetings.
-
-  -- Event and Meeting fields
-  start_at            TIMESTAMPTZ,   -- NULL for tasks
-  end_at              TIMESTAMPTZ,   -- NULL for tasks
-  is_all_day          BOOLEAN DEFAULT false,
-
-  -- Meeting fields
-  agenda              TEXT,
-  meeting_notes       TEXT,          -- Editable after meeting ends
-
-  -- Mission relationship
-  mission_id        UUID REFERENCES sitrep_missions(id) ON DELETE SET NULL,
-
-  -- Visibility
-  visibility          TEXT NOT NULL DEFAULT 'assignee_only',
-                      -- 'private' | 'assignee_only' | 'team' | 'custom'
-                      -- Always independent of the parent Mission's visibility
-
-  -- Recurring
-  is_recurring        BOOLEAN DEFAULT false,
-  recurring_rule_id   UUID REFERENCES sitrep_recurring_rules(id) ON DELETE SET NULL,
-
-  -- Cross-product source tracking (used for v2 items pushed from LedgerLine, etc.)
-  source_product      TEXT,
-                      -- 'groundgame' | 'ledgerline' | 'supplyline' | 'manual'
-  source_record_type  TEXT,
-                      -- e.g. 'opportunity' | 'invoice' | 'payroll_run' | 'shift'
-  source_record_id    UUID,
-
-  -- Authorship
-  created_by          UUID NOT NULL REFERENCES auth.users(id),
-  created_at          TIMESTAMPTZ DEFAULT NOW(),
-  updated_at          TIMESTAMPTZ DEFAULT NOW(),
-  completed_at        TIMESTAMPTZ,
-  cancelled_at        TIMESTAMPTZ
-);
-
-CREATE INDEX idx_sitrep_items_tenant_type     ON sitrep_items(tenant_id, item_type);
-CREATE INDEX idx_sitrep_items_tenant_status   ON sitrep_items(tenant_id, status);
-CREATE INDEX idx_sitrep_items_due_date        ON sitrep_items(tenant_id, due_date);
-CREATE INDEX idx_sitrep_items_start_at        ON sitrep_items(tenant_id, start_at);
-CREATE INDEX idx_sitrep_items_mission       ON sitrep_items(mission_id);
-CREATE INDEX idx_sitrep_items_created_by      ON sitrep_items(created_by);
-```
-
-**`sitrep_assignments`**
-One row per assigned user per item. Handles task assignees (single) and meeting participants (multiple) through the same table.
-
-```sql
-CREATE TABLE sitrep_assignments (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  item_id     UUID NOT NULL REFERENCES sitrep_items(id) ON DELETE CASCADE,
-  user_id     UUID NOT NULL REFERENCES auth.users(id),
-  role        TEXT NOT NULL DEFAULT 'assignee',
-              -- 'assignee' (tasks) | 'attendee' (events) | 'participant' (meetings) | 'organizer' (meetings)
-  accepted    BOOLEAN,
-              -- v1: always NULL (meetings are indeclinable in v1)
-              -- v2: true/false/null for external invites
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(item_id, user_id)
-);
-
-CREATE INDEX idx_sitrep_assignments_user ON sitrep_assignments(user_id, item_id);
-CREATE INDEX idx_sitrep_assignments_item ON sitrep_assignments(item_id);
-```
-
-**`sitrep_links`**
-Polymorphic link table. One item or Mission can link to multiple records across the suite.
-
-```sql
-CREATE TABLE sitrep_links (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  item_id         UUID REFERENCES sitrep_items(id) ON DELETE CASCADE,
-  mission_id    UUID REFERENCES sitrep_missions(id) ON DELETE CASCADE,
-                  -- Exactly one of item_id or mission_id must be set.
-  record_type     TEXT NOT NULL,
-                  -- 'person' | 'company' | 'opportunity' | 'location' | 'user' |
-                  -- 'invoice' | 'payroll_run' | etc.
-  record_id       UUID NOT NULL,
-  display_label   TEXT,             -- Cached display name at link time for performance
-  created_at      TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT chk_sitrep_links_target CHECK (
-    (item_id IS NOT NULL AND mission_id IS NULL) OR
-    (item_id IS NULL AND mission_id IS NOT NULL)
-  )
-);
-
-CREATE INDEX idx_sitrep_links_item      ON sitrep_links(item_id);
-CREATE INDEX idx_sitrep_links_mission ON sitrep_links(mission_id);
-CREATE INDEX idx_sitrep_links_record    ON sitrep_links(record_type, record_id);
-```
-
-**`sitrep_visibility_grants`**
-Only populated when visibility = `custom`. Defines the explicit user list for that item or Mission.
-
-```sql
-CREATE TABLE sitrep_visibility_grants (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  item_id       UUID REFERENCES sitrep_items(id) ON DELETE CASCADE,
-  mission_id  UUID REFERENCES sitrep_missions(id) ON DELETE CASCADE,
-  user_id       UUID NOT NULL REFERENCES auth.users(id),
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT chk_sitrep_grants_target CHECK (
-    (item_id IS NOT NULL AND mission_id IS NULL) OR
-    (item_id IS NULL AND mission_id IS NOT NULL)
-  ),
-  UNIQUE(item_id, user_id),
-  UNIQUE(mission_id, user_id)
-);
-```
-
-**`sitrep_recurring_rules`**
-
-```sql
-CREATE TABLE sitrep_recurring_rules (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id       TEXT NOT NULL,
-  frequency       TEXT NOT NULL,
-                  -- 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'annual'
-  interval        INTEGER DEFAULT 1,
-                  -- Every N units (e.g. every 2 weeks: frequency='weekly', interval=2)
-  days_of_week    TEXT[],       -- For weekly: ['mon', 'wed', 'fri']
-  day_of_month    INTEGER,      -- For monthly: 15
-  end_date        DATE,         -- NULL = no end
-  max_occurrences INTEGER,      -- NULL = no limit
-  created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-**`sitrep_item_notifications`**
-Per-item notification overrides. One row per user per item or Mission where a custom reminder is set.
-
-```sql
-CREATE TABLE sitrep_item_notifications (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  item_id         UUID REFERENCES sitrep_items(id) ON DELETE CASCADE,
-  mission_id    UUID REFERENCES sitrep_missions(id) ON DELETE CASCADE,
-                  -- Exactly one of item_id or mission_id must be set.
-                  -- Mission notifications fire on mission due_date.
-  user_id         UUID NOT NULL REFERENCES auth.users(id),
-  notify_enabled  BOOLEAN NOT NULL DEFAULT true,
-  notify_value    INTEGER NOT NULL,     -- e.g. 30, 2, 1
-  notify_unit     TEXT NOT NULL,        -- 'minutes' | 'hours' | 'days' | 'weeks'
-  sent_at         TIMESTAMPTZ,          -- Set when notification fires. Prevents duplicate sends.
-  created_at      TIMESTAMPTZ DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT chk_sitrep_notif_target CHECK (
-    (item_id IS NOT NULL AND mission_id IS NULL) OR
-    (item_id IS NULL AND mission_id IS NOT NULL)
-  ),
-  UNIQUE(item_id, user_id),
-  UNIQUE(mission_id, user_id)
-);
-
--- Index for the cron job that polls pending notifications
-CREATE INDEX idx_sitrep_notif_pending
-  ON sitrep_item_notifications(notify_enabled, sent_at)
-  WHERE sent_at IS NULL;
-```
-
-**`sitrep_notification_prefs`**
-Global user preferences. Applied when no per-item override exists.
-
-```sql
-CREATE TABLE sitrep_notification_prefs (
-  user_id                 UUID NOT NULL REFERENCES auth.users(id),
-  tenant_id               TEXT NOT NULL,
-  task_due_notify_value   INTEGER DEFAULT 24,
-  task_due_notify_unit    TEXT DEFAULT 'hours',
-  event_notify_value      INTEGER DEFAULT 30,
-  event_notify_unit       TEXT DEFAULT 'minutes',
-  overdue_notify          BOOLEAN DEFAULT true,
-  assignment_notify       BOOLEAN DEFAULT true,     -- Notify when a Task is assigned to you
-  meeting_added_notify    BOOLEAN DEFAULT true,     -- Notify when added to a Meeting
-  email_enabled           BOOLEAN DEFAULT true,     -- v1 only; in-app toggle added in v2
-  PRIMARY KEY (user_id, tenant_id)
-);
-```
+User-scoped calendar APIs (`/api/user/*`) use service role without tenant header — `user_calendar_types` is scoped by `owner_user_id`, not `tenant_id`.
 
 ---
 
-## 7. URL & Route Structure
-
-SitRep v1 lives inside the GroundGame `/crm/` namespace.
-
-```
-/crm/sitrep/                        # Main SitRep page — list view, "My Items" default
-/crm/sitrep/calendar/               # Calendar view — week/month toggle
-/crm/sitrep/missions/             # Missions list
-/crm/sitrep/missions/[id]/        # Mission detail — items, progress, status
-/crm/sitrep/[id]/                   # Individual item detail / edit
-/crm/settings/sitrep/               # Global notification preferences (user-level)
-```
-
-The SitRep widget lives on `/crm/` (the main CRM dashboard page).
-
----
-
-## 8. UI Surfaces — v1
-
-### 8.1 SitRep Widget (Dashboard)
-
-Lives on both `AdminDashboard` and `FieldDashboard` in `app/crm/page.tsx`. Replaces the existing Reminders widget entirely — same `Promise.all` parallel fetch pattern, same position in the layout. The current `/crm/reminders` page is folded into SitRep when this ships and the old route is removed.
-
-**Widget label:** `📋 SitRep`
-
-**Data query:** Items where the current user is creator or assignee, visibility allows access, status is `open` or `in_progress`, ordered by due_date / start_at ASC. Limit 5. GroundGame Shifts pulled separately from GG's shift table by user_id and merged into the sorted list.
-
-**Widget card structure:**
-```
-📋 SitRep                                    Full SitRep →
-──────────────────────────────────────────────────────────
-⚠  Call John Martinez back        PAST DUE · Fri Apr 4
-▶  Submit weekly canvass report    Today
-○  Staff meeting                   Tue Apr 8 · 10am
-○  Review Q2 territory map         Thu Apr 10
-📅 Saturday Canvass Shift    [GG]  Sat Apr 12 · 8am
-```
-
-- `⚠` past due (red) | `▶` in progress (amber) | `○` open (muted) | `📅` event/meeting/shift
-- Shifts show a `[GG]` badge; clicking navigates to the GroundGame shift detail page
-- Link in top right: **"Full SitRep →"** → `/crm/sitrep/`
-- Empty state: "All clear. Nothing on the board."
-
-**Widget placement:**
-- AdminDashboard: Replaces the current Reminders widget; before Lists
-- FieldDashboard: Replaces the current Reminders widget; before My Lists
-
-### 8.2 SitRep Main Page — `/crm/sitrep/`
-
-**Default view:** List, "My Items" filter active.
-
-**Filter bar:**
-- View: My Items | Team Items | All (Directors only)
-- Type: All | Tasks | Events | Meetings | Missions
-- Status: All | Open | In Progress | Done | Past Due
-- Date range picker
-- Assigned to (Support and Directors only): user picker
-
-**List item row:**
-- Status icon / checkbox (Tasks: checkable inline to mark done)
-- Type badge: small pill (Task / Event / Meeting / Mission / Shift)
-- Title
-- Mission name pill (if item belongs to a Mission — muted)
-- Assignee avatar(s)
-- Due date or start time
-- Priority badge (Tasks only — shown only if `high` or `urgent`)
-- Paperclip icon if linked records exist
-- Bell icon if a per-item notification is set
-
-**Quick-add bar** at top of list: inline input for fast Task creation — title + due date only. Full modal required for Events, Meetings, and Missions.
-
-**Create item modal — fields by type:**
-
-*All types:*
-- Title (required)
-- Description
-- Linked records (multi-select: persons, companies, opportunities, locations)
-- Mission (optional — attach to an existing Mission)
-- Visibility (Private / Assignee Only / Team / Custom)
-- Notify me: toggle → if on, value + unit picker (minutes / hours / days / weeks before)
-
-*Task-specific:*
-- Due date
-- Priority (Low / Normal / High / Urgent)
-- Assigned to (user picker — Support and Directors only)
-- Status (defaults to Open)
-
-*Event-specific:*
-- Start date + time
-- End date + time
-- All-day toggle
-- Optional attendees (user picker)
-
-*Meeting-specific:*
-- Start date + time
-- End date + time
-- Participants (user picker — required, at least one beyond creator)
-- Agenda (text area)
-
-*Mission-specific:*
-- Due date
-- Description
-- Status (defaults to Planning)
-
-### 8.3 Mission Detail Page — `/crm/sitrep/missions/[id]/`
-
-**Header:** Mission title, status badge (Planning / Active / Complete / Archived), due date, progress bar (% of linked Tasks in `done`), owner name.
-
-**Stage flow controls:** Click-to-advance — Planning → Active → Complete. Archive is a separate secondary action.
-
-**Items list:** All Tasks, Events, and Meetings linked to this Mission. Same row format as the main list. Quick-add bar at top pre-populates `mission_id` for new items created here.
-
-**Linked records panel:** Records linked at the Mission level (the campaign, a location, a company).
-
-### 8.4 Calendar View — `/crm/sitrep/calendar/`
-
-**Week / Month toggle.** Default: week view.
-
-**What appears on the calendar:**
-- Events: time block on the grid
-- Meetings: time block, visually distinct from Events
-- Tasks: pill on their due date column (no time block)
-- Shifts: time block sourced from GroundGame, distinct visual treatment
-
-**Color coding (confirm before build):**
-- Tasks: slate/neutral
-- Events: blue
-- Meetings: purple
-- Shifts: green (GroundGame brand — confirm)
-- Past Due items: red border regardless of type
-
-**Clicking a calendar item:**
-- SitRep-native (Task, Event, Meeting): opens item detail slide-over or modal
-- Missions do not appear directly on the calendar — their deadline appears as a Task-style pill if the Mission has a due date
-- Shifts: navigates to GroundGame shift detail page
-
-**Visibility:** Respects all visibility rules. Private items only show to their creator.
-
----
-
-## 9. Notification System — v1
-
-v1 notifications are email-based only. In-app notification center is v2.
-
-### Email Notification Triggers
-
-| Trigger | Default Timing | Configurable |
-|---------|---------------|-------------|
-| Task due soon | Global pref (default 24h) or per-item override | Yes |
-| Task past due | Morning of overdue day | Yes — can disable |
-| Task assigned to you | Immediate | Yes — can disable |
-| Meeting added to your calendar | Immediate | Yes — can disable |
-| Meeting starting soon | Global pref (default 30 min) or per-item override | Yes |
-| Event starting soon | Global pref (default 30 min) or per-item override | Yes |
-| Mission deadline approaching | Per-item override only in v1 | Yes |
-
-Preferences configurable per user at `/crm/settings/sitrep/`.
-
-**Sending mechanism:** A Railway worker (cron-style Next.js API route or standalone script deployed alongside the app) queries `sitrep_item_notifications` where `notify_enabled = true` and `sent_at IS NULL` and fires emails for any items whose calculated fire time has passed. Sets `sent_at` on send to prevent duplicate delivery. **Email provider: Resend** — already configured in `lib/email/resend.ts`. No Supabase Edge Functions exist in this codebase; use Railway.
-
----
-
-## 10. Feature Gates — v1
-
-SitRep is available on all GroundGame tiers (Scout Kit and above). Not Pro-gated in v1. Tier gating for v2/v3 launches TBD.
-
-Feature flags to add to `@/lib/features.ts` (`ALL_FEATURE_KEYS`, `PLAN_FEATURES`, and `FEATURE_META`):
-
-| Flag | Description | v1 Tier |
-|------|-------------|---------|
-| `sitrep_core` | Tasks, widget, basic list view | All |
-| `sitrep_calendar` | Calendar view (week/month) | All |
-| `sitrep_team` | Assignable tasks, meetings with participants, team calendar | All |
-| `sitrep_missions` | Missions container and Mission detail page | All |
-
-Add to `PLAN_FEATURES` and `FEATURE_META` in `@/lib/features`.
-
----
-
-## 11. v2 Roadmap — Cross-Product, External Invites & iCal
-
-v2 is triggered when LedgerLine ships and the suite has two products feeding into the same user's time.
-
-### Cross-Product Item Ingestion
-LedgerLine and SupplyLine push items into `sitrep_items` via DB triggers — same pattern as the GroundGame → LedgerLine sale-to-income handoff. The `source_product`, `source_record_type`, and `source_record_id` columns are already in the v1 schema for this reason. Cross-product items are read-only in SitRep — dismissable/snoozable, but edits happen in the source product.
-
-Examples:
-- LedgerLine bill due → SitRep Task (`source_product = 'ledgerline'`, `source_record_type = 'recurring_expense'`)
-- LedgerLine payroll run → SitRep Event
-- LedgerLine scheduled report delivery → SitRep Task
-- SupplyLine reorder alert → SitRep Task
-
-### External Meeting Invites (v2)
-Non-GuerrillaSuite users can be invited to Meetings via an emailed link. The link allows them to accept or decline and, on acceptance, downloads an `.ics` file for their calendar app. No GuerrillaSuite account required. The `sitrep_assignments.accepted` column is already in the v1 schema — the accept/decline UI ships in v2.
-
-### iCal Export (v2 — confirmed)
-SitRep publishes a per-user iCal URL (`.ics` feed) that any calendar app can subscribe to. All of a user's visible SitRep items appear in Google Calendar, Apple Calendar, and Outlook as read-only. Changes in the external app do not sync back. Two-way sync is v3.
-
-### In-App Notification Center (v2)
-Notification bell in the CRM header. All SitRep triggers surface here in addition to email. Per-trigger configuration: email only, in-app only, both, or off.
-
-### Expanded Calendar Views (v2)
-- Day view added
-- Color-coded by product source (GroundGame vs. LedgerLine vs. manual)
-- "My Calendar" vs. "Team Calendar" top-level toggle
-
----
-
-## 12. v3 Vision — Standalone Product
-
-v3 is triggered when the suite has enough interconnected products that a unified time-based view is genuinely valuable as a daily destination — and when demand for SitRep exists from users who do not use GroundGame.
-
-**Standalone URL:** `sitrep.guerrillasuite.com`
-**Pricing:** Free to all users, including those with no other GuerrillaSuite products. Modeled after Google Calendar. Free standalone SitRep grows the GuerrillaSuite funnel.
-
-### Core v3 Concepts
-
-**Circles** — Shared calendar groups replacing tenant-scoped visibility. A user belongs to multiple circles: work team, family, campaign. Each circle has its own color. A user without a GuerrillaSuite tenant can still belong to circles.
-
-**Multiple calendars per user** — Work, Personal, Family, Campaign — each with its own color, togglable as layers in one unified view.
-
-**Private calendar** — Fully invisible to anyone else, including teammates and managers.
-
-**Full suite integration** — Every GuerrillaSuite product plugs in as its own togglable calendar layer.
-
-**Two-way external sync** — Full OAuth integration with Google Calendar and Microsoft Outlook. The right place to build this is as a standalone product with dedicated sync infrastructure — not as a feature inside a CRM.
-
-**Missions in v3** — When SitRep is standalone, Missions become the personal project management layer too. "Mission: Move to New Apartment." "Mission: Launch Side Business." The tactical framing works just as well for personal use as it does for field campaigns.
-
-### The Transition Signal
-SitRep becomes a standalone product when:
-1. At least three active suite products are feeding into it
-2. Users are requesting features that don't belong inside a CRM (personal calendars, family circles, two-way external sync)
-3. Inbound demand exists from non-GroundGame users who want SitRep independently
-
-Track these signals actively starting in v2.
-
----
-
-## 13. Open Questions
-
-1. **Notification sending mechanism** — ✅ Resolved: Railway worker using **Resend** (`lib/email/resend.ts`). No Supabase Edge Functions in this codebase. Implement as a Next.js API route hit by a Railway cron, or a standalone worker script.
-
-2. **`reminders` table migration** — Existing records migrate to `sitrep_items` with `item_type = 'task'` and `visibility = 'assignee_only'`. Needs a rollback plan. Coordinate with Claude Code before the old table is dropped. This is the first thing done before any SitRep development begins. Note: `reminders.created_by_user_id` is nullable — handle NULL in migration script.
-
-3. **Meeting accept/decline UI in v1** — ✅ Resolved: Hide entirely until v2. Column exists in schema, UI control does not ship in v1.
-
-4. **Shift visual treatment in calendar** — Confirm color and icon for GroundGame-sourced Shift items before calendar build. Recommend a distinct color with a `[GG]` badge to visually separate from native SitRep items.
-
-5. **GroundGame Shift table spec** — The Shift data model lives in GroundGame, not SitRep. It needs to be specced as part of GroundGame v2. Minimum fields SitRep needs from the Shift record: shift title, start_at, end_at, location, assigned user IDs, team lead name, link back to the GroundGame shift detail URL.
-
-6. **SitRep tier gating for v2/v3** — v1 is available on all GroundGame tiers. Decision noted that v2 or v3 launches may be gated by subscription tier. Flag for pricing discussion before v2 spec begins.
-
-7. **Mission deadline on calendar** — Missions have a due date but no start time. The recommendation is to render a Mission's deadline as a pill on the calendar (like a Task) rather than a time block. Confirm this is the desired behavior before calendar build.
+## Feature Flags
+
+| Flag | Description | Status |
+|------|-------------|--------|
+| `sitrep_core` | All core SitRep functionality | Required for all views |
+| `sitrep_calendar` | Calendar view | On all tiers |
+| `sitrep_team` | Assignable tasks, meetings, team calendar | On all tiers |
+| `sitrep_missions` | Mission-type items + hierarchy | On all tiers |
+
+Booking, multi-calendar, and timeline are ungated — available if `sitrep_core` is on.
