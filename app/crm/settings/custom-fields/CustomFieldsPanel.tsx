@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import FieldDefinitionModal from "./FieldDefinitionModal";
+import { STANDARD_FIELDS, type FieldOverride, type RecordType } from "@/lib/crm/standard-field-overrides";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,12 +93,15 @@ const S = {
 export default function CustomFieldsPanel({
   initialDefinitions,
   contactTypes,
+  initialFieldOverrides,
 }: {
   initialDefinitions: FieldDefinition[];
   contactTypes: ContactType[];
+  initialFieldOverrides: FieldOverride[];
 }) {
   const [activeTab, setActiveTab] = useState<Tab>("people");
   const [defs, setDefs] = useState<FieldDefinition[]>(initialDefinitions);
+  const [fieldOverrides, setFieldOverrides] = useState<FieldOverride[]>(initialFieldOverrides);
   const [showArchived, setShowArchived] = useState(false);
   const [modal, setModal] = useState<{ open: boolean; editing?: FieldDefinition; defaults?: Partial<FieldDefinition> }>({ open: false });
   const [, start] = useTransition();
@@ -135,6 +139,31 @@ export default function CustomFieldsPanel({
     if (res.ok) {
       setDefs(prev => prev.map(d => d.id === def.id ? { ...d, label: newLabel } : d));
     }
+  }
+
+  async function handleStandardFieldSave(recordType: RecordType, fieldKey: string, customLabel: string) {
+    const res = await fetch("/api/crm/standard-field-overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ record_type: recordType, field_key: fieldKey, custom_label: customLabel }),
+    });
+    if (res.ok) {
+      const saved = await res.json() as FieldOverride;
+      setFieldOverrides(prev => {
+        const idx = prev.findIndex(o => o.record_type === recordType && o.field_key === fieldKey);
+        if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next; }
+        return [...prev, saved];
+      });
+    }
+  }
+
+  async function handleStandardFieldReset(recordType: RecordType, fieldKey: string) {
+    await fetch("/api/crm/standard-field-overrides", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ record_type: recordType, field_key: fieldKey }),
+    });
+    setFieldOverrides(prev => prev.filter(o => !(o.record_type === recordType && o.field_key === fieldKey)));
   }
 
   async function handleArchive(def: FieldDefinition) {
@@ -275,6 +304,14 @@ export default function CustomFieldsPanel({
       {/* Tab content */}
       {activeTab === "people" ? renderPeopleTab() : renderFlatTab()}
 
+      {/* Standard field label overrides */}
+      <StandardFieldLabels
+        recordType={activeTab}
+        overrides={fieldOverrides.filter(o => o.record_type === activeTab)}
+        onSave={handleStandardFieldSave}
+        onReset={handleStandardFieldReset}
+      />
+
       {/* Modal */}
       {modal.open && (
         <FieldDefinitionModal
@@ -284,6 +321,138 @@ export default function CustomFieldsPanel({
           onSave={handleSave}
           onClose={() => setModal({ open: false })}
         />
+      )}
+    </div>
+  );
+}
+
+// ── StandardFieldLabels ───────────────────────────────────────────────────────
+
+function StandardFieldLabels({
+  recordType,
+  overrides,
+  onSave,
+  onReset,
+}: {
+  recordType: RecordType;
+  overrides: FieldOverride[];
+  onSave: (recordType: RecordType, fieldKey: string, customLabel: string) => Promise<void>;
+  onReset: (recordType: RecordType, fieldKey: string) => Promise<void>;
+}) {
+  const fields = STANDARD_FIELDS[recordType] ?? [];
+  if (fields.length === 0) return null;
+
+  const overrideMap = new Map(overrides.map(o => [o.field_key, o.custom_label]));
+
+  return (
+    <div style={{ ...S.section, marginTop: 8 }}>
+      <div style={S.sectionHeader}>
+        <span style={S.sectionLabel}>Standard Field Labels</span>
+        <span style={{ fontSize: 11, opacity: 0.4 }}>Click a label to rename it</span>
+      </div>
+      <p style={{ fontSize: 12, opacity: 0.4, margin: "0 0 10px" }}>
+        Rename built-in fields to match your org's terminology.
+      </p>
+      {fields.map(f => (
+        <StandardFieldRow
+          key={f.key}
+          recordType={recordType}
+          field={f}
+          customLabel={overrideMap.get(f.key) ?? null}
+          onSave={onSave}
+          onReset={onReset}
+        />
+      ))}
+    </div>
+  );
+}
+
+function StandardFieldRow({
+  recordType,
+  field,
+  customLabel,
+  onSave,
+  onReset,
+}: {
+  recordType: RecordType;
+  field: { key: string; defaultLabel: string };
+  customLabel: string | null;
+  onSave: (recordType: RecordType, fieldKey: string, customLabel: string) => Promise<void>;
+  onReset: (recordType: RecordType, fieldKey: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(customLabel ?? field.defaultLabel);
+  const [saving, setSaving] = useState(false);
+
+  async function commit() {
+    const trimmed = value.trim();
+    if (!trimmed) { cancel(); return; }
+    if (trimmed === field.defaultLabel && !customLabel) { setEditing(false); return; }
+    if (trimmed === customLabel) { setEditing(false); return; }
+
+    setSaving(true);
+    if (trimmed === field.defaultLabel) {
+      await onReset(recordType, field.key);
+    } else {
+      await onSave(recordType, field.key, trimmed);
+    }
+    setSaving(false);
+    setEditing(false);
+  }
+
+  function cancel() {
+    setValue(customLabel ?? field.defaultLabel);
+    setEditing(false);
+  }
+
+  const displayLabel = customLabel ?? field.defaultLabel;
+  const isOverridden = customLabel !== null;
+
+  return (
+    <div style={{ ...S.fieldRow, alignItems: "center" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {editing ? (
+          <input
+            autoFocus
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => {
+              if (e.key === "Enter") { e.preventDefault(); commit(); }
+              if (e.key === "Escape") cancel();
+            }}
+            disabled={saving}
+            style={{
+              fontSize: 13, fontWeight: 600,
+              background: "rgba(255,255,255,.08)",
+              border: "1px solid rgba(255,255,255,.2)",
+              borderRadius: 5, padding: "2px 6px",
+              color: "inherit", width: "100%", boxSizing: "border-box" as const,
+            }}
+          />
+        ) : (
+          <span
+            style={{ fontSize: 13, fontWeight: 600, cursor: "text" }}
+            title="Click to rename"
+            onClick={() => { setValue(customLabel ?? field.defaultLabel); setEditing(true); }}
+          >
+            {displayLabel}
+          </span>
+        )}
+        {isOverridden && !editing && (
+          <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.45 }}>
+            (default: {field.defaultLabel})
+          </span>
+        )}
+      </div>
+      <span style={{ ...S.badge, fontFamily: "monospace", fontSize: 10 }}>{field.key}</span>
+      {isOverridden && !editing && (
+        <button
+          style={{ ...S.btn("ghost"), fontSize: 11, opacity: 0.5 }}
+          onClick={() => { onReset(recordType, field.key); setValue(field.defaultLabel); }}
+        >
+          Reset
+        </button>
       )}
     </div>
   );
