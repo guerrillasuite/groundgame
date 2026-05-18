@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getFamilyByKey } from "@/lib/sitrep-colors";
 import { supabase } from "@/lib/supabase/client";
+import { type TextSize, loadTextSize, saveTextSize } from "@/lib/text-size";
 
 const S = {
   bg:     "rgb(10 13 20)",
@@ -74,6 +75,14 @@ export default function SettingsPage() {
       .catch(() => {})
       .finally(() => setPendingLoading(false));
   }, []);
+
+  const [textSize, setTextSize] = useState<TextSize>("normal");
+  useEffect(() => { setTextSize(loadTextSize()); }, []);
+
+  function handleTextSize(size: TextSize) {
+    setTextSize(size);
+    saveTextSize(size);
+  }
 
   const [newSquadName, setNewSquadName] = useState("");
   const [creatingSquad,setCreatingSquad]= useState(false);
@@ -250,6 +259,50 @@ export default function SettingsPage() {
                 color: "#fca5a5", cursor: "pointer", opacity: signingOut ? 0.5 : 1,
               }}
             >{signingOut ? "…" : "Sign out"}</button>
+          </div>
+        </div>
+
+        {/* Appearance card */}
+        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 20 }}>
+          <div style={{ marginBottom: 14 }}>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: S.text }}>Appearance</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: S.dim, lineHeight: 1.5 }}>
+              Adjust text size for easier reading.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {(["normal", "large", "xl"] as TextSize[]).map((size) => {
+              const active = textSize === size;
+              const label = size === "normal" ? "Default" : size === "large" ? "Large" : "Extra Large";
+              return (
+                <button
+                  key={size}
+                  onClick={() => handleTextSize(size)}
+                  style={{
+                    padding: "7px 16px",
+                    borderRadius: 20,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: active
+                      ? "1px solid color-mix(in srgb, var(--gg-primary,#2563eb) 50%, transparent)"
+                      : `1px solid ${S.border}`,
+                    background: active
+                      ? "color-mix(in srgb, var(--gg-primary,#2563eb) 18%, transparent)"
+                      : "rgba(255,255,255,.03)",
+                    color: active
+                      ? "color-mix(in srgb, var(--gg-primary,#2563eb) 90%, #fff)"
+                      : S.dim,
+                    boxShadow: active
+                      ? "0 0 12px color-mix(in srgb, var(--gg-primary,#2563eb) 22%, transparent)"
+                      : "0 1px 4px rgba(0,0,0,.18)",
+                    transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
 

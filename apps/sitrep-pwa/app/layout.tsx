@@ -27,6 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body style={{ background: "rgb(10 13 20)", color: "rgb(236 240 245)" }}>
+        {/* Apply saved text-size before first paint to prevent flash */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var s=localStorage.getItem('sitrep_text_size');if(s&&s!=='normal')document.documentElement.setAttribute('data-text-size',s);})();` }} />
         <SwRegister />
         {children}
       </body>

@@ -19,7 +19,7 @@ const S = {
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "9px 12px", borderRadius: 9,
   background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)",
-  color: S.text, fontSize: 13, outline: "none",
+  color: S.text, fontSize: "var(--fs-base)", outline: "none",
   transition: "border-color .15s, box-shadow .15s",
 };
 function focusIn(e: React.FocusEvent<HTMLElement>) {
@@ -90,7 +90,7 @@ function Section({ title, children, defaultOpen = true }: { title: string; child
           borderBottom: open ? `1px solid ${S.border}` : "none",
         }}
       >
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: S.dim }}>
+        <span style={{ fontSize: "var(--fs-sm)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: S.dim }}>
           {title}
         </span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="2" strokeLinecap="round"
@@ -255,14 +255,14 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={S.dim} strokeWidth="1.5" strokeLinecap="round">
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
-        <span style={{ color: S.dimBright, fontSize: 15, fontWeight: 600 }}>Could not load this item</span>
-        <span style={{ color: S.dim, fontSize: 13 }}>{error ?? "It may have been deleted or you may no longer have access."}</span>
+        <span style={{ color: S.dimBright, fontSize: "var(--fs-md)", fontWeight: 600 }}>Could not load this item</span>
+        <span style={{ color: S.dim, fontSize: "var(--fs-base)" }}>{error ?? "It may have been deleted or you may no longer have access."}</span>
         <button
           onClick={() => router.back()}
           style={{
             marginTop: 8, padding: "10px 24px", borderRadius: 10,
             background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.12)",
-            color: S.text, fontSize: 14, cursor: "pointer",
+            color: S.text, fontSize: "var(--fs-md)", cursor: "pointer",
           }}
         >
           Go Back
@@ -284,7 +284,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
           onClick={() => router.back()}
           style={{
             background: "none", border: "none", color: S.dimBright,
-            fontSize: 14, fontWeight: 500, cursor: "pointer",
+            fontSize: "var(--fs-md)", fontWeight: 500, cursor: "pointer",
             display: "flex", alignItems: "center", gap: 4, padding: 0,
           }}
         >
@@ -295,13 +295,13 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{
-            fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+            fontSize: "var(--fs-sm)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
             color: accent,
           }}>
             {t?.name ?? item.item_type}
           </span>
         </div>
-        {saving && <span style={{ fontSize: 11, color: S.dim }}>Saving…</span>}
+        {saving && <span style={{ fontSize: "var(--fs-sm)", color: S.dim }}>Saving…</span>}
       </div>
 
       {/* Scrollable content */}
@@ -328,7 +328,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
           />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{
-              fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+              fontSize: "var(--fs-sm)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
               padding: "4px 10px", borderRadius: 20,
               background: item.status === "done" ? "rgba(34,197,94,.15)" : `${accent}22`,
               color: item.status === "done" ? "#86efac" : accent,
@@ -338,7 +338,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
             </span>
             {isOverdue && (
               <span style={{
-                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20,
+                fontSize: "var(--fs-sm)", fontWeight: 700, padding: "4px 10px", borderRadius: 20,
                 background: "rgba(239,68,68,.15)", color: "#fca5a5",
                 border: "1px solid rgba(239,68,68,.3)",
               }}>
@@ -350,7 +350,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
 
         {/* Unified fields: standard + custom, sorted by sort_order */}
         {(() => {
-          const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" };
+          const labelStyle: React.CSSProperties = { fontSize: "var(--fs-sm)", fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" };
           // Standard field entries (key → render fn), default sort_order
           const STD_DEFAULT_ORDER: Record<string, number> = { due_date: 10, priority: 20, location_id: 30, description: 40, meeting_url: 50, visibility: 60 };
           type FieldEntry = { key: string; sortOrder: number; node: React.ReactNode };
@@ -430,7 +430,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
               {customFieldDefs.map((def) => {
                 const val = cfValues[def.field_key] ?? "";
                 const labelEl = (
-                  <label style={{ fontSize: 11, fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  <label style={{ fontSize: "var(--fs-sm)", fontWeight: 700, color: S.dim, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     {def.label}
                   </label>
                 );
@@ -557,7 +557,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
                       cursor: "pointer", textAlign: "left",
                     }}
                   >
-                    <span style={{ flex: 1, fontSize: 13, color: child.status === "done" ? S.dim : S.text,
+                    <span style={{ flex: 1, fontSize: "var(--fs-base)", color: child.status === "done" ? S.dim : S.text,
                       textDecoration: child.status === "done" ? "line-through" : "none" }}>
                       {child.title}
                     </span>
@@ -579,10 +579,10 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
                 padding: "10px 12px", borderRadius: 8,
                 background: "rgba(255,255,255,.03)", border: `1px solid ${S.border}`,
               }}>
-                <div style={{ fontSize: 12, color: S.dim, marginBottom: 4 }}>
+                <div style={{ fontSize: "var(--fs-sm)", color: S.dim, marginBottom: 4 }}>
                   {new Date(c.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                 </div>
-                <div style={{ fontSize: 14, color: S.text, lineHeight: 1.5 }}>{c.body}</div>
+                <div style={{ fontSize: "var(--fs-md)", color: S.text, lineHeight: 1.5 }}>{c.body}</div>
               </div>
             ))}
             <div style={{ display: "flex", gap: 8 }}>
@@ -602,7 +602,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
                 style={{
                   padding: "9px 14px", borderRadius: 9, border: "none",
                   background: "var(--gg-primary,#2563eb)", color: "#fff",
-                  fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0,
+                  fontSize: "var(--fs-base)", fontWeight: 600, cursor: "pointer", flexShrink: 0,
                   opacity: posting || !comment.trim() ? 0.5 : 1,
                 }}
               >
@@ -621,7 +621,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
               style={{
                 flex: 1, padding: "12px 0", borderRadius: 10,
                 border: "1px solid rgba(34,197,94,.3)", background: "rgba(34,197,94,.1)",
-                color: "#86efac", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                color: "#86efac", fontSize: "var(--fs-md)", fontWeight: 600, cursor: "pointer",
               }}
             >
               ✓ Mark Complete
@@ -633,7 +633,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
               flex: 1, padding: "12px 0", borderRadius: 10,
               border: delConfirm ? "1px solid rgba(239,68,68,.5)" : "1px solid rgba(239,68,68,.2)",
               background: delConfirm ? "rgba(239,68,68,.2)" : "rgba(239,68,68,.08)",
-              color: "#fca5a5", fontSize: 14, fontWeight: 600, cursor: "pointer",
+              color: "#fca5a5", fontSize: "var(--fs-md)", fontWeight: 600, cursor: "pointer",
             }}
           >
             {delConfirm ? "Confirm Delete" : "Delete"}
@@ -645,7 +645,7 @@ export default function ItemDetailMobile({ item: rawItem, error, children, types
             style={{
               width: "100%", padding: "10px 0", borderRadius: 10,
               border: `1px solid ${S.border}`, background: "rgba(255,255,255,.04)",
-              color: S.dim, fontSize: 13, fontWeight: 600, cursor: "pointer",
+              color: S.dim, fontSize: "var(--fs-base)", fontWeight: 600, cursor: "pointer",
             }}
           >
             Cancel

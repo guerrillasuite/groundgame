@@ -52,7 +52,7 @@ const inputStyle: React.CSSProperties = {
   background: "rgba(255,255,255,.05)",
   border: "1px solid rgba(255,255,255,.1)",
   color: S.text,
-  fontSize: 13,
+  fontSize: "var(--fs-base)",
   outline: "none",
   transition: "border-color .15s, box-shadow .15s",
 };
@@ -443,7 +443,7 @@ export default function ItemBottomSheet({
                   onClick={() => setCalChoice(opt.key as CalChoice)}
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
-                    flexShrink: 0, padding: "5px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    flexShrink: 0, padding: "5px 10px", borderRadius: 20, fontSize: "var(--fs-sm)", fontWeight: 600,
                     cursor: "pointer",
                     border: active ? `1px solid ${opt.color}55` : "1px solid rgba(255,255,255,.08)",
                     background: active ? `${opt.color}22` : "rgba(255,255,255,.03)",
@@ -471,7 +471,7 @@ export default function ItemBottomSheet({
                   onClick={() => setSelectedCalId(ct.id)}
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
-                    flexShrink: 0, padding: "5px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    flexShrink: 0, padding: "5px 10px", borderRadius: 20, fontSize: "var(--fs-sm)", fontWeight: 600,
                     cursor: "pointer",
                     border: active ? `1px solid ${dot}55` : "1px solid rgba(255,255,255,.08)",
                     background: active ? `${dot}22` : "rgba(255,255,255,.03)",
@@ -499,7 +499,7 @@ export default function ItemBottomSheet({
                   width: 32, height: 32, borderRadius: 8,
                   border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.05)",
                   color: S.dim, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--fs-md)",
                 }}
               >
                 ↗
@@ -511,7 +511,7 @@ export default function ItemBottomSheet({
                 width: 32, height: 32, borderRadius: 8,
                 border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.05)",
                 color: S.dim, cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--fs-xl)",
               }}
             >
               ×
@@ -530,7 +530,7 @@ export default function ItemBottomSheet({
             placeholder="What needs to happen?"
             style={{
               width: "100%", background: "none", border: "none", outline: "none",
-              color: S.text, fontSize: 18, fontWeight: 600, padding: "4px 0",
+              color: S.text, fontSize: "var(--fs-xl)", fontWeight: 600, padding: "4px 0",
             }}
           />
         </div>
@@ -593,14 +593,14 @@ export default function ItemBottomSheet({
           const setVal = (v: any) => setCfValues((prev) => ({ ...prev, [sf.field_key]: v === "" ? null : v }));
           return (
             <div key={sf.field_key}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: S.dim, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".04em" }}>
+              <div style={{ fontSize: "var(--fs-sm)", fontWeight: 600, color: S.dim, marginBottom: 5, textTransform: "uppercase", letterSpacing: ".04em" }}>
                 {sf.label}
               </div>
               {sf.field_type === "boolean" ? (
                 <button
                   onClick={() => setVal(!val)}
                   style={{
-                    padding: "8px 14px", borderRadius: 9, fontSize: 13, cursor: "pointer",
+                    padding: "8px 14px", borderRadius: 9, fontSize: "var(--fs-base)", cursor: "pointer",
                     background: val ? "rgba(99,102,241,.2)" : "rgba(255,255,255,.05)",
                     border: val ? "1px solid rgba(99,102,241,.4)" : "1px solid rgba(255,255,255,.1)",
                     color: S.text,
@@ -644,7 +644,7 @@ export default function ItemBottomSheet({
         {/* ── Assignee picker — hidden for personal ── */}
         {showMembers && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: S.dim, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".04em" }}>
+            <div style={{ fontSize: "var(--fs-sm)", fontWeight: 600, color: S.dim, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".04em" }}>
               Assignees
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -665,7 +665,7 @@ export default function ItemBottomSheet({
                     <div style={{
                       width: 36, height: 36, borderRadius: "50%",
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 12, fontWeight: 700,
+                      fontSize: "var(--fs-sm)", fontWeight: 700,
                       border: selected
                         ? `2px solid ${accent}`
                         : "2px solid rgba(255,255,255,.12)",
@@ -687,7 +687,7 @@ export default function ItemBottomSheet({
                         }}>✓</span>
                       )}
                     </div>
-                    <span style={{ fontSize: 9, color: selected ? S.dimBright : S.dim, maxWidth: 48, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: "var(--fs-xs)", color: selected ? S.dimBright : S.dim, maxWidth: 48, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {isMe ? "Me" : (m.name || m.email).split(" ")[0]}
                     </span>
                   </button>
@@ -700,7 +700,7 @@ export default function ItemBottomSheet({
         {/* ── Visibility — hidden for personal ── */}
         {!isPersonal && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: S.dim, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".04em" }}>
+            <div style={{ fontSize: "var(--fs-sm)", fontWeight: 600, color: S.dim, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".04em" }}>
               Visibility
             </div>
             <div style={{
@@ -719,7 +719,7 @@ export default function ItemBottomSheet({
                     key={v}
                     onClick={() => setVisibility(v)}
                     style={{
-                      flex: 1, padding: "8px 0", fontSize: 11, fontWeight: 600,
+                      flex: 1, padding: "8px 0", fontSize: "var(--fs-sm)", fontWeight: 600,
                       cursor: "pointer", border: "none",
                       background: active ? "rgba(255,255,255,.1)" : "transparent",
                       color: active ? S.text : S.dim,
@@ -739,7 +739,7 @@ export default function ItemBottomSheet({
           <div style={{
             padding: "8px 12px", borderRadius: 8,
             background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.25)",
-            color: "#fca5a5", fontSize: 13,
+            color: "#fca5a5", fontSize: "var(--fs-base)",
           }}>
             {errorMsg}
           </div>
@@ -754,7 +754,7 @@ export default function ItemBottomSheet({
                 style={{
                   flex: 1, padding: "11px 0", borderRadius: 9,
                   border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)",
-                  color: S.dim, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                  color: S.dim, fontSize: "var(--fs-md)", fontWeight: 600, cursor: "pointer",
                 }}
               >
                 Cancel
@@ -765,7 +765,7 @@ export default function ItemBottomSheet({
                 style={{
                   flex: 2, padding: "11px 0", borderRadius: 9, border: "none",
                   background: `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 70%, #7c3aed) 100%)`,
-                  color: "#fff", fontSize: 14, fontWeight: 600,
+                  color: "#fff", fontSize: "var(--fs-md)", fontWeight: 600,
                   cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
                 }}
               >
@@ -779,7 +779,7 @@ export default function ItemBottomSheet({
                 style={{
                   flex: 1, padding: "11px 0", borderRadius: 9,
                   border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)",
-                  color: S.dim, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  color: S.dim, fontSize: "var(--fs-base)", fontWeight: 600, cursor: "pointer",
                 }}
               >
                 Cancel
@@ -790,7 +790,7 @@ export default function ItemBottomSheet({
                 style={{
                   flex: 1, padding: "11px 0", borderRadius: 9,
                   border: "1px solid rgba(239,68,68,.3)", background: "rgba(239,68,68,.15)",
-                  color: "#fca5a5", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  color: "#fca5a5", fontSize: "var(--fs-base)", fontWeight: 600, cursor: "pointer",
                 }}
               >
                 {deleting ? "Deleting…" : "Confirm Delete"}
@@ -804,7 +804,7 @@ export default function ItemBottomSheet({
                 style={{
                   flex: 1, padding: "11px 0", borderRadius: 9,
                   border: "1px solid rgba(34,197,94,.3)", background: "rgba(34,197,94,.1)",
-                  color: "#86efac", fontSize: 13, fontWeight: 600,
+                  color: "#86efac", fontSize: "var(--fs-base)", fontWeight: 600,
                   cursor: item?.status === "done" ? "default" : "pointer",
                   opacity: item?.status === "done" ? 0.5 : 1,
                 }}
@@ -816,7 +816,7 @@ export default function ItemBottomSheet({
                 style={{
                   flex: 1, padding: "11px 0", borderRadius: 9,
                   border: "1px solid rgba(239,68,68,.2)", background: "rgba(239,68,68,.08)",
-                  color: "#fca5a5", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  color: "#fca5a5", fontSize: "var(--fs-base)", fontWeight: 600, cursor: "pointer",
                 }}
               >
                 Delete
@@ -827,7 +827,7 @@ export default function ItemBottomSheet({
                 style={{
                   flex: 1, padding: "11px 0", borderRadius: 9, border: "none",
                   background: `linear-gradient(135deg, ${accent} 0%, color-mix(in srgb, ${accent} 70%, #7c3aed) 100%)`,
-                  color: "#fff", fontSize: 13, fontWeight: 600,
+                  color: "#fff", fontSize: "var(--fs-base)", fontWeight: 600,
                   cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
                 }}
               >

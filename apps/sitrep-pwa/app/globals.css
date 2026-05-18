@@ -25,6 +25,40 @@ html, body {
   --gg-dim: rgb(100 116 139);
   --gg-dim-bright: rgb(148 163 184);
   --bottom-nav-h: 56px;
+
+  /* Font size tiers — Default */
+  --fs-xs:   10px;
+  --fs-sm:   11px;
+  --fs-base: 13px;
+  --fs-md:   14px;
+  --fs-lg:   16px;
+  --fs-xl:   18px;
+}
+
+html[data-text-size="large"] {
+  --fs-xs:   12px;
+  --fs-sm:   13px;
+  --fs-base: 15px;
+  --fs-md:   16px;
+  --fs-lg:   18px;
+  --fs-xl:   20px;
+}
+
+html[data-text-size="xl"] {
+  --fs-xs:   14px;
+  --fs-sm:   15px;
+  --fs-base: 17px;
+  --fs-md:   18px;
+  --fs-lg:   20px;
+  --fs-xl:   22px;
+}
+
+/* Allow title text to wrap at larger text sizes */
+html[data-text-size="large"] .sr-title,
+html[data-text-size="xl"] .sr-title {
+  white-space: normal !important;
+  text-overflow: unset !important;
+  overflow: visible !important;
 }
 
 /* Remove iOS Safari blue highlight on tap */

@@ -99,7 +99,7 @@ function FilterPill({
       style={{
         padding: "5px 13px",
         borderRadius: 20,
-        fontSize: 12,
+        fontSize: "var(--fs-sm)",
         fontWeight: 600,
         cursor: "pointer",
         whiteSpace: "nowrap",
@@ -179,7 +179,7 @@ function SearchBar({
           border: "none",
           outline: "none",
           color: S.text,
-          fontSize: 13,
+          fontSize: "var(--fs-base)",
         }}
       />
       {value && (
@@ -191,7 +191,7 @@ function SearchBar({
             color: S.dim,
             cursor: "pointer",
             padding: 0,
-            fontSize: 16,
+            fontSize: "var(--fs-lg)",
             lineHeight: 1,
             display: "flex",
           }}
@@ -549,7 +549,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
             <div>
               <div
                 style={{
-                  fontSize: 18,
+                  fontSize: "var(--fs-xl)",
                   fontWeight: 800,
                   letterSpacing: "-0.02em",
                   color: S.text,
@@ -565,11 +565,11 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                   marginTop: 1,
                 }}
               >
-                <span style={{ fontSize: 11, color: S.dimBright }}>
+                <span style={{ fontSize: "var(--fs-sm)", color: S.dimBright }}>
                   <span
                     style={{
                       fontWeight: 800,
-                      fontSize: 15,
+                      fontSize: "var(--fs-md)",
                       color: S.text,
                       marginRight: 2,
                     }}
@@ -579,11 +579,11 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                   open
                 </span>
                 {overdueCount > 0 && (
-                  <span style={{ fontSize: 11, color: "rgba(239,68,68,.7)" }}>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "rgba(239,68,68,.7)" }}>
                     <span
                       style={{
                         fontWeight: 800,
-                        fontSize: 14,
+                        fontSize: "var(--fs-md)",
                         color: "rgb(252 165 165)",
                         marginRight: 2,
                       }}
@@ -627,7 +627,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                 "0 2px 14px color-mix(in srgb, var(--gg-primary,#2563eb) 42%, transparent), inset 0 1px 0 rgba(255,255,255,.18)",
               border: "none",
               color: "#fff",
-              fontSize: 13,
+              fontSize: "var(--fs-base)",
               fontWeight: 700,
               cursor: "pointer",
             }}
@@ -726,7 +726,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
               padding: 32,
               textAlign: "center",
               color: S.dim,
-              fontSize: 14,
+              fontSize: "var(--fs-md)",
             }}
           >
             Loading…
@@ -747,14 +747,14 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
             <div
               style={{
                 fontWeight: 800,
-                fontSize: 15,
+                fontSize: "var(--fs-md)",
                 color: S.text,
                 marginBottom: 6,
               }}
             >
               {search.trim() ? "No matches" : hiddenCount > 0 ? "All filtered" : "All clear."}
             </div>
-            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ fontSize: "var(--fs-base)", lineHeight: 1.6 }}>
               {search.trim()
                 ? `No items match "${search}".`
                 : hiddenCount > 0
@@ -803,7 +803,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                     />
                     <span
                       style={{
-                        fontSize: 10,
+                        fontSize: "var(--fs-xs)",
                         fontWeight: 800,
                         letterSpacing: "0.09em",
                         color: group.color,
@@ -814,7 +814,7 @@ export default function ListPanel({ userId, tenantId, initialTypes, initialOrgs 
                     </span>
                     <span
                       style={{
-                        fontSize: 9,
+                        fontSize: "var(--fs-xs)",
                         fontWeight: 700,
                         color: group.color,
                         background: `${group.color}1f`,

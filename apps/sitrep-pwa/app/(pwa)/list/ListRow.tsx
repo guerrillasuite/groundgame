@@ -206,7 +206,7 @@ export default function ListRow({
             {(!isHidden || !isHidden("calendar_badge")) && (
             <span
               style={{
-                fontSize: 9,
+                fontSize: "var(--fs-xs)",
                 fontWeight: 800,
                 letterSpacing: "0.09em",
                 padding: "2px 7px",
@@ -225,7 +225,7 @@ export default function ListRow({
             {isConfirmed && !isDone && (
               <span
                 style={{
-                  fontSize: 9,
+                  fontSize: "var(--fs-xs)",
                   fontWeight: 800,
                   letterSpacing: "0.07em",
                   padding: "2px 6px",
@@ -244,7 +244,7 @@ export default function ListRow({
             {item.priority === "urgent" && !isDone && (
               <span
                 style={{
-                  fontSize: 9,
+                  fontSize: "var(--fs-xs)",
                   fontWeight: 800,
                   letterSpacing: "0.06em",
                   padding: "2px 6px",
@@ -263,7 +263,7 @@ export default function ListRow({
             {item.priority === "high" && !isDone && (
               <span
                 style={{
-                  fontSize: 9,
+                  fontSize: "var(--fs-xs)",
                   fontWeight: 800,
                   letterSpacing: "0.06em",
                   padding: "2px 6px",
@@ -280,8 +280,9 @@ export default function ListRow({
 
             {/* Title */}
             <span
+              className="sr-title"
               style={{
-                fontSize: 14,
+                fontSize: "var(--fs-md)",
                 fontWeight: 600,
                 color: textColor,
                 overflow: "hidden",
@@ -302,7 +303,7 @@ export default function ListRow({
           {dateLabel && (
             <div
               style={{
-                fontSize: 11,
+                fontSize: "var(--fs-sm)",
                 marginTop: 2,
                 color:
                   overdue && !isDone ? "#991b1b" : dimColor,
