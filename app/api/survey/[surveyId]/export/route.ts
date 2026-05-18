@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getSurveyExportData, ALLOWED_EXTRA_PEOPLE_FIELDS } from "@/lib/db/supabase-surveys";
+import { getSurveyExportData } from "@/lib/db/supabase-surveys";
+import { ALLOWED_EXPORT_KEYS, EXPORT_FIELD_MAP } from "@/lib/db/survey-export-fields";
 import { getTenant } from "@/lib/tenant";
 
 function makeAdminClient() {
@@ -10,25 +11,21 @@ function makeAdminClient() {
   );
 }
 
-const FIELD_LABELS: Record<string, string> = {
-  party: "Party", voter_status: "Voter Status", voting_frequency: "Voting Frequency",
-  early_voter: "Early Voter", absentee_type: "Absentee Type",
-  likelihood_to_vote: "Likelihood to Vote", primary_likelihood: "Primary Likelihood",
-  general_primary_likelihood: "General+Primary Likelihood",
-  voted_general_2024: "Voted General 2024", voted_general_2022: "Voted General 2022",
-  voted_general_2020: "Voted General 2020", voted_general_2018: "Voted General 2018",
-  voted_primary_2024: "Voted Primary 2024", voted_primary_2022: "Voted Primary 2022",
-  voted_primary_2020: "Voted Primary 2020",
-  score_prog_dem: "Score: Prog. Dem", score_mod_dem: "Score: Mod. Dem",
-  score_cons_rep: "Score: Cons. Rep", score_mod_rep: "Score: Mod. Rep",
-  nolan_personal_score: "Nolan: Personal Freedom", nolan_economic_score: "Nolan: Economic Freedom",
-  gender: "Gender", age: "Age", birth_date: "Birth Date", ethnicity: "Ethnicity",
-  education_level: "Education Level", marital_status: "Marital Status",
-  mailing_address: "Mailing Address", mailing_city: "City", mailing_state: "State", mailing_zip: "Zip",
-  phone_cell: "Cell Phone", phone2: "Phone 2", email2: "Email 2",
-  occupation: "Occupation", occupation_title: "Occupation Title",
-  top_issues: "Top Issues", notes: "Notes", contact_type: "Contact Type",
-};
+function makeTenantClient(tenantId: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { "X-Tenant-Id": tenantId } } }
+  );
+}
+
+// Serialize a raw DB value to a display string
+function serialize(val: any): string {
+  if (val === null || val === undefined) return "";
+  if (Array.isArray(val)) return val.join("; ");
+  if (typeof val === "object") return JSON.stringify(val);
+  return String(val);
+}
 
 export async function GET(
   request: NextRequest,
@@ -37,8 +34,8 @@ export async function GET(
   const { surveyId } = await params;
   const format = request.nextUrl.searchParams.get("format") || "csv";
   const extraFieldsParam = request.nextUrl.searchParams.get("extra_fields") ?? "";
-  const extraFields = extraFieldsParam
-    ? extraFieldsParam.split(",").map(f => f.trim()).filter(f => ALLOWED_EXTRA_PEOPLE_FIELDS.has(f))
+  const requestedFields = extraFieldsParam
+    ? extraFieldsParam.split(",").map(f => f.trim()).filter(f => ALLOWED_EXPORT_KEYS.has(f))
     : [];
 
   try {
@@ -51,7 +48,7 @@ export async function GET(
 
     const { survey, sessions, questions, responses, postSubmitQuestions, postSubmitResponses, contactMap } = data;
 
-    // Build per-person answer map (covers both main + post-submit surveys)
+    // Per-person answer map (covers both main + post-submit surveys)
     const answersByPerson = new Map<string, Record<string, string>>();
     for (const r of [...responses, ...postSubmitResponses]) {
       const pid = (r as any).crm_contact_id;
@@ -60,25 +57,168 @@ export async function GET(
       answersByPerson.get(pid)![r.question_id] = r.answer_value ?? "";
     }
 
-    // Session map for completion timestamps
+    // Session map for completion timestamps (only main survey sessions)
     const sessionMap = new Map((sessions as any[]).map((s) => [s.crm_contact_id, s]));
 
-    // Only include people who have a session in the MAIN survey (not post-submit-only respondents)
+    // Respondent list: only people with a main-survey session
     const allPersonIds = [...new Set(
       (sessions as any[]).map((s) => s.crm_contact_id).filter(Boolean)
     )];
 
-    // Fetch extra person record fields separately (same session-based IDs, explicit error handling)
-    const extraFieldMap = new Map<string, Record<string, any>>();
-    if (extraFields.length > 0 && allPersonIds.length > 0) {
+    // ── Partition requested fields by source ──────────────────────────────────
+    const peopleDirectKeys = requestedFields.filter(k => EXPORT_FIELD_MAP.get(k)?.source === "people");
+    const voteKeys         = requestedFields.filter(k => EXPORT_FIELD_MAP.get(k)?.source === "votes_history");
+    const tpKeys           = requestedFields.filter(k => EXPORT_FIELD_MAP.get(k)?.source === "tenant_people");
+    const hhKeys           = requestedFields.filter(k => EXPORT_FIELD_MAP.get(k)?.source === "households");
+    const locKeys          = requestedFields.filter(k => EXPORT_FIELD_MAP.get(k)?.source === "locations");
+
+    const needHouseholds   = hhKeys.length > 0 || locKeys.length > 0;
+
+    // ── Extra field maps keyed by person ID ───────────────────────────────────
+    const peopleExtraMap   = new Map<string, Record<string, any>>();
+    const votesHistoryMap  = new Map<string, Record<string, any>>();
+    const tpMap            = new Map<string, Record<string, any>>();
+    const householdMap     = new Map<string, Record<string, any>>();  // personId → hh row
+    const locationMap      = new Map<string, Record<string, any>>();  // personId → loc row
+
+    if (allPersonIds.length > 0) {
       const adminSb = makeAdminClient();
-      const selectCols = ["id", ...extraFields].join(", ");
-      const { data: extraPeople, error: extraErr } = await adminSb
-        .from("people")
-        .select(selectCols)
-        .in("id", allPersonIds);
-      if (extraErr) console.error("[survey export] extra fields query failed:", extraErr);
-      for (const p of (extraPeople ?? []) as any[]) extraFieldMap.set(p.id, p);
+      const tenantSb = makeTenantClient(tenant.id);
+
+      // 1) Direct people columns (+ votes_history if any vote.* keys requested)
+      const directCols = [...new Set([
+        "id",
+        ...peopleDirectKeys,
+        ...(voteKeys.length > 0 ? ["votes_history"] : []),
+      ])];
+      if (directCols.length > 1) {
+        const { data: rows, error } = await adminSb
+          .from("people")
+          .select(directCols.join(", "))
+          .in("id", allPersonIds);
+        if (error) console.error("[survey export] people query error:", error);
+        for (const row of (rows ?? []) as any[]) {
+          peopleExtraMap.set(row.id, row);
+          if (voteKeys.length > 0 && row.votes_history) {
+            votesHistoryMap.set(row.id, row.votes_history);
+          }
+        }
+      }
+
+      // 2) tenant_people (contact_types, tags, notes — filtered by tenant)
+      if (tpKeys.length > 0) {
+        const tpCols = ["person_id", ...tpKeys.map(k => k.replace("tp.", ""))];
+        const { data: tpRows, error } = await tenantSb
+          .from("tenant_people")
+          .select(tpCols.join(", "))
+          .eq("tenant_id", tenant.id)
+          .in("person_id", allPersonIds);
+        if (error) console.error("[survey export] tenant_people query error:", error);
+        for (const row of (tpRows ?? []) as any[]) tpMap.set(row.person_id, row);
+      }
+
+      // 3) Households + Locations (resolve via person_households or people.household_id)
+      if (needHouseholds) {
+        // Get household IDs: try people.household_id first, augment with person_households junction
+        const { data: phJunction } = await tenantSb
+          .from("person_households")
+          .select("person_id, household_id")
+          .eq("tenant_id", tenant.id)
+          .in("person_id", allPersonIds);
+        const { data: directHhRows } = await adminSb
+          .from("people")
+          .select("id, household_id")
+          .in("id", allPersonIds);
+
+        // Build personId → householdId map
+        const personToHh = new Map<string, string>();
+        for (const row of (directHhRows ?? []) as any[]) {
+          if (row.household_id) personToHh.set(row.id, row.household_id);
+        }
+        for (const row of (phJunction ?? []) as any[]) {
+          if (!personToHh.has(row.person_id)) personToHh.set(row.person_id, row.household_id);
+        }
+
+        const hhIds = [...new Set(personToHh.values())];
+
+        if (hhIds.length > 0) {
+          // Fetch households
+          const hhCols = ["id", "location_id", ...hhKeys.map(k => k.replace("hh.", ""))];
+          const { data: hhRows, error: hhErr } = await adminSb
+            .from("households")
+            .select([...new Set(hhCols)].join(", "))
+            .in("id", hhIds);
+          if (hhErr) console.error("[survey export] households query error:", hhErr);
+
+          const hhById = new Map((hhRows ?? []).map((h: any) => [h.id, h]));
+
+          // Fetch locations if needed
+          let locById = new Map<string, any>();
+          if (locKeys.length > 0) {
+            const locIds = [...new Set(
+              (hhRows ?? []).map((h: any) => h.location_id).filter(Boolean)
+            )];
+            if (locIds.length > 0) {
+              const locCols = ["id", ...locKeys.map(k => k.replace("loc.", ""))];
+              const { data: locRows, error: locErr } = await adminSb
+                .from("locations")
+                .select([...new Set(locCols)].join(", "))
+                .in("id", locIds);
+              if (locErr) console.error("[survey export] locations query error:", locErr);
+              locById = new Map((locRows ?? []).map((l: any) => [l.id, l]));
+            }
+          }
+
+          // Map person → hh row and person → loc row
+          for (const [personId, hhId] of personToHh) {
+            const hh = hhById.get(hhId);
+            if (hh) {
+              householdMap.set(personId, hh);
+              if (hh.location_id) {
+                const loc = locById.get(hh.location_id);
+                if (loc) locationMap.set(personId, loc);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ── Build value resolver ──────────────────────────────────────────────────
+    function resolveField(personId: string, fieldKey: string): string {
+      const def = EXPORT_FIELD_MAP.get(fieldKey);
+      if (!def) return "";
+
+      if (def.source === "people") {
+        const val = peopleExtraMap.get(personId)?.[fieldKey];
+        return serialize(val);
+      }
+
+      if (def.source === "votes_history") {
+        const subKey = fieldKey.replace("vote.", "");
+        const val = votesHistoryMap.get(personId)?.[subKey];
+        return serialize(val);
+      }
+
+      if (def.source === "tenant_people") {
+        const col = fieldKey.replace("tp.", "");
+        const val = tpMap.get(personId)?.[col];
+        return serialize(val);
+      }
+
+      if (def.source === "households") {
+        const col = fieldKey.replace("hh.", "");
+        const val = householdMap.get(personId)?.[col];
+        return serialize(val);
+      }
+
+      if (def.source === "locations") {
+        const col = fieldKey.replace("loc.", "");
+        const val = locationMap.get(personId)?.[col];
+        return serialize(val);
+      }
+
+      return "";
     }
 
     const allQuestions = [...questions, ...postSubmitQuestions];
@@ -92,13 +232,12 @@ export async function GET(
     if (format === "csv") {
       const headers = [
         "First Name", "Last Name", "Email", "Phone", "Completed At",
-        ...extraFields.map(f => FIELD_LABELS[f] ?? f),
+        ...requestedFields.map(k => EXPORT_FIELD_MAP.get(k)?.label ?? k),
         ...allQuestions.map((q: any) => q.question_text),
       ];
 
       const rows = allPersonIds.map((personId) => {
         const person = contactMap.get(personId);
-        const extra = extraFieldMap.get(personId);
         const sess = sessionMap.get(personId) as any;
         const qAnswers = answersByPerson.get(personId) ?? {};
         return [
@@ -107,10 +246,7 @@ export async function GET(
           person?.email ?? "",
           person?.phone ?? "",
           sess?.completed_at ? new Date(sess.completed_at).toLocaleString() : "",
-          ...extraFields.map(f => {
-            const val = extra?.[f];
-            return Array.isArray(val) ? val.join("; ") : (val ?? "");
-          }),
+          ...requestedFields.map(k => resolveField(personId, k)),
           ...allQuestions.map((q: any) => qAnswers[q.id] ?? ""),
         ];
       });
@@ -130,16 +266,17 @@ export async function GET(
     }
 
     // JSON: return structured per-person data (used by Results dashboard "Responses" tab)
+    const personFieldDefs = requestedFields.map(k => ({
+      key: k,
+      label: EXPORT_FIELD_MAP.get(k)?.label ?? k,
+    }));
+
     const respondents = allPersonIds.map((personId) => {
       const person = contactMap.get(personId);
-      const extra = extraFieldMap.get(personId);
       const sess = sessionMap.get(personId) as any;
       const qAnswers = answersByPerson.get(personId) ?? {};
-      const personFields: Record<string, any> = {};
-      for (const f of extraFields) {
-        const val = extra?.[f];
-        personFields[f] = Array.isArray(val) ? val.join(", ") : (val ?? null);
-      }
+      const personFields: Record<string, string> = {};
+      for (const k of requestedFields) personFields[k] = resolveField(personId, k);
       return {
         person_id: personId,
         first_name: person?.first_name ?? null,
@@ -151,8 +288,6 @@ export async function GET(
         personFields,
       };
     });
-
-    const personFieldDefs = extraFields.map(f => ({ key: f, label: FIELD_LABELS[f] ?? f }));
 
     return NextResponse.json({
       survey_id: surveyId,

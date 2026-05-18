@@ -65,50 +65,6 @@ interface ResponsesData {
   personFieldDefs?: { key: string; label: string }[];
 }
 
-const PERSON_FIELD_GROUPS = [
-  { group: "Voter Data", fields: [
-    { key: "party", label: "Party" },
-    { key: "voter_status", label: "Voter Status" },
-    { key: "voting_frequency", label: "Voting Frequency" },
-    { key: "voted_general_2024", label: "Voted General 2024" },
-    { key: "voted_general_2022", label: "Voted General 2022" },
-    { key: "voted_general_2020", label: "Voted General 2020" },
-    { key: "voted_primary_2024", label: "Voted Primary 2024" },
-    { key: "voted_primary_2022", label: "Voted Primary 2022" },
-  ]},
-  { group: "Political Scores", fields: [
-    { key: "nolan_personal_score", label: "Nolan: Personal Freedom" },
-    { key: "nolan_economic_score", label: "Nolan: Economic Freedom" },
-    { key: "likelihood_to_vote", label: "Likelihood to Vote" },
-    { key: "primary_likelihood", label: "Primary Likelihood" },
-    { key: "score_prog_dem", label: "Score: Prog. Dem" },
-    { key: "score_mod_dem", label: "Score: Mod. Dem" },
-    { key: "score_cons_rep", label: "Score: Cons. Rep" },
-    { key: "score_mod_rep", label: "Score: Mod. Rep" },
-  ]},
-  { group: "Demographics", fields: [
-    { key: "gender", label: "Gender" },
-    { key: "age", label: "Age" },
-    { key: "birth_date", label: "Birth Date" },
-    { key: "ethnicity", label: "Ethnicity" },
-    { key: "education_level", label: "Education Level" },
-    { key: "marital_status", label: "Marital Status" },
-  ]},
-  { group: "Address", fields: [
-    { key: "mailing_address", label: "Mailing Address" },
-    { key: "mailing_city", label: "City" },
-    { key: "mailing_state", label: "State" },
-    { key: "mailing_zip", label: "Zip" },
-  ]},
-  { group: "Contact / Other", fields: [
-    { key: "phone_cell", label: "Cell Phone" },
-    { key: "phone2", label: "Phone 2" },
-    { key: "email2", label: "Email 2" },
-    { key: "occupation", label: "Occupation" },
-    { key: "contact_type", label: "Contact Type" },
-    { key: "top_issues", label: "Top Issues" },
-  ]},
-];
 
 const RESULT_COLORS: Record<string, string> = {
   libertarian: "#eab308",
@@ -208,6 +164,7 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
   const [showColPicker, setShowColPicker] = useState(false);
   const [page, setPage] = useState(0);
   const [perPage, setPerPage] = useState(50);
+  const [availableFields, setAvailableFields] = useState<{ group: string; fields: { key: string; label: string }[] }[]>([]);
 
   const fetchResults = async () => {
     try {
@@ -246,6 +203,10 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
   };
 
   useEffect(() => {
+    fetch("/api/survey/available-fields")
+      .then(r => r.ok ? r.json() : [])
+      .then(setAvailableFields)
+      .catch(() => {});
     fetchResults();
     const interval = setInterval(fetchResults, 30000);
     return () => clearInterval(interval);
@@ -488,7 +449,7 @@ export function ResultsDashboard({ surveyId }: ResultsDashboardProps) {
                 Add Person Record Fields
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
-                {PERSON_FIELD_GROUPS.map(({ group, fields }) => (
+                {availableFields.map(({ group, fields }) => (
                   <div key={group} style={{ minWidth: 160 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", opacity: 0.45, marginBottom: 6 }}>{group}</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>

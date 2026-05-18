@@ -765,18 +765,8 @@ export async function getWalklistsBySurvey(
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
-export const ALLOWED_EXTRA_PEOPLE_FIELDS = new Set([
-  "party", "voter_status", "voting_frequency", "early_voter", "absentee_type",
-  "likelihood_to_vote", "primary_likelihood", "general_primary_likelihood",
-  "voted_general_2024", "voted_general_2022", "voted_general_2020", "voted_general_2018",
-  "voted_primary_2024", "voted_primary_2022", "voted_primary_2020",
-  "score_prog_dem", "score_mod_dem", "score_cons_rep", "score_mod_rep",
-  "nolan_personal_score", "nolan_economic_score",
-  "gender", "age", "birth_date", "ethnicity", "education_level", "marital_status",
-  "mailing_address", "mailing_city", "mailing_state", "mailing_zip",
-  "phone_cell", "phone2", "email2", "occupation", "occupation_title",
-  "top_issues", "notes", "contact_type",
-]);
+// Field registry and whitelist have moved to lib/db/survey-export-fields.ts
+export { ALLOWED_EXPORT_KEYS as ALLOWED_EXTRA_PEOPLE_FIELDS } from "@/lib/db/survey-export-fields";
 
 export async function getSurveyExportData(surveyId: string, tenantId: string) {
   const sb = getServiceClient(tenantId);
