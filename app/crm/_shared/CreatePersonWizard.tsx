@@ -1,28 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import LocationSearchInput from "./LocationSearchInput";
-
-type LocationValue =
-  | { type: "existing"; id: string; address: string }
-  | { type: "new"; address: string };
+import LocationPicker, { type LocationValue } from "@/app/components/crm/LocationPicker";
 
 type Props = {
   action: (formData: FormData) => Promise<void>;
+  contactTypes?: { key: string; label: string }[];
   onCreated?: () => void;
 };
 
-const CONTACT_TYPES = [
-  { value: "", label: "— none —" },
-  { value: "supporter", label: "Supporter" },
-  { value: "volunteer", label: "Volunteer" },
-  { value: "donor", label: "Donor" },
-  { value: "prospect", label: "Prospect" },
-  { value: "voter", label: "Voter" },
-  { value: "other", label: "Other" },
-];
-
-export default function CreatePersonWizard({ action, onCreated }: Props) {
+export default function CreatePersonWizard({ action, contactTypes = [], onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [pending, start] = useTransition();
@@ -33,24 +20,30 @@ export default function CreatePersonWizard({ action, onCreated }: Props) {
   const [lastName, setLastName]   = useState("");
   const [email, setEmail]         = useState("");
   const [phone, setPhone]         = useState("");
-  const [contactType, setContactType] = useState("");
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
 
   // Step 2 fields
-  const [location, setLocation] = useState<LocationValue | null>(null);
-  const [city, setCity]         = useState("");
-  const [state, setState]       = useState("");
-  const [zip, setZip]           = useState("");
+  const [location, setLocation] = useState<LocationValue>(null);
 
   function reset() {
     setStep(1);
     setErr(null);
-    setFirstName(""); setLastName(""); setEmail(""); setPhone(""); setContactType("");
-    setLocation(null); setCity(""); setState(""); setZip("");
+    setFirstName(""); setLastName(""); setEmail(""); setPhone("");
+    setSelectedTypes(new Set());
+    setLocation(null);
   }
 
   function handleClose() {
     setOpen(false);
     reset();
+  }
+
+  function toggleType(key: string) {
+    setSelectedTypes((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
   }
 
   function nextStep() {
@@ -70,17 +63,11 @@ export default function CreatePersonWizard({ action, onCreated }: Props) {
         fd.set("last_name", lastName);
         fd.set("email", email);
         fd.set("phone", phone);
-        fd.set("contact_type", contactType);
+        fd.set("contact_types", JSON.stringify([...selectedTypes]));
 
-        if (location) {
-          const addr = location.address;
-          fd.set("address_line1", addr);
-          // For new addresses, use the manual city/state/zip fields
-          if (location.type === "new") {
-            fd.set("city", city);
-            fd.set("state", state);
-            fd.set("postal_code", zip);
-          }
+        if (location?.type === "location") {
+          fd.set("location_id", location.locationId);
+          fd.set("location_display", location.displayText);
         }
 
         await action(fd);
@@ -105,12 +92,12 @@ export default function CreatePersonWizard({ action, onCreated }: Props) {
     borderRadius: 10,
     padding: 24,
     width: "100%",
-    maxWidth: 440,
+    maxWidth: 460,
     display: "flex",
     flexDirection: "column",
     gap: 14,
   };
-  const label: React.CSSProperties = {
+  const lbl: React.CSSProperties = {
     display: "flex", flexDirection: "column", gap: 4, fontSize: 13,
   };
   const dim: React.CSSProperties = { opacity: 0.6 };
@@ -134,31 +121,57 @@ export default function CreatePersonWizard({ action, onCreated }: Props) {
             {step === 1 && (
               <>
                 <div style={row}>
-                  <label style={{ ...label, flex: 1 }}>
+                  <label style={{ ...lbl, flex: 1 }}>
                     <span style={dim}>First Name</span>
                     <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jane" />
                   </label>
-                  <label style={{ ...label, flex: 1 }}>
+                  <label style={{ ...lbl, flex: 1 }}>
                     <span style={dim}>Last Name</span>
                     <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Smith" />
                   </label>
                 </div>
-                <label style={label}>
+                <label style={lbl}>
                   <span style={dim}>Email</span>
                   <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
                 </label>
-                <label style={label}>
+                <label style={lbl}>
                   <span style={dim}>Phone</span>
                   <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-5555" />
                 </label>
-                <label style={label}>
-                  <span style={dim}>Contact Type</span>
-                  <select value={contactType} onChange={(e) => setContactType(e.target.value)}>
-                    {CONTACT_TYPES.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </label>
+
+                {contactTypes.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ ...dim, fontSize: 13 }}>Contact Types</span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {contactTypes.map((ct) => {
+                        const active = selectedTypes.has(ct.key);
+                        return (
+                          <button
+                            key={ct.key}
+                            type="button"
+                            onClick={() => toggleType(ct.key)}
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              padding: "4px 12px",
+                              borderRadius: 20,
+                              border: active
+                                ? "1.5px solid rgba(99,102,241,0.6)"
+                                : "1.5px solid var(--gg-border, #22283a)",
+                              background: active ? "rgba(99,102,241,0.15)" : "transparent",
+                              color: active ? "#818cf8" : "rgba(255,255,255,.45)",
+                              cursor: "pointer",
+                              transition: "all 0.12s",
+                            }}
+                          >
+                            {active && <span style={{ marginRight: 4 }}>✓</span>}
+                            {ct.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
 
@@ -174,41 +187,13 @@ export default function CreatePersonWizard({ action, onCreated }: Props) {
             {step === 2 && (
               <>
                 <p style={{ margin: 0, fontSize: 13, opacity: 0.7 }}>
-                  Address (optional — links to an existing location or creates a new one)
+                  Address (optional — search existing or add a new location)
                 </p>
-                <label style={label}>
-                  <span style={dim}>Address</span>
-                  <LocationSearchInput
-                    value={location}
-                    onChange={setLocation}
-                    placeholder="Search or type a street address…"
-                  />
-                </label>
-
-                {location?.type === "new" && (
-                  <>
-                    <div style={row}>
-                      <label style={{ ...label, flex: 2 }}>
-                        <span style={dim}>City</span>
-                        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Springfield" />
-                      </label>
-                      <label style={{ ...label, flex: 1 }}>
-                        <span style={dim}>State</span>
-                        <input value={state} onChange={(e) => setState(e.target.value)} placeholder="IL" maxLength={2} />
-                      </label>
-                      <label style={{ ...label, flex: 1 }}>
-                        <span style={dim}>Zip</span>
-                        <input value={zip} onChange={(e) => setZip(e.target.value)} placeholder="62701" maxLength={10} />
-                      </label>
-                    </div>
-                  </>
-                )}
-
-                {location?.type === "existing" && (
-                  <p style={{ fontSize: 12, color: "#22c55e", margin: 0 }}>
-                    ✓ Existing location found — will link to it
-                  </p>
-                )}
+                <LocationPicker
+                  value={location}
+                  onChange={setLocation}
+                  placeholder="Search or add a location…"
+                />
 
                 {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
 

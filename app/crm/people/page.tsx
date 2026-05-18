@@ -87,7 +87,12 @@ export default async function PeoplePage() {
       ]}
       target="people"
       rowHrefPrefix="/crm/people/"
-      headerActions={<CreatePersonWizard action={boundCreateAction} />}
+      headerActions={
+        <CreatePersonWizard
+          action={boundCreateAction}
+          contactTypes={Array.isArray(ctData) ? ctData as { key: string; label: string }[] : []}
+        />
+      }
       contactTypeOptions={contactTypeOptions}
       defaultContent={defaultContent}
     />

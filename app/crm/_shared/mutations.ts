@@ -115,17 +115,33 @@ export async function createPersonAction(
   const lastName   = String(formData.get("last_name")   ?? "").trim();
   const email      = String(formData.get("email")       ?? "").trim().toLowerCase() || null;
   const phone      = String(formData.get("phone")       ?? "").trim() || null;
-  const contactType = String(formData.get("contact_type") ?? "").trim() || null;
-  const address    = String(formData.get("address_line1") ?? "").trim();
-  const city       = String(formData.get("city")        ?? "").trim() || undefined;
-  const state      = String(formData.get("state")       ?? "").trim() || undefined;
-  const postalCode = String(formData.get("postal_code") ?? "").trim() || undefined;
+
+  // contact_types: JSON array from new wizard, fallback to legacy single contact_type
+  let contactTypes: string[] = [];
+  const rawContactTypes = String(formData.get("contact_types") ?? "");
+  if (rawContactTypes) {
+    try { contactTypes = JSON.parse(rawContactTypes); } catch {}
+  } else {
+    const legacy = String(formData.get("contact_type") ?? "").trim();
+    if (legacy) contactTypes = [legacy];
+  }
+
+  // Location: either a pre-resolved location_id (from LocationPicker) or raw address fields
+  const locationId      = String(formData.get("location_id")      ?? "").trim() || null;
+  const locationDisplay = String(formData.get("location_display")  ?? "").trim();
+  const address         = String(formData.get("address_line1")     ?? "").trim();
+  const city            = String(formData.get("city")              ?? "").trim() || undefined;
+  const state           = String(formData.get("state")             ?? "").trim() || undefined;
+  const postalCode      = String(formData.get("postal_code")       ?? "").trim() || undefined;
 
   if (!firstName && !lastName) throw new Error("First or last name is required");
 
-  // Find or create location + household if address provided
+  // Find or create household from location
   let householdId: string | null = null;
-  if (address) {
+  if (locationId) {
+    const hh = await findOrCreateHousehold(sb as any, tenant.id, locationId, locationDisplay);
+    householdId = hh.id;
+  } else if (address) {
     const loc = await findOrCreateLocation(sb as any, tenant.id, {
       address_line1: address, city, state, postal_code: postalCode,
     });
@@ -156,7 +172,7 @@ export async function createPersonAction(
       tenant_id: tenant.id,
       person_id: (newPerson as any).id,
       linked_at: new Date().toISOString(),
-      contact_types: contactType ? [contactType] : [],
+      contact_types: contactTypes,
     },
     { onConflict: "tenant_id,person_id", ignoreDuplicates: false }
   );
