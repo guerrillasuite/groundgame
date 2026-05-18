@@ -27,6 +27,26 @@ function serialize(val: any): string {
   return String(val);
 }
 
+// Chunk .in() queries to stay under PostgREST URL length limits (200 UUIDs/chunk)
+async function inChunks(
+  sb: any,
+  table: string,
+  selectCols: string,
+  inCol: string,
+  ids: string[],
+  extraFilter?: (q: any) => any,
+  chunkSize = 200
+): Promise<any[]> {
+  const all: any[] = [];
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    let q = sb.from(table).select(selectCols).in(inCol, ids.slice(i, i + chunkSize));
+    if (extraFilter) q = extraFilter(q);
+    const { data } = await q;
+    if (data) all.push(...data);
+  }
+  return all;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ surveyId: string }> }
@@ -92,12 +112,8 @@ export async function GET(
         ...(voteKeys.length > 0 ? ["votes_history"] : []),
       ])];
       if (directCols.length > 1) {
-        const { data: rows, error } = await adminSb
-          .from("people")
-          .select(directCols.join(", "))
-          .in("id", allPersonIds);
-        if (error) console.error("[survey export] people query error:", error);
-        for (const row of (rows ?? []) as any[]) {
+        const rows = await inChunks(adminSb, "people", directCols.join(", "), "id", allPersonIds);
+        for (const row of rows) {
           peopleExtraMap.set(row.id, row);
           if (voteKeys.length > 0 && row.votes_history) {
             votesHistoryMap.set(row.id, row.votes_history);
@@ -108,34 +124,28 @@ export async function GET(
       // 2) tenant_people (contact_types, tags, notes — filtered by tenant)
       if (tpKeys.length > 0) {
         const tpCols = ["person_id", ...tpKeys.map(k => k.replace("tp.", ""))];
-        const { data: tpRows, error } = await tenantSb
-          .from("tenant_people")
-          .select(tpCols.join(", "))
-          .eq("tenant_id", tenant.id)
-          .in("person_id", allPersonIds);
-        if (error) console.error("[survey export] tenant_people query error:", error);
-        for (const row of (tpRows ?? []) as any[]) tpMap.set(row.person_id, row);
+        const tpRows = await inChunks(
+          tenantSb, "tenant_people", tpCols.join(", "), "person_id", allPersonIds,
+          (q) => q.eq("tenant_id", tenant.id)
+        );
+        for (const row of tpRows) tpMap.set(row.person_id, row);
       }
 
       // 3) Households + Locations (resolve via person_households or people.household_id)
       if (needHouseholds) {
         // Get household IDs: try people.household_id first, augment with person_households junction
-        const { data: phJunction } = await tenantSb
-          .from("person_households")
-          .select("person_id, household_id")
-          .eq("tenant_id", tenant.id)
-          .in("person_id", allPersonIds);
-        const { data: directHhRows } = await adminSb
-          .from("people")
-          .select("id, household_id")
-          .in("id", allPersonIds);
+        const [phJunction, directHhRows] = await Promise.all([
+          inChunks(tenantSb, "person_households", "person_id, household_id", "person_id", allPersonIds,
+            (q) => q.eq("tenant_id", tenant.id)),
+          inChunks(adminSb, "people", "id, household_id", "id", allPersonIds),
+        ]);
 
         // Build personId → householdId map
         const personToHh = new Map<string, string>();
-        for (const row of (directHhRows ?? []) as any[]) {
+        for (const row of directHhRows) {
           if (row.household_id) personToHh.set(row.id, row.household_id);
         }
-        for (const row of (phJunction ?? []) as any[]) {
+        for (const row of phJunction) {
           if (!personToHh.has(row.person_id)) personToHh.set(row.person_id, row.household_id);
         }
 
@@ -143,29 +153,19 @@ export async function GET(
 
         if (hhIds.length > 0) {
           // Fetch households
-          const hhCols = ["id", "location_id", ...hhKeys.map(k => k.replace("hh.", ""))];
-          const { data: hhRows, error: hhErr } = await adminSb
-            .from("households")
-            .select([...new Set(hhCols)].join(", "))
-            .in("id", hhIds);
-          if (hhErr) console.error("[survey export] households query error:", hhErr);
+          const hhCols = [...new Set(["id", "location_id", ...hhKeys.map(k => k.replace("hh.", ""))])];
+          const hhRows = await inChunks(adminSb, "households", hhCols.join(", "), "id", hhIds);
 
-          const hhById = new Map((hhRows ?? []).map((h: any) => [h.id, h]));
+          const hhById = new Map(hhRows.map((h: any) => [h.id, h]));
 
           // Fetch locations if needed
           let locById = new Map<string, any>();
           if (locKeys.length > 0) {
-            const locIds = [...new Set(
-              (hhRows ?? []).map((h: any) => h.location_id).filter(Boolean)
-            )];
+            const locIds = [...new Set(hhRows.map((h: any) => h.location_id).filter(Boolean))];
             if (locIds.length > 0) {
-              const locCols = ["id", ...locKeys.map(k => k.replace("loc.", ""))];
-              const { data: locRows, error: locErr } = await adminSb
-                .from("locations")
-                .select([...new Set(locCols)].join(", "))
-                .in("id", locIds);
-              if (locErr) console.error("[survey export] locations query error:", locErr);
-              locById = new Map((locRows ?? []).map((l: any) => [l.id, l]));
+              const locCols = [...new Set(["id", ...locKeys.map(k => k.replace("loc.", ""))])];
+              const locRows = await inChunks(adminSb, "locations", locCols.join(", "), "id", locIds);
+              locById = new Map(locRows.map((l: any) => [l.id, l]));
             }
           }
 
