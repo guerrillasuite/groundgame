@@ -108,8 +108,8 @@ export async function createPersonAction(
   revalidate: string,
   formData: FormData
 ) {
-  const sb = getServerSupabaseWritable();
   const tenant = await getTenant();
+  const sb = makeSb(tenant.id);
 
   const firstName  = String(formData.get("first_name")  ?? "").trim();
   const lastName   = String(formData.get("last_name")   ?? "").trim();
